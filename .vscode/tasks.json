@@ -1,0 +1,47 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Compile Contracts",
+      "type": "shell",
+      "command": "npx hardhat compile",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Test Contracts",
+      "type": "shell",
+      "command": "npx hardhat test",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Deploy to Testnet",
+      "type": "shell",
+      "command": "npx hardhat run scripts/deploy.js --network sepolia",
+      "group": "none",
+      "problemMatcher": []
+    },
+    {
+      "label": "Start Frontend",
+      "type": "shell",
+      "command": "cd frontend && npm run dev",
+      "group": "none",
+      "problemMatcher": []
+    },
+    {
+      "label": "Start Backend",
+      "type": "shell",
+      "command": "cd backend && npm run dev",
+      "group": "none",
+      "problemMatcher": []
+    },
+    {
+      "label": "Install All Dependencies",
+      "type": "shell",
+      "command": "npm install && cd frontend && npm install && cd ../backend && npm install",
+      "group": "none",
+      "problemMatcher": []
+    }
+  ]
+}
