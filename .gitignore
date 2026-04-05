@@ -9,6 +9,7 @@ cache/
 typechain-types/
 frontend/.next/
 frontend/out/
+frontend/tsconfig.tsbuildinfo
 
 # Environment
 .env

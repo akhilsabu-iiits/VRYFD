@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import { DM_Sans, Space_Mono } from "next/font/google";
 import Providers from "./providers";
 import "./globals.css";
@@ -23,7 +24,7 @@ export const metadata: Metadata = {
   description: "Check in with your ENS identity. Earn soulbound POAPs. Unlock milestone rewards. Get verifiable certificates.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${dmSans.variable} ${spaceMono.variable}`}>
       <body>
