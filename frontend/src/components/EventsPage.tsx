@@ -11,6 +11,7 @@ interface EventsPageProps {
   userBadges: number[];
   userAddress: string;
   userENS: string;
+  deployedEventIds: Record<number, number>;
   onCheckin: () => Promise<void>;
 }
 
@@ -24,6 +25,7 @@ export default function EventsPage({
   userBadges,
   userAddress,
   userENS,
+  deployedEventIds,
   onCheckin,
 }: EventsPageProps) {
   const ev = currentEventId !== null ? events.find((e) => e.id === currentEventId) : null;
@@ -66,6 +68,16 @@ export default function EventsPage({
           ? `${ev.date} · ${ev.status.toUpperCase()}`
           : "Go to Dashboard and click an event to check in"}
       </div>
+      {ev && currentEventId !== null && currentEventId in deployedEventIds && (
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: "6px",
+          margin: "8px 0", padding: "4px 14px", borderRadius: "50px", fontSize: "12px",
+          background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)",
+          color: "var(--green)", fontFamily: "var(--font-space-mono),'Space Mono',monospace",
+        }}>
+          ⛓ On-chain Event ID #{deployedEventIds[currentEventId]}
+        </div>
+      )}
 
       {/* User identity */}
       {isConnected && (

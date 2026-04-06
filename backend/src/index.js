@@ -7,6 +7,7 @@ const ipfsRoutes = require("./routes/ipfs");
 const relayerRoutes = require("./routes/relayer");
 const certificateRoutes = require("./routes/certificates");
 const verifyRoutes = require("./routes/verify");
+const { initRelayer } = require("./services/relayerService");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -35,6 +36,8 @@ async function start() {
     } else {
       console.log("⚠️  No MONGODB_URI set — running without database");
     }
+
+    initRelayer();
 
     app.listen(PORT, () => {
       console.log(`🚀 VRYFD Backend running on http://localhost:${PORT}`);

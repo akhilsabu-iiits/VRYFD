@@ -12,7 +12,7 @@ router.get("/:certificateId", async (req, res) => {
   try {
     const { certificateId } = req.params;
     const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
-    const rpcUrl = process.env.POLYGON_AMOY_RPC || "https://rpc-amoy.polygon.technology";
+    const rpcUrl = process.env.SEPOLIA_RPC || "https://rpc.sepolia.org";
 
     if (!contractAddress) {
       return res.status(500).json({ error: "Contract not configured" });
@@ -52,8 +52,8 @@ router.get("/:certificateId", async (req, res) => {
       metadataURI,
       isValid,
       contractAddress,
-      chain: "Polygon",
-      explorerURL: `https://polygonscan.com/address/${contractAddress}`,
+      chain: "Sepolia",
+      explorerURL: `https://sepolia.etherscan.io/address/${contractAddress}#events`,
     });
   } catch (error) {
     if (error.message?.includes("Certificate not found")) {

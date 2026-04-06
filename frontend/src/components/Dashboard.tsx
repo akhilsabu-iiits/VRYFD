@@ -7,6 +7,8 @@ interface DashboardProps {
   events: VEvent[];
   userCheckins: number;
   userBadges: number[];
+  deployedEventIds: Record<number, number>;
+  isConnected: boolean;
   onOpenEvent: (id: number) => void;
 }
 
@@ -19,9 +21,9 @@ function getTierLabel(checkins: number): string {
   return "—";
 }
 
-export default function Dashboard({ events, userCheckins, userBadges, onOpenEvent }: DashboardProps) {
+export default function Dashboard({ events, userCheckins, userBadges, deployedEventIds, isConnected, onOpenEvent }: DashboardProps) {
   const activeCount = events.filter((e) => e.status === "live").length;
-  const tier = getTierLabel(userCheckins);
+  const tier = isConnected ? getTierLabel(userCheckins) : "—";
 
   return (
     <>
@@ -44,12 +46,12 @@ export default function Dashboard({ events, userCheckins, userBadges, onOpenEven
         </div>
         <div className="card stat-card">
           <div className="stat-icon" style={{ background: "rgba(52,211,153,0.12)", color: "var(--green)" }}>&#10003;</div>
-          <div className="stat-value">{userCheckins}</div>
+          <div className="stat-value">{isConnected ? userCheckins : "—"}</div>
           <div className="stat-label">Your Check-ins</div>
         </div>
         <div className="card stat-card">
           <div className="stat-icon" style={{ background: "rgba(251,191,36,0.12)", color: "var(--amber)" }}>&#9733;</div>
-          <div className="stat-value">{userBadges.length}</div>
+          <div className="stat-value">{isConnected ? userBadges.length : "—"}</div>
           <div className="stat-label">Badges Earned</div>
         </div>
         <div className="card stat-card">
@@ -77,8 +79,20 @@ export default function Dashboard({ events, userCheckins, userBadges, onOpenEven
                 className="card-glow"
                 style={{ background: `radial-gradient(circle at 50% 0%,${ev.color}11,transparent 70%)` }}
               />
-              <div className={`event-status ${ev.status}`}>
-                {ev.status === "live" ? "LIVE NOW" : ev.status === "upcoming" ? "UPCOMING" : "ENDED"}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div className={`event-status ${ev.status}`}>
+                  {ev.status === "live" ? "LIVE NOW" : ev.status === "upcoming" ? "UPCOMING" : "ENDED"}
+                </div>
+                {ev.id in deployedEventIds && (
+                  <span style={{
+                    fontSize: "11px", fontFamily: "var(--font-space-mono),'Space Mono',monospace",
+                    color: "var(--green)", background: "rgba(52,211,153,0.1)",
+                    border: "1px solid rgba(52,211,153,0.2)", borderRadius: "50px",
+                    padding: "2px 8px",
+                  }}>
+                    #{deployedEventIds[ev.id]}
+                  </span>
+                )}
               </div>
               <div className="event-name">{ev.emoji} {ev.name}</div>
               <div className="event-meta">{ev.date}</div>
