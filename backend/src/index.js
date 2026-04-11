@@ -16,6 +16,10 @@ const { initRelayer, setMilestoneURIs } = require("./services/relayerService");
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+console.log(`[startup] NODE_ENV=${process.env.NODE_ENV} PORT=${PORT}`);
+console.log(`[startup] PRIVATE_KEY set=${!!process.env.PRIVATE_KEY} CONTRACT=${process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "MISSING"}`);
+console.log(`[startup] MONGODB_URI set=${!!process.env.MONGODB_URI}`);
+
 // Middleware
 app.use(cors({
   origin: process.env.FRONTEND_ORIGIN || "http://localhost:3000",

@@ -1,5 +1,6 @@
 const QRCode = require("qrcode");
-const sharp = require("sharp");
+let sharp;
+try { sharp = require("sharp"); } catch (e) { console.warn("[certificateService] sharp not available:", e.message); }
 const { pinFile, pinJSON, buildCertificateMetadata } = require("./ipfsService");
 
 // Configurable IPFS gateway — set IPFS_GATEWAY in .env to use a different provider
@@ -85,6 +86,8 @@ async function generateCertificateImage({
       <text class="footer" x="${width / 2}" y="745" text-anchor="middle">Scan QR to verify · ${(process.env.BACKEND_URL || "http://localhost:3001")}/api/verify/${certificateId}</text>
     </svg>
   `;
+
+  if (!sharp) throw new Error("sharp image library is not available on this server");
 
   // Compose: white background + SVG text + QR code
   const certificate = await sharp({
