@@ -1,23 +1,21 @@
-# 🎟️ VRYFD — Decentralized Attendance on the Blockchain
+# 🎟️ On-Chain Event Attendance System (VRYF)
 
-> Gasless check-ins. Soulbound badges. On-chain certificates. VRYF token rewards. All verified on **Ethereum Sepolia**.
-
-**🌐 Live App:** [vryfd.online](https://vryfd.online)
+> A decentralized event attendance platform built on Ethereum that enables participants to verify attendance on-chain and earn rewards using the VRYF token.
 
 ---
 
 ## 📸 Screenshots
 
-| Dashboard | Events |
-|-----------|--------|
+| Dashboard                                    | Events                                 |
+| -------------------------------------------- | -------------------------------------- |
 | ![Dashboard](docs/Screenshots/Dashboard.png) | ![Events](docs/Screenshots/Events.png) |
 
-| Leaderboard | VRYF Tokens |
-|-------------|-------------|
+| Leaderboard                                      | VRYF Tokens                                       |
+| ------------------------------------------------ | ------------------------------------------------- |
 | ![Leaderboard](docs/Screenshots/Leaderboard.png) | ![VRYF Tokens](docs/Screenshots/VRYF%20Token.png) |
 
-| Certificates |
-|-------------|
+| Certificates                                      |
+| ------------------------------------------------- |
 | ![Certificates](docs/Screenshots/Certificate.png) |
 
 ---
@@ -33,60 +31,68 @@ Attend events. Earn rewards. Build a verifiable on-chain attendance record.
 ## ✨ Features
 
 ### ⚡ Gasless Check-In
+
 Enter a 6-digit join code from the organizer, sign a message with your wallet (zero gas), and you're checked in on-chain. No ETH required from the attendee.
 
 ### 🏅 POAP Badges
-Earn a soulbound ERC-1155 NFT badge for every event you attend. Badges are non-transferable — proof that *you* were there.
+
+Earn a soulbound ERC-1155 NFT badge for every event you attend. Badges are non-transferable — proof that _you_ were there.
 
 ### 🪙 VRYF Token Rewards
+
 Earn ERC-20 VRYF tokens for every action:
 
-| Action | Reward |
-|--------|--------|
-| Check-in confirmed | +10 VRYF |
-| POAP Badge claimed | +25 VRYF |
-| Bronze milestone (5 events) | +100 VRYF |
+| Action                       | Reward    |
+| ---------------------------- | --------- |
+| Check-in confirmed           | +10 VRYF  |
+| POAP Badge claimed           | +25 VRYF  |
+| Bronze milestone (5 events)  | +100 VRYF |
 | Silver milestone (10 events) | +250 VRYF |
-| Gold milestone (20 events) | +500 VRYF |
+| Gold milestone (20 events)   | +500 VRYF |
 
 ### 🏆 Milestone NFTs
+
 Hit attendance milestones to unlock exclusive NFT badges — Bronze, Silver, and Gold tiers.
 
 ### 📜 Blockchain Certificates
+
 Organizers issue tamper-proof attendance certificates on-chain. Each certificate has a unique QR code for instant public verification at any time.
 
 ### 📊 Leaderboard
+
 See how you rank against other attendees. Supports ENS name resolution — your `.eth` name shows instead of a raw wallet address.
 
 ### 🛠️ Organizer Dashboard
+
 Deploy events, generate join codes, confirm attendees, and issue certificates — all from a single dashboard.
 
 ### 🔐 Tamper-Proof Records
+
 Every check-in, badge, and certificate lives on the blockchain. No central authority can alter or delete your attendance history.
 
 ---
 
 ## 🏗️ Architecture
 
-| Layer | Technology |
-|-------|-----------|
-| Smart Contracts | Solidity, Hardhat, OpenZeppelin ERC-1155 |
-| Frontend | Next.js 14, TypeScript, wagmi v2, RainbowKit |
-| Backend | Node.js, Express, ethers.js v6 |
-| Database | MongoDB |
-| Storage | IPFS via Pinata |
-| Network | Ethereum Sepolia Testnet |
-| Wallet | MetaMask, WalletConnect |
+| Layer           | Technology                                   |
+| --------------- | -------------------------------------------- |
+| Smart Contracts | Solidity, Hardhat, OpenZeppelin ERC-1155     |
+| Frontend        | Next.js 14, TypeScript, wagmi v2, RainbowKit |
+| Backend         | Node.js, Express, ethers.js v6               |
+| Database        | MongoDB                                      |
+| Storage         | IPFS via Pinata                              |
+| Network         | Ethereum Sepolia Testnet                     |
+| Wallet          | MetaMask, WalletConnect                      |
 
 ---
 
 ## 🌐 Live Deployment
 
-| Service | URL |
-|---------|-----|
-| Frontend | [vryfd.online](https://vryfd.online) |
-| Backend API | [vryfd-production.up.railway.app](https://vryfd-production.up.railway.app) |
-| Health Check | [/api/health](https://vryfd-production.up.railway.app/api/health) |
+| Service      | URL                                                                        |
+| ------------ | -------------------------------------------------------------------------- |
+| Frontend     | [vryfd.online](https://vryfd.online)                                       |
+| Backend API  | [vryfd-production.up.railway.app](https://vryfd-production.up.railway.app) |
+| Health Check | [/api/health](https://vryfd-production.up.railway.app/api/health)          |
 
 ---
 
@@ -116,19 +122,19 @@ Every check-in, badge, and certificate lives on the blockchain. No central autho
 
 **VryfdAttendance** — deployed on Ethereum Sepolia
 
-| Contract | Description |
-|----------|-------------|
+| Contract              | Description                                                         |
+| --------------------- | ------------------------------------------------------------------- |
 | `VryfdAttendance.sol` | Core attendance logic — check-ins, badges, milestones, certificates |
-| `VRYFToken.sol` | ERC-20 reward token |
+| `VRYFToken.sol`       | ERC-20 reward token                                                 |
 
-| Function | Description |
-|----------|-------------|
-| `createEvent()` | Deploy new event |
-| `checkInFor()` | Relayer submits check-in |
-| `claimBadge()` | Mint soulbound POAP badge |
-| `claimMilestoneReward()` | Mint milestone NFT |
-| `issueCertificate()` | Issue on-chain certificate |
-| `getAttendanceRecord()` | Fetch wallet's attendance history |
+| Function                 | Description                       |
+| ------------------------ | --------------------------------- |
+| `createEvent()`          | Deploy new event                  |
+| `checkInFor()`           | Relayer submits check-in          |
+| `claimBadge()`           | Mint soulbound POAP badge         |
+| `claimMilestoneReward()` | Mint milestone NFT                |
+| `issueCertificate()`     | Issue on-chain certificate        |
+| `getAttendanceRecord()`  | Fetch wallet's attendance history |
 
 ---
 
