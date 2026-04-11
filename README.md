@@ -12,13 +12,13 @@
 |-----------|--------|
 | ![Dashboard](docs/Screenshots/Dashboard.png) | ![Events](docs/Screenshots/Events.png) |
 
-| Leaderboard | Certificates |
+| Leaderboard | VRYF Tokens |
 |-------------|-------------|
-| ![Leaderboard](docs/Screenshots/Leaderboard.png) | ![Certificates](docs/Screenshots/Certificate.png) |
+| ![Leaderboard](docs/Screenshots/Leaderboard.png) | ![VRYF Tokens](docs/Screenshots/VRYF%20Token.png) |
 
-| VRYF Tokens |
+| Certificates |
 |-------------|
-| ![VRYF Tokens](docs/Screenshots/VRYF%20Token.png) |
+| ![Certificates](docs/Screenshots/Certificate.png) |
 
 ---
 
