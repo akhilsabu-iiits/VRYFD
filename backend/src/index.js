@@ -65,9 +65,15 @@ app.get("/api/health", (req, res) => {
 // Connect to MongoDB & start server
 async function start() {
   try {
-    if (process.env.MONGODB_URI) {
-      await mongoose.connect(process.env.MONGODB_URI);
-      console.log("Connected to MongoDB");
+    const mongoUri = (process.env.MONGODB_URI || "").trim();
+    if (mongoUri) {
+      try {
+        await mongoose.connect(mongoUri);
+        console.log("Connected to MongoDB");
+      } catch (mongoErr) {
+        // Non-fatal — app runs without DB (certificates/verify use on-chain data)
+        console.error("MongoDB connection failed (continuing without DB):", mongoErr.message);
+      }
     } else {
       console.log("⚠️  No MONGODB_URI set — running without database");
     }
