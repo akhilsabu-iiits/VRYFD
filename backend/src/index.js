@@ -82,18 +82,20 @@ async function start() {
       console.log("⚠️  No MONGODB_URI set — running without database");
     }
 
-    initRelayer();
+    try {
+      initRelayer();
+    } catch (relayerErr) {
+      console.error("[startup] initRelayer failed (continuing without relayer):", relayerErr.message);
+    }
 
     // Auto-setup milestone URIs on startup (non-blocking — runs in background)
     (async () => {
       try {
         const baseURL = process.env.BACKEND_URL || `http://localhost:${PORT}`;
-        // Small delay so the provider/contract are fully ready
         await new Promise((r) => setTimeout(r, 3000));
         await setMilestoneURIs(baseURL);
         console.log("[startup] Milestone URIs set on-chain");
       } catch (e) {
-        // Non-fatal — URIs may already be set or contract not yet ready
         console.warn("[startup] setMilestoneURIs skipped:", e.message);
       }
     })();
@@ -103,7 +105,10 @@ async function start() {
     });
   } catch (error) {
     console.error("Failed to start server:", error);
-    process.exit(1);
+    // Don't exit — log and keep the process alive so Railway health checks can see the error
+    app.listen(PORT, () => {
+      console.log(`[fallback] Server listening on ${PORT} in degraded mode`);
+    });
   }
 }
 
