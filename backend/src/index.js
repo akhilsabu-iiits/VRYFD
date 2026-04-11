@@ -68,48 +68,37 @@ app.get("/api/health", (req, res) => {
 
 // Connect to MongoDB & start server
 async function start() {
-  try {
-    const mongoUri = (process.env.MONGODB_URI || "").trim();
-    if (mongoUri) {
-      try {
-        await mongoose.connect(mongoUri);
-        console.log("Connected to MongoDB");
-      } catch (mongoErr) {
-        // Non-fatal — app runs without DB (certificates/verify use on-chain data)
-        console.error("MongoDB connection failed (continuing without DB):", mongoErr.message);
-      }
-    } else {
-      console.log("⚠️  No MONGODB_URI set — running without database");
-    }
-
-    try {
-      initRelayer();
-    } catch (relayerErr) {
-      console.error("[startup] initRelayer failed (continuing without relayer):", relayerErr.message);
-    }
-
-    // Auto-setup milestone URIs on startup (non-blocking — runs in background)
-    (async () => {
-      try {
-        const baseURL = process.env.BACKEND_URL || `http://localhost:${PORT}`;
-        await new Promise((r) => setTimeout(r, 3000));
-        await setMilestoneURIs(baseURL);
-        console.log("[startup] Milestone URIs set on-chain");
-      } catch (e) {
-        console.warn("[startup] setMilestoneURIs skipped:", e.message);
-      }
-    })();
-
-    app.listen(PORT, () => {
-      console.log(`🚀 VRYFD Backend running on http://localhost:${PORT}`);
-    });
-  } catch (error) {
-    console.error("Failed to start server:", error);
-    // Don't exit — log and keep the process alive so Railway health checks can see the error
-    app.listen(PORT, () => {
-      console.log(`[fallback] Server listening on ${PORT} in degraded mode`);
-    });
+  // MongoDB connects in background — don't block server startup
+  const mongoUri = (process.env.MONGODB_URI || "").trim();
+  if (mongoUri) {
+    mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 10000 })
+      .then(() => console.log("Connected to MongoDB"))
+      .catch((e) => console.error("MongoDB connection failed (non-fatal):", e.message));
+  } else {
+    console.log("⚠️  No MONGODB_URI set — running without database");
   }
+
+  try {
+    initRelayer();
+  } catch (relayerErr) {
+    console.error("[startup] initRelayer failed (continuing without relayer):", relayerErr.message);
+  }
+
+  // Auto-setup milestone URIs on startup (non-blocking)
+  (async () => {
+    try {
+      const baseURL = process.env.BACKEND_URL || `http://localhost:${PORT}`;
+      await new Promise((r) => setTimeout(r, 3000));
+      await setMilestoneURIs(baseURL);
+      console.log("[startup] Milestone URIs set on-chain");
+    } catch (e) {
+      console.warn("[startup] setMilestoneURIs skipped:", e.message);
+    }
+  })();
+
+  app.listen(PORT, () => {
+    console.log(`🚀 VRYFD Backend running on http://localhost:${PORT}`);
+  });
 }
 
 // Prevent unhandled promise rejections from crashing the server (e.g. RPC rate limits)
