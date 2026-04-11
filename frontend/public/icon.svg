@@ -1,10 +1,43 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- Dark background -->
-  <rect width="32" height="32" rx="7" fill="#0d0d1a"/>
-  <!-- Outer glow ring -->
-  <circle cx="16" cy="16" r="13" fill="none" stroke="#7c6cf0" stroke-width="1" opacity="0.35" stroke-dasharray="4 3"/>
-  <!-- Solid ring -->
-  <circle cx="16" cy="16" r="11.5" fill="none" stroke="#7c6cf0" stroke-width="1.8" opacity="0.9"/>
-  <!-- Checkmark -->
-  <path d="M9.5 16 L13.5 20.5 L22.5 11" stroke="#7c6cf0" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0d0b1e"/>
+      <stop offset="100%" stop-color="#1a1248"/>
+    </linearGradient>
+    <linearGradient id="hexGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c4b5fd"/>
+      <stop offset="100%" stop-color="#7c6cf0"/>
+    </linearGradient>
+    <linearGradient id="checkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e0d9ff"/>
+      <stop offset="100%" stop-color="#a78bfa"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="1.2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="32" height="32" rx="7" fill="url(#bg)"/>
+
+  <!-- Subtle inner glow -->
+  <rect width="32" height="32" rx="7" fill="#7c6cf0" opacity="0.06"/>
+
+  <!-- Hexagon fill -->
+  <polygon points="16,2 27.5,8.5 27.5,23.5 16,30 4.5,23.5 4.5,8.5"
+           fill="#7c6cf0" opacity="0.08"/>
+
+  <!-- Hexagon outer ring -->
+  <polygon points="16,2 27.5,8.5 27.5,23.5 16,30 4.5,23.5 4.5,8.5"
+           fill="none" stroke="url(#hexGrad)" stroke-width="1.6" opacity="0.9"/>
+
+  <!-- Checkmark with glow -->
+  <path d="M9 16.5 L13.5 21.5 L23 11"
+        stroke="#7c6cf0" stroke-width="4" fill="none"
+        stroke-linecap="round" stroke-linejoin="round"
+        opacity="0.35" filter="url(#glow)"/>
+  <path d="M9 16.5 L13.5 21.5 L23 11"
+        stroke="url(#checkGrad)" stroke-width="2.8" fill="none"
+        stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
