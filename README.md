@@ -1,6 +1,6 @@
 # 🎟️ On-Chain Event Attendance System (VRYF)
 
-> A decentralized event attendance platform that enables participants to verify their attendance on-chain and earn rewards
+> A Web3-powered event platform that records attendance on-chain and rewards participants with VRYF tokens for verified participation.
 
 ---
 
