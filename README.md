@@ -1,12 +1,12 @@
-# VRYFD — Decentralized Attendance on the Blockchain
+# 🎟️ VRYFD — Decentralized Attendance on the Blockchain
 
 > Gasless check-ins. Soulbound badges. On-chain certificates. VRYF token rewards. All verified on **Ethereum Sepolia**.
 
-**Live App:** [vryfd.online](https://vryfd.online)
+**🌐 Live App:** [vryfd.online](https://vryfd.online)
 
 ---
 
-## Screenshots
+## 📸 Screenshots
 
 | Dashboard | Events |
 |-----------|--------|
@@ -22,7 +22,7 @@
 
 ---
 
-## What is VRYFD?
+## 🚀 What is VRYFD?
 
 VRYFD is a Web3 attendance platform where every check-in is recorded on-chain. Attendees sign in gaslessly using EIP-712 signatures — no gas fees ever. The backend relayer handles all on-chain transactions.
 
@@ -30,92 +30,109 @@ Attend events. Earn rewards. Build a verifiable on-chain attendance record.
 
 ---
 
-## Features
+## ✨ Features
 
-### Gasless Check-In
-
+### ⚡ Gasless Check-In
 Enter a 6-digit join code from the organizer, sign a message with your wallet (zero gas), and you're checked in on-chain. No ETH required from the attendee.
 
-### POAP Badges
+### 🏅 POAP Badges
+Earn a soulbound ERC-1155 NFT badge for every event you attend. Badges are non-transferable — proof that *you* were there.
 
-Earn a soulbound ERC-1155 NFT badge for every event you attend. Badges are non-transferable — proof that _you_ were there.
-
-### VRYF Tokens
-
+### 🪙 VRYF Token Rewards
 Earn ERC-20 VRYF tokens for every action:
 
-| Action                       | Reward    |
-| ---------------------------- | --------- |
-| Check-in confirmed           | +10 VRYF  |
-| POAP Badge claimed           | +25 VRYF  |
-| Bronze milestone (5 events)  | +100 VRYF |
+| Action | Reward |
+|--------|--------|
+| Check-in confirmed | +10 VRYF |
+| POAP Badge claimed | +25 VRYF |
+| Bronze milestone (5 events) | +100 VRYF |
 | Silver milestone (10 events) | +250 VRYF |
-| Gold milestone (20 events)   | +500 VRYF |
+| Gold milestone (20 events) | +500 VRYF |
 
-### Milestone NFTs
-
+### 🏆 Milestone NFTs
 Hit attendance milestones to unlock exclusive NFT badges — Bronze, Silver, and Gold tiers.
 
-### Blockchain Certificates
-
+### 📜 Blockchain Certificates
 Organizers issue tamper-proof attendance certificates on-chain. Each certificate has a unique QR code for instant public verification at any time.
 
-### Leaderboard
-
+### 📊 Leaderboard
 See how you rank against other attendees. Supports ENS name resolution — your `.eth` name shows instead of a raw wallet address.
 
-### Organizer Dashboard
-
+### 🛠️ Organizer Dashboard
 Deploy events, generate join codes, confirm attendees, and issue certificates — all from a single dashboard.
 
----
-
-## Tech Stack
-
-| Layer           | Technology                                   |
-| --------------- | -------------------------------------------- |
-| Smart Contracts | Solidity, Hardhat, OpenZeppelin ERC-1155     |
-| Frontend        | Next.js 14, TypeScript, wagmi v2, RainbowKit |
-| Backend         | Node.js, Express, ethers.js v6               |
-| Database        | MongoDB                                      |
-| Storage         | IPFS via Pinata                              |
-| Network         | Ethereum Sepolia Testnet                     |
+### 🔐 Tamper-Proof Records
+Every check-in, badge, and certificate lives on the blockchain. No central authority can alter or delete your attendance history.
 
 ---
 
-## Live Deployment
+## 🏗️ Architecture
 
-| Service      | URL                                                                        |
-| ------------ | -------------------------------------------------------------------------- |
-| Frontend     | [vryfd.online](https://vryfd.online)                                       |
-| Backend API  | [vryfd-production.up.railway.app](https://vryfd-production.up.railway.app) |
-| Health Check | [/api/health](https://vryfd-production.up.railway.app/api/health)          |
+| Layer | Technology |
+|-------|-----------|
+| Smart Contracts | Solidity, Hardhat, OpenZeppelin ERC-1155 |
+| Frontend | Next.js 14, TypeScript, wagmi v2, RainbowKit |
+| Backend | Node.js, Express, ethers.js v6 |
+| Database | MongoDB |
+| Storage | IPFS via Pinata |
+| Network | Ethereum Sepolia Testnet |
+| Wallet | MetaMask, WalletConnect |
 
 ---
 
-## How It Works
+## 🌐 Live Deployment
+
+| Service | URL |
+|---------|-----|
+| Frontend | [vryfd.online](https://vryfd.online) |
+| Backend API | [vryfd-production.up.railway.app](https://vryfd-production.up.railway.app) |
+| Health Check | [/api/health](https://vryfd-production.up.railway.app/api/health) |
+
+---
+
+## ⚙️ How It Works
 
 ```
-Attendee connects wallet
-        ↓
-Enters 6-digit join code
-        ↓
-Signs EIP-712 message  ← zero gas cost
-        ↓
-Relayer submits on-chain tx  ← backend pays gas
-        ↓
-Organizer confirms attendance
-        ↓
-Attendee claims POAP Badge → earns VRYF tokens
-        ↓
-Milestone NFTs unlock at 5 / 10 / 20 events
-        ↓
-Organizer issues verifiable certificate with QR code
+👤  Attendee connects wallet
+           ↓
+🔢  Enters 6-digit join code
+           ↓
+✍️  Signs EIP-712 message  ←  zero gas cost
+           ↓
+⛓️  Relayer submits on-chain tx  ←  backend pays gas
+           ↓
+✅  Organizer confirms attendance
+           ↓
+🏅  Attendee claims POAP Badge → earns VRYF tokens
+           ↓
+🏆  Milestone NFTs unlock at 5 / 10 / 20 events
+           ↓
+📜  Organizer issues verifiable certificate with QR code
 ```
 
 ---
 
-## Local Development
+## 🧾 Smart Contracts
+
+**VryfdAttendance** — deployed on Ethereum Sepolia
+
+| Contract | Description |
+|----------|-------------|
+| `VryfdAttendance.sol` | Core attendance logic — check-ins, badges, milestones, certificates |
+| `VRYFToken.sol` | ERC-20 reward token |
+
+| Function | Description |
+|----------|-------------|
+| `createEvent()` | Deploy new event |
+| `checkInFor()` | Relayer submits check-in |
+| `claimBadge()` | Mint soulbound POAP badge |
+| `claimMilestoneReward()` | Mint milestone NFT |
+| `issueCertificate()` | Issue on-chain certificate |
+| `getAttendanceRecord()` | Fetch wallet's attendance history |
+
+---
+
+## 📦 Local Development
 
 ### Prerequisites
 
@@ -151,7 +168,20 @@ NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID= # From cloud.walletconnect.com
 NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
 ```
 
-### 3. Start Dev Servers
+### 3. Deploy Smart Contracts
+
+```bash
+npx hardhat compile
+npx hardhat run scripts/deploy.js --network sepolia
+```
+
+### 4. Run Tests
+
+```bash
+npx hardhat test
+```
+
+### 5. Start Dev Servers
 
 ```bash
 # Terminal 1 — Backend (port 3001)
@@ -165,21 +195,15 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ---
 
-## Contract
+## 🔮 Future Improvements
 
-**VryfdAttendance** — deployed on Ethereum Sepolia
-
-| Function                 | Description                       |
-| ------------------------ | --------------------------------- |
-| `createEvent()`          | Deploy new event                  |
-| `checkInFor()`           | Relayer submits check-in          |
-| `claimBadge()`           | Mint soulbound POAP badge         |
-| `claimMilestoneReward()` | Mint milestone NFT                |
-| `issueCertificate()`     | Issue on-chain certificate        |
-| `getAttendanceRecord()`  | Fetch wallet's attendance history |
+- Mobile app for QR-based event check-in
+- Cross-chain support (Polygon, Base)
+- DAO governance for organizer roles
+- Public event discovery feed
 
 ---
 
-## License
+## 📜 License
 
 MIT
