@@ -1292,8 +1292,9 @@ export default function Home() {
     setCurrentPage("dashboard");
     setMountedPages(new Set(["dashboard"]));
     hydratedRef.current = true;
-    showToast("All data reset to initial values", "");
-  }, [showToast]);
+    disconnect();
+    showToast("All data reset — wallet disconnected", "");
+  }, [showToast, disconnect]);
 
   useEffect(() => {
     if (!walletMenuOpen) return;
