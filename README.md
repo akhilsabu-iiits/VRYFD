@@ -2,22 +2,20 @@
 
 > A decentralized event attendance platform that enables participants to verify their attendance on-chain and earn VRYF tokens for verified participation.
 
-**🌐 Live App:** [vryfd.online](https://vryfd.online)
-
 ---
 
 ## 📸 Screenshots
 
-| Dashboard | Events |
-|-----------|--------|
+| Dashboard                                    | Events                                 |
+| -------------------------------------------- | -------------------------------------- |
 | ![Dashboard](docs/Screenshots/Dashboard.png) | ![Events](docs/Screenshots/Events.png) |
 
-| Leaderboard | VRYF Tokens |
-|-------------|-------------|
+| Leaderboard                                      | VRYF Tokens                                       |
+| ------------------------------------------------ | ------------------------------------------------- |
 | ![Leaderboard](docs/Screenshots/Leaderboard.png) | ![VRYF Tokens](docs/Screenshots/VRYF%20Token.png) |
 
-| Certificates |
-|-------------|
+| Certificates                                      |
+| ------------------------------------------------- |
 | ![Certificates](docs/Screenshots/Certificate.png) |
 
 ---
@@ -37,13 +35,13 @@
 
 ## 🪙 VRYF Token Rewards
 
-| Action | Reward |
-|--------|--------|
-| Check-in confirmed | +10 VRYF |
-| POAP Badge claimed | +25 VRYF |
-| Bronze milestone (5 events) | +100 VRYF |
+| Action                       | Reward    |
+| ---------------------------- | --------- |
+| Check-in confirmed           | +10 VRYF  |
+| POAP Badge claimed           | +25 VRYF  |
+| Bronze milestone (5 events)  | +100 VRYF |
 | Silver milestone (10 events) | +250 VRYF |
-| Gold milestone (20 events) | +500 VRYF |
+| Gold milestone (20 events)   | +500 VRYF |
 
 ---
 
@@ -73,21 +71,22 @@
 
 ## 🏗️ Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Smart Contracts | Solidity, Hardhat, OpenZeppelin ERC-1155 |
-| Frontend | Next.js 14, TypeScript, wagmi v2, RainbowKit |
-| Backend | Node.js, Express, ethers.js v6 |
-| Database | MongoDB |
-| Storage | IPFS via Pinata |
-| Network | Ethereum Sepolia Testnet |
-| Wallet | MetaMask, WalletConnect |
+| Layer           | Technology                                   |
+| --------------- | -------------------------------------------- |
+| Smart Contracts | Solidity, Hardhat, OpenZeppelin ERC-1155     |
+| Frontend        | Next.js 14, TypeScript, wagmi v2, RainbowKit |
+| Backend         | Node.js, Express, ethers.js v6               |
+| Database        | MongoDB                                      |
+| Storage         | IPFS via Pinata                              |
+| Network         | Ethereum Sepolia Testnet                     |
+| Wallet          | MetaMask, WalletConnect                      |
 
 ---
 
 ## 📦 Local Development
 
 ### Prerequisites
+
 - Node.js 18+
 - MetaMask browser extension
 - Sepolia testnet ETH — [sepoliafaucet.com](https://sepoliafaucet.com)
