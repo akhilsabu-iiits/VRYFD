@@ -445,6 +445,22 @@ async function withRpcFallback(fn) {
  * Initialize the relayer with the deployer wallet (has ORGANIZER_ROLE)
  */
 function initRelayer() {
+  const privateKey = process.env.PRIVATE_KEY;
+  const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
+
+  if (!privateKey) {
+    console.error("[relayer] FATAL: PRIVATE_KEY env var is not set — relayer cannot start");
+    console.error("[relayer] Set PRIVATE_KEY in Railway Variables and redeploy");
+    // Don't throw — let the server start so /api/health responds for debugging
+    loadCustomCodesFromStore();
+    return;
+  }
+  if (!contractAddress) {
+    console.error("[relayer] FATAL: NEXT_PUBLIC_CONTRACT_ADDRESS env var is not set");
+    loadCustomCodesFromStore();
+    return;
+  }
+
   const alchemyUrl = process.env.SEPOLIA_RPC;
   // Multiple public Sepolia RPCs as fallbacks — tried in order on 429
   rpcUrls = [
@@ -457,12 +473,18 @@ function initRelayer() {
   ];
   rpcIndex = 0;
   provider = buildProviderForUrl(rpcUrls[0]);
-  relayerWallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
-  contract = new ethers.Contract(
-    process.env.NEXT_PUBLIC_CONTRACT_ADDRESS,
-    VryfdABI.abi,
-    relayerWallet
-  );
+
+  // Normalize private key — ethers v6 requires 0x prefix
+  const normalizedKey = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
+  try {
+    relayerWallet = new ethers.Wallet(normalizedKey, provider);
+  } catch (e) {
+    console.error("[relayer] FATAL: Invalid PRIVATE_KEY —", e.message);
+    loadCustomCodesFromStore();
+    return;
+  }
+
+  contract = new ethers.Contract(contractAddress, VryfdABI.abi, relayerWallet);
   loadCustomCodesFromStore();
   // Resolve fromBlock then sync missing attendee counts — all in background.
   (async () => {
