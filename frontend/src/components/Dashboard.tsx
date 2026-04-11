@@ -9,6 +9,7 @@ interface DashboardProps {
   userBadges: number[];
   deployedEventIds: Record<number, number>;
   isConnected: boolean;
+  vryfBalance: number;
   onOpenEvent: (id: number) => void;
 }
 
@@ -21,7 +22,7 @@ function getTierLabel(checkins: number): string {
   return "—";
 }
 
-export default function Dashboard({ events, userCheckins, userBadges, deployedEventIds, isConnected, onOpenEvent }: DashboardProps) {
+export default function Dashboard({ events, userCheckins, userBadges, deployedEventIds, isConnected, vryfBalance, onOpenEvent }: DashboardProps) {
   const activeCount = events.filter((e) => e.status === "live").length;
   const tier = isConnected ? getTierLabel(userCheckins) : "—";
 
@@ -58,6 +59,11 @@ export default function Dashboard({ events, userCheckins, userBadges, deployedEv
           <div className="stat-icon" style={{ background: "rgba(248,113,113,0.12)", color: "var(--coral)" }}>&#9830;</div>
           <div className="stat-value">{tier}</div>
           <div className="stat-label">Your Tier</div>
+        </div>
+        <div className="card stat-card">
+          <div className="stat-icon stat-icon-vryf">&#11041;</div>
+          <div className="stat-value">{isConnected ? vryfBalance : "—"}</div>
+          <div className="stat-label">VRYF Tokens</div>
         </div>
       </div>
 

@@ -6,6 +6,7 @@ import type { LBEntry } from "../lib/vryfd";
 interface LeaderboardPageProps {
   leaderboard: LBEntry[];
   userENS: string;
+  isConnected: boolean;
 }
 
 const ROW_COLORS = [
@@ -20,7 +21,7 @@ const TIER_CLASSES: Record<string, string> = {
   "Bronze Explorer": "tier-bronze",
 };
 
-export default function LeaderboardPage({ leaderboard, userENS }: LeaderboardPageProps) {
+export default function LeaderboardPage({ leaderboard, userENS, isConnected }: LeaderboardPageProps) {
   const sorted = [...leaderboard].sort((a, b) => b.count - a.count);
 
   return (

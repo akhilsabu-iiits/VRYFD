@@ -3,26 +3,32 @@ const FormData = require("form-data");
 
 const PINATA_BASE = "https://api.pinata.cloud";
 const JWT = process.env.PINATA_JWT;
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:3001";
 
 /**
  * Pin a JSON metadata object to IPFS via Pinata
  * Returns the IPFS CID (content hash)
  */
 async function pinJSON(metadata, name = "vryfd-metadata") {
-  const res = await axios.post(
-    `${PINATA_BASE}/pinning/pinJSONToIPFS`,
-    {
-      pinataContent: metadata,
-      pinataMetadata: { name },
-    },
-    {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${JWT}`,
+  try {
+    const res = await axios.post(
+      `${PINATA_BASE}/pinning/pinJSONToIPFS`,
+      {
+        pinataContent: metadata,
+        pinataMetadata: { name },
       },
-    }
-  );
-  return res.data.IpfsHash;
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${JWT}`,
+        },
+      }
+    );
+    return res.data.IpfsHash;
+  } catch (err) {
+    const detail = err?.response?.data?.error?.details ?? err?.response?.data ?? err.message;
+    throw new Error(`IPFS pinJSON failed: ${JSON.stringify(detail)}`);
+  }
 }
 
 /**
@@ -30,25 +36,30 @@ async function pinJSON(metadata, name = "vryfd-metadata") {
  * Returns the IPFS CID
  */
 async function pinFile(fileBuffer, fileName, mimeType = "image/png") {
-  const formData = new FormData();
-  formData.append("file", fileBuffer, {
-    filename: fileName,
-    contentType: mimeType,
-  });
-  formData.append("pinataMetadata", JSON.stringify({ name: fileName }));
+  try {
+    const formData = new FormData();
+    formData.append("file", fileBuffer, {
+      filename: fileName,
+      contentType: mimeType,
+    });
+    formData.append("pinataMetadata", JSON.stringify({ name: fileName }));
 
-  const res = await axios.post(
-    `${PINATA_BASE}/pinning/pinFileToIPFS`,
-    formData,
-    {
-      maxBodyLength: Infinity,
-      headers: {
-        ...formData.getHeaders(),
-        Authorization: `Bearer ${JWT}`,
-      },
-    }
-  );
-  return res.data.IpfsHash;
+    const res = await axios.post(
+      `${PINATA_BASE}/pinning/pinFileToIPFS`,
+      formData,
+      {
+        maxBodyLength: Infinity,
+        headers: {
+          ...formData.getHeaders(),
+          Authorization: `Bearer ${JWT}`,
+        },
+      }
+    );
+    return res.data.IpfsHash;
+  } catch (err) {
+    const detail = err?.response?.data?.error?.details ?? err?.response?.data ?? err.message;
+    throw new Error(`IPFS pinFile failed: ${JSON.stringify(detail)}`);
+  }
 }
 
 /**
@@ -59,7 +70,7 @@ function buildBadgeMetadata({ eventName, eventId, description, imageCID, eventDa
     name: `VRYFD: ${eventName}`,
     description: description || `Proof of Attendance for ${eventName}`,
     image: `ipfs://${imageCID}`,
-    external_url: `https://vryfd.xyz/event/${eventId}`,
+    external_url: `${BACKEND_URL}/api/verify/event/${eventId}`,
     attributes: [
       { trait_type: "Event", value: eventName },
       { trait_type: "Event ID", value: String(eventId) },
@@ -79,7 +90,7 @@ function buildMilestoneMetadata({ tierName, threshold, imageCID, attendeeENS }) 
     name: `VRYFD: ${tierName}`,
     description: `Achievement NFT awarded for attending ${threshold} events on VRYFD`,
     image: `ipfs://${imageCID}`,
-    external_url: `https://vryfd.xyz/milestone/${tierName.toLowerCase().replace(/\s/g, "-")}`,
+    external_url: `${BACKEND_URL}/api/metadata/milestone/${encodeURIComponent(tierName)}`,
     attributes: [
       { trait_type: "Tier", value: tierName },
       { trait_type: "Threshold", value: String(threshold) },
@@ -106,7 +117,7 @@ function buildCertificateMetadata({
     name: `VRYFD Certificate: ${eventName}`,
     description: `Time-stamped certificate of attendance for ${eventName}, verified on-chain by VRYFD`,
     image: `ipfs://${imageCID}`,
-    external_url: `https://vryfd.xyz/verify/${certificateId}`,
+    external_url: `${BACKEND_URL}/api/verify/${certificateId}`,
     attributes: [
       { trait_type: "Event", value: eventName },
       { trait_type: "Event ID", value: String(eventId) },

@@ -58,9 +58,9 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
     // State
     // ──────────────────────────────────────────────
     uint256 public nextEventId;
-    uint256 public nextCertificateId;
+    uint256 public nextCertificateId = 1;  // Certificates are 1-indexed; slot 0 is unused
     uint256 public nextBadgeTokenId = 1000;   // Badge token IDs start at 1000
-    uint256 public nextMilestoneTokenId = 1;  // Milestone token IDs start at 1
+    uint256 public nextMilestoneTokenId = 500_000;  // Milestone token IDs start at 500k to avoid collision with badge IDs (1000+)
 
     // Milestone thresholds
     uint256[] public milestoneThresholds;
@@ -85,9 +85,13 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
     // Soulbound: track which tokens are non-transferable
     mapping(uint256 => bool) public isSoulbound;
 
-    // EIP-712 typed hash for gasless check-in
+    // EIP-712 typed hashes — shared nonce across all gasless operations
     bytes32 public constant CHECKIN_TYPEHASH =
         keccak256("CheckIn(address attendee,uint256 eventId,uint256 nonce)");
+    bytes32 public constant CLAIM_BADGE_TYPEHASH =
+        keccak256("ClaimBadge(address attendee,uint256 eventId,uint256 nonce)");
+    bytes32 public constant CLAIM_MILESTONE_TYPEHASH =
+        keccak256("ClaimMilestone(address attendee,uint256 nonce)");
     mapping(address => uint256) public nonces;
 
     // ── $VRYF Token ──
@@ -138,6 +142,7 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
         uint256 endTime
     ) external onlyRole(ORGANIZER_ROLE) returns (uint256) {
         require(endTime > startTime, "Invalid time range");
+        require(endTime > block.timestamp, "Event has already ended");
 
         uint256 eventId = nextEventId++;
         events[eventId] = Event({
@@ -159,9 +164,17 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
         return eventId;
     }
 
-    /// @notice Confirm attendance directly (user pays gas)
-    function confirmAttendance(uint256 eventId) external {
+    /// @notice Check in to an event directly (organizer pays gas)
+    /// @dev Restricted to ORGANIZER_ROLE — use confirmAttendanceGasless for user-initiated flow.
+    ///      Open access would let anyone bypass the join-code verification on the backend.
+    function checkIn(uint256 eventId) external onlyRole(ORGANIZER_ROLE) {
         _recordAttendance(eventId, msg.sender);
+    }
+
+    /// @notice Organizer marks an attendee as present (organizer pays gas, no user signature needed)
+    /// @dev Used for roll-call / join-code flows where the organizer confirms physical presence
+    function checkInFor(address attendee, uint256 eventId) external onlyRole(ORGANIZER_ROLE) {
+        _recordAttendance(eventId, attendee);
     }
 
     /// @notice Gasless check-in via relayer (Feature 1 Add-On: Off-chain Signatures)
@@ -197,6 +210,19 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
             attendees.length == ss.length,
             "Array length mismatch"
         );
+        require(attendees.length <= 100, "Batch too large");
+
+        // Deduplicate: reject batches that contain the same (attendee, eventId) pair twice.
+        // Without this, a crafted batch could pass two valid signatures for the same attendee
+        // by pre-computing sig(nonce N) and sig(nonce N+1) before the nonce is incremented.
+        for (uint256 i = 0; i < attendees.length; i++) {
+            for (uint256 j = i + 1; j < attendees.length; j++) {
+                require(
+                    attendees[i] != attendees[j] || eventIds[i] != eventIds[j],
+                    "Duplicate attendee+event in batch"
+                );
+            }
+        }
 
         for (uint256 i = 0; i < attendees.length; i++) {
             bytes32 structHash = keccak256(
@@ -236,28 +262,117 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
     // ──────────────────────────────────────────────
 
     /// @notice Claim a milestone reward NFT if eligible
-    function claimMilestoneReward() external {
+    /// @dev CEI pattern: all state writes happen before any external calls (_mint, vryfToken)
+    ///      so a malicious ERC-1155 receiver cannot re-enter and double-claim milestones.
+    function milestoneReward() external {
         uint256 attended = totalAttendance[msg.sender];
         uint256 highest = highestMilestoneClaimed[msg.sender];
+
+        // ── Checks & Effects ────────────────────────────────────────────────
+        // Collect all eligible milestones and write all state before any external call.
+        uint256[] memory tokenIds    = new uint256[](milestoneThresholds.length);
+        uint256[] memory thresholds  = new uint256[](milestoneThresholds.length);
+        string[]  memory tierNames   = new string[](milestoneThresholds.length);
+        uint256 count = 0;
+        uint256 newHighest = highest;
 
         for (uint256 i = 0; i < milestoneThresholds.length; i++) {
             if (attended >= milestoneThresholds[i] && highest < milestoneThresholds[i]) {
                 uint256 tokenId = nextMilestoneTokenId++;
-                string memory tierName = milestoneTierNames[i];
-
-                // Set dynamic metadata URI
                 _tokenURIs[tokenId] = milestoneTokenURIs[milestoneThresholds[i]];
                 isSoulbound[tokenId] = true;
-
-                highestMilestoneClaimed[msg.sender] = milestoneThresholds[i];
-                _mint(msg.sender, tokenId, 1, "");
-
-                // Reward: VRYF tokens for milestone (100/250/500)
-                try vryfToken.mintMilestoneReward(msg.sender, milestoneThresholds[i]) {} catch {}
-
-                emit MilestoneReached(msg.sender, milestoneThresholds[i], tokenId, tierName);
+                tokenIds[count]   = tokenId;
+                thresholds[count] = milestoneThresholds[i];
+                tierNames[count]  = milestoneTierNames[i];
+                newHighest = milestoneThresholds[i];
+                count++;
             }
         }
+
+        // Write highest milestone to storage before any external call
+        if (newHighest > highest) {
+            highestMilestoneClaimed[msg.sender] = newHighest;
+        }
+
+        // ── Interactions ─────────────────────────────────────────────────────
+        // External calls only after all state is committed — reentrancy-safe.
+        for (uint256 i = 0; i < count; i++) {
+            _mint(msg.sender, tokenIds[i], 1, "");
+            try vryfToken.mintMilestoneReward(msg.sender, thresholds[i]) {} catch {}
+            emit MilestoneReached(msg.sender, thresholds[i], tokenIds[i], tierNames[i]);
+        }
+    }
+
+    /// @notice Gasless badge claim — attendee signs, relayer submits and pays gas
+    function claimBadgeGasless(
+        address attendee,
+        uint256 eventId,
+        uint8 v, bytes32 r, bytes32 s
+    ) external onlyRole(RELAYER_ROLE) {
+        bytes32 structHash = keccak256(
+            abi.encode(CLAIM_BADGE_TYPEHASH, attendee, eventId, nonces[attendee]++)
+        );
+        bytes32 hash = _hashTypedDataV4(structHash);
+        require(ECDSA.recover(hash, v, r, s) == attendee, "Invalid signature");
+
+        AttendanceRecord storage record = attendance[eventId][attendee];
+        require(record.timestamp > 0, "Not attended");
+        require(!record.badgeClaimed, "Badge already claimed");
+
+        record.badgeClaimed = true;
+        uint256 tokenId = eventBadgeToken[eventId];
+        _mint(attendee, tokenId, 1, "");
+        try vryfToken.mintBadgeReward(attendee) {} catch {}
+        emit BadgeMinted(eventId, attendee, tokenId);
+    }
+
+    /// @notice Gasless milestone reward — attendee signs, relayer submits and pays gas
+    function milestoneRewardGasless(
+        address attendee,
+        uint8 v, bytes32 r, bytes32 s
+    ) external onlyRole(RELAYER_ROLE) {
+        bytes32 structHash = keccak256(
+            abi.encode(CLAIM_MILESTONE_TYPEHASH, attendee, nonces[attendee]++)
+        );
+        bytes32 hash = _hashTypedDataV4(structHash);
+        require(ECDSA.recover(hash, v, r, s) == attendee, "Invalid signature");
+
+        uint256 attended = totalAttendance[attendee];
+        uint256 highest = highestMilestoneClaimed[attendee];
+
+        uint256[] memory tokenIds   = new uint256[](milestoneThresholds.length);
+        uint256[] memory thresholds = new uint256[](milestoneThresholds.length);
+        string[]  memory tierNames  = new string[](milestoneThresholds.length);
+        uint256 count = 0;
+        uint256 newHighest = highest;
+
+        for (uint256 i = 0; i < milestoneThresholds.length; i++) {
+            if (attended >= milestoneThresholds[i] && highest < milestoneThresholds[i]) {
+                uint256 tokenId = nextMilestoneTokenId++;
+                _tokenURIs[tokenId] = milestoneTokenURIs[milestoneThresholds[i]];
+                isSoulbound[tokenId] = true;
+                tokenIds[count]   = tokenId;
+                thresholds[count] = milestoneThresholds[i];
+                tierNames[count]  = milestoneTierNames[i];
+                newHighest = milestoneThresholds[i];
+                count++;
+            }
+        }
+
+        if (newHighest > highest) highestMilestoneClaimed[attendee] = newHighest;
+
+        for (uint256 i = 0; i < count; i++) {
+            _mint(attendee, tokenIds[i], 1, "");
+            try vryfToken.mintMilestoneReward(attendee, thresholds[i]) {} catch {}
+            emit MilestoneReached(attendee, thresholds[i], tokenIds[i], tierNames[i]);
+        }
+    }
+
+    /// @notice Update the stored URI for any token (organizer only — for correcting wrong URIs)
+    /// @dev Emits the ERC1155 URI event so indexers and wallets refresh their cache.
+    function setTokenURI(uint256 tokenId, string calldata newURI) external onlyRole(ORGANIZER_ROLE) {
+        _tokenURIs[tokenId] = newURI;
+        emit URI(newURI, tokenId);
     }
 
     /// @notice Set the metadata URI for a milestone tier (organizer only)

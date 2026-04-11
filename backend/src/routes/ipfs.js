@@ -5,6 +5,14 @@ const { pinFile, pinJSON, buildBadgeMetadata, buildMilestoneMetadata } = require
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
+const ALLOWED_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+]);
+
 /**
  * POST /api/ipfs/upload-image
  * Upload a badge/milestone image to IPFS
@@ -12,8 +20,14 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 router.post("/upload-image", upload.single("image"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No image provided" });
+    if (!ALLOWED_MIME_TYPES.has(req.file.mimetype)) {
+      return res.status(400).json({ error: "Unsupported file type — allowed: png, jpg, gif, webp, svg" });
+    }
 
-    const cid = await pinFile(req.file.buffer, req.file.originalname, req.file.mimetype);
+    // Use a sanitised server-side filename instead of the user-supplied originalname
+    const ext = req.file.mimetype.split("/")[1].replace("svg+xml", "svg");
+    const filename = `vryfd-upload-${Date.now()}.${ext}`;
+    const cid = await pinFile(req.file.buffer, filename, req.file.mimetype);
     res.json({
       success: true,
       cid,
@@ -33,8 +47,15 @@ router.post("/upload-image", upload.single("image"), async (req, res) => {
  */
 router.post("/badge-metadata", async (req, res) => {
   try {
-    const metadata = buildBadgeMetadata(req.body);
-    const cid = await pinJSON(metadata, `badge-${req.body.eventId}`);
+    const { eventName, eventId, description, imageCID, eventDate, organizer } = req.body;
+    if (!eventName || eventId === undefined) {
+      return res.status(400).json({ error: "Missing required fields: eventName, eventId" });
+    }
+    if (typeof eventName !== "string" || eventName.length > 200) {
+      return res.status(400).json({ error: "eventName must be a string ≤ 200 chars" });
+    }
+    const metadata = buildBadgeMetadata({ eventName, eventId, description, imageCID, eventDate, organizer });
+    const cid = await pinJSON(metadata, `badge-${eventId}`);
     res.json({
       success: true,
       cid,
@@ -54,8 +75,15 @@ router.post("/badge-metadata", async (req, res) => {
  */
 router.post("/milestone-metadata", async (req, res) => {
   try {
-    const metadata = buildMilestoneMetadata(req.body);
-    const cid = await pinJSON(metadata, `milestone-${req.body.tierName}`);
+    const { tierName, threshold, imageCID, attendeeENS } = req.body;
+    if (!tierName || threshold === undefined) {
+      return res.status(400).json({ error: "Missing required fields: tierName, threshold" });
+    }
+    if (typeof tierName !== "string" || tierName.length > 100) {
+      return res.status(400).json({ error: "tierName must be a string ≤ 100 chars" });
+    }
+    const metadata = buildMilestoneMetadata({ tierName, threshold, imageCID, attendeeENS });
+    const cid = await pinJSON(metadata, `milestone-${tierName}`);
     res.json({
       success: true,
       cid,

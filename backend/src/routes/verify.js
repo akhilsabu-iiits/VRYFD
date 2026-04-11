@@ -1,5 +1,6 @@
 const express = require("express");
 const { ethers } = require("ethers");
+const { getENSOverride } = require("../services/ensOverrides");
 
 const router = express.Router();
 
@@ -11,6 +12,9 @@ const router = express.Router();
 router.get("/:certificateId", async (req, res) => {
   try {
     const { certificateId } = req.params;
+    if (!/^\d+$/.test(certificateId) || Number(certificateId) < 1) {
+      return res.status(400).json({ verified: false, error: "Invalid certificate ID" });
+    }
     const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
     const rpcUrl = process.env.SEPOLIA_RPC || "https://rpc.sepolia.org";
 
@@ -29,15 +33,17 @@ router.get("/:certificateId", async (req, res) => {
     // Fetch event details
     const event = await contract.events(eventId);
 
-    // ENS reverse lookup (optional, from mainnet)
-    let ensName = null;
-    try {
-      const mainnetProvider = new ethers.JsonRpcProvider(
-        `https://eth-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`
-      );
-      ensName = await mainnetProvider.lookupAddress(attendee);
-    } catch {
-      // ENS lookup failed — not critical
+    // ENS reverse lookup — check project override first, then mainnet
+    let ensName = getENSOverride(attendee);
+    if (!ensName) {
+      try {
+        const mainnetProvider = new ethers.JsonRpcProvider(
+          `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
+        );
+        ensName = await mainnetProvider.lookupAddress(attendee);
+      } catch {
+        // ENS lookup failed — not critical
+      }
     }
 
     res.json({

@@ -1,3 +1,6 @@
+# Claude Code CLI config (auto-generated, not needed in version control)
+.claude/
+
 # Dependencies
 node_modules/
 frontend/node_modules/
@@ -25,6 +28,14 @@ frontend/tsconfig.tsbuildinfo
 # OS
 .DS_Store
 Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Docs (maintained separately)
+docs/
 
 # Coverage
 coverage/

@@ -2,11 +2,25 @@ const QRCode = require("qrcode");
 const sharp = require("sharp");
 const { pinFile, pinJSON, buildCertificateMetadata } = require("./ipfsService");
 
+// Configurable IPFS gateway — set IPFS_GATEWAY in .env to use a different provider
+const IPFS_GATEWAY = (process.env.IPFS_GATEWAY || "https://gateway.pinata.cloud/ipfs").replace(/\/$/, "");
+
+// Maximum characters for displayed text fields on the certificate image.
+// Long ENS names or event titles are truncated with an ellipsis to prevent layout overflow.
+const MAX_NAME_LEN = 42;
+const MAX_EVENT_LEN = 55;
+
+function truncate(str, maxLen) {
+  if (!str) return "";
+  return str.length > maxLen ? str.slice(0, maxLen - 1) + "…" : str;
+}
+
 /**
  * Generate a QR code image buffer linking to the verification portal
  */
 async function generateQRCode(certificateId) {
-  const verifyURL = `https://vryfd.xyz/verify/${certificateId}`;
+  const base = process.env.BACKEND_URL || "http://localhost:3001";
+  const verifyURL = `${base}/api/verify/${certificateId}`;
   const qrBuffer = await QRCode.toBuffer(verifyURL, {
     errorCorrectionLevel: "H",
     type: "png",
@@ -61,14 +75,14 @@ async function generateCertificateImage({
       
       <!-- Content -->
       <text class="detail" x="${width / 2}" y="260" text-anchor="middle">This certifies that</text>
-      <text class="name" x="${width / 2}" y="310" text-anchor="middle">${escapeXml(attendeeName)}</text>
+      <text class="name" x="${width / 2}" y="310" text-anchor="middle">${escapeXml(truncate(attendeeName, MAX_NAME_LEN))}</text>
       <text class="detail" x="${width / 2}" y="370" text-anchor="middle">attended</text>
-      <text class="name" x="${width / 2}" y="420" text-anchor="middle">${escapeXml(eventName)}</text>
+      <text class="name" x="${width / 2}" y="420" text-anchor="middle">${escapeXml(truncate(eventName, MAX_EVENT_LEN))}</text>
       <text class="detail" x="${width / 2}" y="480" text-anchor="middle">on ${escapeXml(date)}</text>
       
       <!-- Footer -->
-      <text class="footer" x="${width / 2}" y="720" text-anchor="middle">Certificate ID: ${certificateId} — Verified on Polygon blockchain</text>
-      <text class="footer" x="${width / 2}" y="745" text-anchor="middle">Scan QR code to verify at vryfd.xyz/verify/${certificateId}</text>
+      <text class="footer" x="${width / 2}" y="720" text-anchor="middle">Certificate ID: ${certificateId} — Verified on Sepolia Testnet</text>
+      <text class="footer" x="${width / 2}" y="745" text-anchor="middle">Scan QR to verify · ${(process.env.BACKEND_URL || "http://localhost:3001")}/api/verify/${certificateId}</text>
     </svg>
   `;
 
@@ -151,7 +165,7 @@ async function createFullCertificate({
     imageCID,
     metadataCID,
     metadataURI: `ipfs://${metadataCID}`,
-    imageURL: `https://gateway.pinata.cloud/ipfs/${imageCID}`,
+    imageURL: `${IPFS_GATEWAY}/${imageCID}`,
   };
 }
 

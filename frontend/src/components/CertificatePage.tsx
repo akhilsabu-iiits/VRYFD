@@ -5,14 +5,29 @@ import { QRCodeCanvas } from "qrcode.react";
 import type { VEvent } from "../lib/vryfd";
 
 const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "";
-const BACKEND = "http://localhost:3001";
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
+
+interface OnChainCert {
+  certId: number;
+  eventId: number;
+  eventName: string;
+  timestamp: number;
+  metadataURI: string;
+  isValid: boolean;
+}
 
 interface CertificatePageProps {
   events: VEvent[];
   userBadges: number[];
+  badgeBlockNums: Record<number, number>;
+  badgeMintTimes: Record<number, string>;
   userENS: string;
   isConnected: boolean;
   onToast: (msg: string, type: "success" | "error" | "") => void;
+  userCertificates?: OnChainCert[];
+  checkedInIds?: number[];
+  onChainEventIds?: Record<number, number>;
+  walletAddress?: string;
 }
 
 interface VerifyResult {
@@ -29,8 +44,7 @@ interface VerifyResult {
 
 interface CertCardProps {
   ev: VEvent;
-  certNum: string;
-  blockNum: number;
+  certId: number;
   userENS: string;
   issuedAt: string;
   verifyUrl: string;
@@ -60,7 +74,7 @@ function VerifyModal({ result, onClose }: { result: VerifyResult; onClose: () =>
           </div>
         ) : (
           <div className="verify-modal-body">
-            <p className="text-muted">{result.error || "Certificate not found on-chain. Check-in must be submitted via relayer first."}</p>
+            <p className="text-muted">{result.error || "Certificate not found on-chain."}</p>
             <a
               href={`https://sepolia.etherscan.io/address/${CONTRACT_ADDRESS}#events`}
               target="_blank" rel="noopener noreferrer"
@@ -75,7 +89,7 @@ function VerifyModal({ result, onClose }: { result: VerifyResult; onClose: () =>
   );
 }
 
-function CertCard({ ev, certNum, blockNum, userENS, issuedAt, verifyUrl, onToast }: CertCardProps) {
+function CertCard({ ev, certId, userENS, issuedAt, verifyUrl, onToast }: CertCardProps) {
   const qrContainerRef = useRef<HTMLDivElement>(null);
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
   const [verifying, setVerifying] = useState(false);
@@ -83,7 +97,7 @@ function CertCard({ ev, certNum, blockNum, userENS, issuedAt, verifyUrl, onToast
   function shareLinkedIn() {
     const title = encodeURIComponent(`Certificate of Attendance — ${ev.name}`);
     const summary = encodeURIComponent(
-      `I attended "${ev.name}" on ${ev.date} and earned a blockchain-verified certificate on VRYFD (Sepolia). Certificate #${certNum} · Block #${blockNum}`
+      `I attended "${ev.name}" on ${ev.date} and earned a blockchain-verified certificate on VRYFD (Sepolia). Certificate #${certId}`
     );
     const url = encodeURIComponent(verifyUrl);
     window.open(
@@ -98,7 +112,7 @@ function CertCard({ ev, certNum, blockNum, userENS, issuedAt, verifyUrl, onToast
     const canvas = qrContainerRef.current?.querySelector("canvas");
     if (!canvas) { onToast("QR not ready, try again", "error"); return; }
     const link = document.createElement("a");
-    link.download = `vryfd-cert-${certNum}.png`;
+    link.download = `vryfd-cert-${certId}.png`;
     link.href = canvas.toDataURL("image/png");
     link.click();
     onToast("QR Code downloaded!", "success");
@@ -108,12 +122,10 @@ function CertCard({ ev, certNum, blockNum, userENS, issuedAt, verifyUrl, onToast
     setVerifying(true);
     onToast("Checking certificate on-chain...", "");
     try {
-      const certId = parseInt(certNum, 10) - 1;
       const res = await fetch(`${BACKEND}/api/verify/${certId}`);
       const data: VerifyResult = await res.json();
       setVerifyResult(data);
     } catch {
-      // Backend not reachable — fallback to Etherscan
       setVerifyResult({
         verified: false,
         error: "Backend unavailable. Opening Etherscan instead.",
@@ -128,29 +140,71 @@ function CertCard({ ev, certNum, blockNum, userENS, issuedAt, verifyUrl, onToast
     <>
       <div className="cert-card-wrap fade-up delay-1">
         <div className="cert-preview">
-          <div className="cert-watermark">VRYFD</div>
-          <div className="cert-title">Certificate of Attendance</div>
-          <div className="cert-heading">VRYFD</div>
-          <div className="cert-detail">This certifies that</div>
-          <div className="cert-value">{userENS || "Connected Wallet"}</div>
-          <div className="cert-detail">attended</div>
-          <div className="cert-value">{ev.name}</div>
-          <div className="cert-detail">on {ev.date}</div>
-          <div className="cert-qr cert-qr-live" ref={qrContainerRef}>
-            <QRCodeCanvas
-              value={verifyUrl}
-              size={96}
-              bgColor="#ffffff"
-              fgColor="#1a1a2e"
-              level="M"
-            />
+          {/* Corner ornaments */}
+          <span className="cert-corner cert-corner-tl" />
+          <span className="cert-corner cert-corner-tr" />
+          <span className="cert-corner cert-corner-bl" />
+          <span className="cert-corner cert-corner-br" />
+
+          {/* Top ribbon */}
+          <div className="cert-ribbon">
+            <span className="cert-ribbon-line" />
+            <span className="cert-ribbon-label">Certificate of Attendance</span>
+            <span className="cert-ribbon-line" />
           </div>
-          <div className="cert-footer">
-            Certificate #{certNum} · Block #{blockNum}<br />
-            Issued: {issuedAt}<br />
-            Sepolia · Contract: {CONTRACT_ADDRESS.slice(0, 10)}...
+
+          {/* Issuer */}
+          <div className="cert-issuer">VRYFD</div>
+
+          {/* Subtitle */}
+          <div className="cert-subtitle">This certifies that</div>
+
+          {/* Attendee name */}
+          <div className="cert-attendee">{userENS || "Connected Wallet"}</div>
+
+          {/* Divider with emoji */}
+          <div className="cert-divider-row">
+            <span className="cert-divider-line" />
+            <span className="cert-event-emoji">{ev.emoji}</span>
+            <span className="cert-divider-line" />
           </div>
-          <div className="cert-valid">✓ Verified on Blockchain</div>
+
+          {/* Body */}
+          <div className="cert-subtitle">successfully attended</div>
+          <div className="cert-event-name">{ev.name}</div>
+          <div className="cert-date">{ev.date}</div>
+
+          {/* Bottom section */}
+          <div className="cert-bottom">
+            <div className="cert-bottom-left">
+              <div className="cert-meta-label">Certificate ID</div>
+              <div className="cert-meta-val mono">#{certId}</div>
+              <div className="cert-meta-label cert-meta-gap">Issued</div>
+              <div className="cert-meta-val">{issuedAt}</div>
+              <div className="cert-meta-label cert-meta-gap">Network</div>
+              <div className="cert-meta-val mono">Sepolia</div>
+              <div className="cert-meta-label cert-meta-gap-sm">Contract</div>
+              <div className="cert-meta-val mono">{CONTRACT_ADDRESS.slice(0, 10)}…</div>
+            </div>
+            <div className="cert-bottom-right">
+              <div className="cert-qr-label">Scan to verify</div>
+              <div className="cert-qr cert-qr-live" ref={qrContainerRef}>
+                <QRCodeCanvas
+                  value={verifyUrl}
+                  size={108}
+                  bgColor="#ffffff"
+                  fgColor="#1a1a2e"
+                  level="M"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Verified badge */}
+          <div className="cert-verified-badge">
+            <span className="cert-verified-dot" />
+            Verified on Blockchain
+          </div>
         </div>
 
         <div className="cert-actions">
@@ -173,7 +227,17 @@ function CertCard({ ev, certNum, blockNum, userENS, issuedAt, verifyUrl, onToast
   );
 }
 
-export default function CertificatePage({ events, userBadges, userENS, isConnected, onToast }: CertificatePageProps) {
+export default function CertificatePage({
+  events,
+  userBadges,
+  badgeMintTimes,
+  userENS,
+  isConnected,
+  onToast,
+  userCertificates = [],
+  checkedInIds = [],
+  onChainEventIds = {},
+}: CertificatePageProps) {
   if (!isConnected) {
     return (
       <>
@@ -188,7 +252,25 @@ export default function CertificatePage({ events, userBadges, userENS, isConnect
     );
   }
 
-  if (userBadges.length === 0) {
+  // Build attendance history rows for events that have been deployed on-chain
+  const historyRows = events
+    .filter((ev) => onChainEventIds[ev.id] !== undefined)
+    .map((ev) => {
+      const onChainId = Number(onChainEventIds[ev.id]); // cast — stored as string in localStorage
+      const hasBadge = userBadges.includes(ev.id);
+      // Match cert by onChainId only — name fallback caused wrong certs when two events share a name
+      const cert = userCertificates.find((c) => c.isValid && c.eventId === onChainId);
+      // Attended = checked in via UI flow OR badge claimed (badge requires attendance on-chain)
+      const checkedIn = checkedInIds.includes(ev.id) || hasBadge || !!cert;
+      return { ev, checkedIn, hasBadge, cert };
+    })
+    .filter((row) => row.checkedIn || row.hasBadge || row.cert);
+
+  const validCerts = userCertificates.filter((c) => c.isValid);
+  const hasAnyCerts = validCerts.length > 0;
+  const hasAnyActivity = historyRows.length > 0 || hasAnyCerts;
+
+  if (!hasAnyActivity && userBadges.length === 0) {
     return (
       <>
         <div className="section-header fade-up">
@@ -202,37 +284,100 @@ export default function CertificatePage({ events, userBadges, userENS, isConnect
     );
   }
 
-  const issuedAt = new Date().toISOString();
-
   return (
     <>
+      {/* ── Attendance History ── */}
+      {historyRows.length > 0 && (
+        <>
+          <div className="section-header fade-up">
+            <span className="section-title">Attendance History</span>
+            <span className="section-sub">{historyRows.length} event{historyRows.length !== 1 ? "s" : ""} on-chain</span>
+          </div>
+          <div className="card fade-up delay-1 cert-history-card">
+            <table className="cert-history-table">
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>Attended</th>
+                  <th>Badge</th>
+                  <th>Certificate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyRows.map(({ ev, checkedIn, hasBadge, cert }) => (
+                  <tr key={ev.id}>
+                    <td className="cert-history-name">{ev.name}</td>
+                    <td>{checkedIn ? <span className="cert-status-ok">✓</span> : <span className="cert-status-na">—</span>}</td>
+                    <td>{hasBadge ? <span className="cert-status-ok">✓</span> : <span className="cert-status-na">—</span>}</td>
+                    <td>
+                      {cert
+                        ? <span className="cert-status-ok">✓</span>
+                        : <span className="cert-status-pending">pending</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* ── Certificates ── */}
       <div className="section-header fade-up">
         <span className="section-title">Your Certificates</span>
         <span className="section-sub">
-          Blockchain-verified · QR scannable · {userBadges.length} certificate{userBadges.length !== 1 ? "s" : ""}
+          Blockchain-verified · QR scannable
+          {hasAnyCerts && ` · ${validCerts.length} certificate${validCerts.length !== 1 ? "s" : ""}`}
         </span>
       </div>
 
-      {userBadges.map((badgeId, index) => {
-        const ev = events.find((e) => e.id === badgeId);
-        if (!ev) return null;
-        const blockNum = 48291000 + badgeId * 137;
-        const certNum = String(index + 1).padStart(4, "0");
-        const verifyUrl = `https://sepolia.etherscan.io/address/${CONTRACT_ADDRESS}#events`;
-
-        return (
-          <CertCard
-            key={badgeId}
-            ev={ev}
-            certNum={certNum}
-            blockNum={blockNum}
-            userENS={userENS}
-            issuedAt={issuedAt}
-            verifyUrl={verifyUrl}
-            onToast={onToast}
-          />
-        );
-      })}
+      {hasAnyCerts ? (
+        validCerts.map((cert) => {
+          // Match event by on-chain ID; fall back to a synthetic placeholder
+          // so certificates always render even when onChainEventIds is empty (e.g. after reset).
+          const ev: VEvent = events.find((e) => Number(onChainEventIds[e.id]) === cert.eventId)
+            ?? {
+              id: cert.eventId,
+              name: cert.eventName,
+              date: new Date(cert.timestamp * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+              status: "live" as const,
+              attendees: 0,
+              emoji: "🎓",
+              color: "#7c6cf0",
+            };
+          const issuedAt = new Date(cert.timestamp * 1000).toLocaleString();
+          const verifyUrl = `${BACKEND}/api/verify/${cert.certId}`;
+          return (
+            <CertCard
+              key={cert.certId}
+              ev={ev}
+              certId={cert.certId}
+              userENS={userENS}
+              issuedAt={issuedAt}
+              verifyUrl={verifyUrl}
+              onToast={onToast}
+            />
+          );
+        })
+      ) : checkedInIds.length > 0 ? (
+        <div className="card fade-up delay-1 cert-empty">
+          <p className="text-muted">
+            You&apos;ve confirmed attendance at {checkedInIds.length} event{checkedInIds.length !== 1 ? "s" : ""}.
+            Certificates will appear here once the organizer issues them on-chain.
+          </p>
+        </div>
+      ) : userBadges.length > 0 ? (
+        <div className="card fade-up delay-1 cert-empty">
+          <p className="text-muted">
+            You have {userBadges.length} attendance badge{userBadges.length !== 1 ? "s" : ""}.
+            Certificates will appear here once the organizer issues them on-chain.
+          </p>
+        </div>
+      ) : (
+        <div className="card fade-up delay-1 cert-empty">
+          <p className="text-muted">No certificates yet. Check in to events to earn certificates.</p>
+        </div>
+      )}
     </>
   );
 }
