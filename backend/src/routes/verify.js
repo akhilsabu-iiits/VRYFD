@@ -24,7 +24,7 @@ router.get("/:certificateId", async (req, res) => {
 
     // Read directly from blockchain (no database needed)
     const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const VryfdABI = require("../../artifacts/VryfdAttendance.json");
+    const VryfdABI = require("../abis/VryfdAttendance.json");
     const contract = new ethers.Contract(contractAddress, VryfdABI.abi, provider);
 
     const [eventId, attendee, timestamp, metadataURI, isValid] =

@@ -41,7 +41,7 @@ router.get("/mine/:address", async (req, res) => {
     if (!contractAddress) return res.status(500).json({ error: "Contract not configured" });
 
     const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const VryfdABI = require("../../artifacts/VryfdAttendance.json");
+    const VryfdABI = require("../abis/VryfdAttendance.json");
     const contract = new ethers.Contract(contractAddress, VryfdABI.abi, provider);
 
     const total = Number(await contract.nextCertificateId());
@@ -106,7 +106,7 @@ router.post("/generate", certGenRateLimit, async (req, res) => {
     if (!contractAddress) return res.status(500).json({ error: "Contract not configured" });
 
     const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const VryfdABI = require("../../artifacts/VryfdAttendance.json");
+    const VryfdABI = require("../abis/VryfdAttendance.json");
     const contract = new ethers.Contract(contractAddress, VryfdABI.abi, provider);
 
     const cert = await contract.certificates(BigInt(certificateId));

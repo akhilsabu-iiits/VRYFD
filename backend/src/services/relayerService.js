@@ -1,7 +1,7 @@
 const { ethers } = require("ethers");
 const fs = require("fs");
 const path = require("path");
-const VryfdABI = require("../../artifacts/VryfdAttendance.json");
+const VryfdABI = require("../abis/VryfdAttendance.json");
 const { getENSOverride } = require("./ensOverrides");
 
 // ─── Atomic JSON write helper ─────────────────────────────────────────────────
