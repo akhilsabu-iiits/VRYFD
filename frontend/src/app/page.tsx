@@ -87,7 +87,6 @@ export default function Home() {
   // Refs so callbacks always see the latest values without needing them in every dep array
   const walletClientRef = useRef(walletClient);
   useEffect(() => { walletClientRef.current = walletClient; }, [walletClient]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const showToastRef = useRef<(msg: string, type: "success" | "error" | "") => void>(() => {});
 
   const { openConnectModal } = useConnectModal();
@@ -116,9 +115,7 @@ export default function Home() {
   // Prompt the connected wallet to display a newly minted ERC-1155 NFT.
   // Strategy: try ERC1155 first (MetaMask v11.7+), fall back to ERC721 (broader support).
   // A 900ms delay lets MetaMask fully process the preceding transaction before handling this request.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const promptAddNft = useCallback((contractAddr: string, tokenId: string) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const provider: { request: (a: unknown) => Promise<unknown> } | null =
       (typeof window !== "undefined" && (window as any).ethereum)
         ? (window as any).ethereum

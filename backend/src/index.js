@@ -15,10 +15,13 @@ const { initRelayer, setMilestoneURIs } = require("./services/relayerService");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const isProd = process.env.NODE_ENV === "production";
 
-console.log(`[startup] NODE_ENV=${process.env.NODE_ENV} PORT=${PORT} (raw: ${process.env.PORT})`);
-console.log(`[startup] PRIVATE_KEY set=${!!process.env.PRIVATE_KEY} CONTRACT=${process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "MISSING"}`);
-console.log(`[startup] MONGODB_URI set=${!!process.env.MONGODB_URI}`);
+if (!isProd) {
+  console.log(`[startup] NODE_ENV=${process.env.NODE_ENV} PORT=${PORT}`);
+  console.log(`[startup] PRIVATE_KEY set=${!!process.env.PRIVATE_KEY} CONTRACT=${process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "MISSING"}`);
+  console.log(`[startup] MONGODB_URI set=${!!process.env.MONGODB_URI}`);
+}
 
 // Middleware
 const allowedOrigins = [
@@ -27,7 +30,7 @@ const allowedOrigins = [
   "https://vryfd.online",
   "https://www.vryfd.online",
 ].filter(Boolean);
-console.log(`[startup] CORS origins: ${allowedOrigins.join(", ")}`);
+if (!isProd) console.log(`[startup] CORS origins: ${allowedOrigins.join(", ")}`);
 app.use(cors({
   origin: (origin, cb) => {
     // Allow requests with no origin (mobile apps, curl, Postman)
@@ -39,8 +42,6 @@ app.use(cors({
 }));
 app.use(express.json({ limit: "100kb" }));
 app.use(morgan("[:date[clf]] :method :url :status :res[content-length]B :response-time ms"));
-
-const isProd = process.env.NODE_ENV === "production";
 
 // Rate limiters only active in production — dev polling + blockchain calls exceed any sane limit.
 const globalLimiter = isProd ? rateLimit({
@@ -102,9 +103,9 @@ async function start() {
       const baseURL = process.env.BACKEND_URL || `http://localhost:${PORT}`;
       await new Promise((r) => setTimeout(r, 3000));
       await setMilestoneURIs(baseURL);
-      console.log("[startup] Milestone URIs set on-chain");
+      if (!isProd) console.log("[startup] Milestone URIs set on-chain");
     } catch (e) {
-      console.warn("[startup] setMilestoneURIs skipped:", e.message);
+      if (!isProd) console.warn("[startup] setMilestoneURIs skipped:", e.message);
     }
   })();
 
