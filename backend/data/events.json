@@ -7,9 +7,7 @@
     "attendees": 0,
     "emoji": "💻",
     "color": "#7c6cf0",
-    "joinCode": "HK7P2T",
-    "onChainId": 9,
-    "deployTxHash": "0xda34de50273037654bc259d76b2a60d0483ed9f652e63ee61a6bc562873a7961"
+    "joinCode": "HK7P2T"
   },
   {
     "id": 2,
@@ -19,9 +17,7 @@
     "attendees": 0,
     "emoji": "⚡",
     "color": "#34d399",
-    "joinCode": "W5NX4M",
-    "onChainId": 11,
-    "deployTxHash": "0xebdebc5774dcbe108d2a7e36ceff57c0f8b69a813d471266981018f4bd5a5c7d"
+    "joinCode": "W5NX4M"
   },
   {
     "id": 3,
@@ -31,9 +27,7 @@
     "attendees": 0,
     "emoji": "🌐",
     "color": "#fbbf24",
-    "joinCode": "B9ZR6Q",
-    "onChainId": 10,
-    "deployTxHash": "0x9368a92788c2e3e0500c9f1b92bd662f059f144a8f5d43e5df3fa855e1aaf029"
+    "joinCode": "B9ZR6Q"
   },
   {
     "id": 4,
@@ -43,22 +37,6 @@
     "attendees": 0,
     "emoji": "🌙",
     "color": "#f87171",
-    "joinCode": "Y3VJ8F",
-    "onChainId": 12,
-    "deployTxHash": "0x0502cfe2307b89801cd7953f90ae3c99e886f291c8047e9b3681de27b34c1c5c"
-  },
-  {
-    "id": 5,
-    "name": "Test Event",
-    "date": "Apr 16, 2026",
-    "status": "upcoming",
-    "attendees": 0,
-    "emoji": "🎯",
-    "color": "#7c6cf0",
-    "startTime": 1776297600,
-    "endTime": 1777507200,
-    "joinCode": "BVPDA8",
-    "onChainId": 13,
-    "deployTxHash": "0x51631c8889acb33454939a6fd0994fdf212565d5c57d2fee8e2832c1e680636f"
+    "joinCode": "Y3VJ8F"
   }
 ]
