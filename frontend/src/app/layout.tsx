@@ -20,11 +20,6 @@ const spaceMono = Space_Mono({
 export const metadata: Metadata = {
   title: "VRYFD — Decentralized Attendance",
   description: "Check in with your ENS identity. Earn soulbound POAPs. Unlock milestone rewards. Get verifiable certificates.",
-  icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
-    apple: "/icon.svg",
-  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
