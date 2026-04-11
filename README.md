@@ -1,4 +1,4 @@
-# 🎟️ On-Chain Event Attendance System (VRYF)
+# 🎟️ On-Chain Event Attendance System (VRYFD)
 
 > A Web3-powered event platform that records attendance on-chain and rewards participants with VRYF tokens for verified participation.
 
