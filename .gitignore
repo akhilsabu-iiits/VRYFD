@@ -34,8 +34,6 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Docs (maintained separately)
-docs/
 
 # Coverage
 coverage/

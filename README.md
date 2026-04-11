@@ -6,6 +6,22 @@
 
 ---
 
+## Screenshots
+
+| Dashboard | Events |
+|-----------|--------|
+| ![Dashboard](docs/Screenshots/1.png) | ![Events](docs/Screenshots/2.png) |
+
+| Leaderboard | Certificates |
+|-------------|-------------|
+| ![Leaderboard](docs/Screenshots/3.png) | ![Certificates](docs/Screenshots/4.png) |
+
+| VRYF Tokens |
+|-------------|
+| ![VRYF Tokens](docs/Screenshots/5.png) |
+
+---
+
 ## What is VRYFD?
 
 VRYFD is a Web3 attendance platform where every check-in is recorded on-chain. Attendees sign in gaslessly using EIP-712 signatures — no gas fees ever. The backend relayer handles all on-chain transactions.
