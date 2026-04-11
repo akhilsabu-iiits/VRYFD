@@ -21,8 +21,20 @@ console.log(`[startup] PRIVATE_KEY set=${!!process.env.PRIVATE_KEY} CONTRACT=${p
 console.log(`[startup] MONGODB_URI set=${!!process.env.MONGODB_URI}`);
 
 // Middleware
+const allowedOrigins = [
+  (process.env.FRONTEND_ORIGIN || "").trim(),
+  "http://localhost:3000",
+  "https://vryfd.online",
+  "https://www.vryfd.online",
+].filter(Boolean);
+console.log(`[startup] CORS origins: ${allowedOrigins.join(", ")}`);
 app.use(cors({
-  origin: process.env.FRONTEND_ORIGIN || "http://localhost:3000",
+  origin: (origin, cb) => {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    cb(null, false);
+  },
   methods: ["GET", "POST"],
 }));
 app.use(express.json({ limit: "100kb" }));
@@ -96,8 +108,16 @@ async function start() {
     }
   })();
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`🚀 VRYFD Backend running on http://localhost:${PORT}`);
+  });
+  server.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(`Port ${PORT} is already in use. Kill the existing process and restart.`);
+    } else {
+      console.error("Server error:", err.message);
+    }
+    process.exit(1);
   });
 }
 
