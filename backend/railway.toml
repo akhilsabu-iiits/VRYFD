@@ -1,11 +1,7 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm install --include=dev"
 
 [deploy]
 startCommand = "node src/index.js"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
-
-[nixpacks]
-aptPkgs = ["libvips-dev"]

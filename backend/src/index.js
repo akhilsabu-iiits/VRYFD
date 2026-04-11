@@ -1,4 +1,5 @@
-require("dotenv").config({ path: "../.env" });
+// Load .env from project root in local dev; Railway/production injects vars directly
+require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
