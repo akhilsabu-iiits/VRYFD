@@ -3,18 +3,18 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useAccount, useDisconnect, useChainId, useEnsName, useWriteContract, usePublicClient, useReadContract, useSignTypedData, useWalletClient } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
-import { CONTRACT_ADDRESSES } from "../utils/wagmiConfig";
-import Dashboard from "../components/Dashboard";
-import EventsPage from "../components/EventsPage";
-import BadgesPage from "../components/BadgesPage";
-import LeaderboardPage from "../components/LeaderboardPage";
-import CertificatePage from "../components/CertificatePage";
-import OrganizerPage from "../components/OrganizerPage";
-import VRYFPage from "../components/VRYFPage";
-import { type VEvent, type LBEntry, type ToastState, INITIAL_EVENTS, LEADERBOARD_DATA } from "../lib/vryfd";
-import { getENSOverride, getAddressOverride } from "../lib/ensOverrides";
-import VryfdABI from "../abis/VryfdAttendance.json";
-import VRYFTokenABI from "../abis/VRYFToken.json";
+import { CONTRACT_ADDRESSES } from "../../utils/wagmiConfig";
+import Dashboard from "../../components/Dashboard";
+import EventsPage from "../../components/EventsPage";
+import BadgesPage from "../../components/BadgesPage";
+import LeaderboardPage from "../../components/LeaderboardPage";
+import CertificatePage from "../../components/CertificatePage";
+import OrganizerPage from "../../components/OrganizerPage";
+import VRYFPage from "../../components/VRYFPage";
+import { type VEvent, type LBEntry, type ToastState, INITIAL_EVENTS, LEADERBOARD_DATA } from "../../lib/vryfd";
+import { getENSOverride, getAddressOverride } from "../../lib/ensOverrides";
+import VryfdABI from "../../abis/VryfdAttendance.json";
+import VRYFTokenABI from "../../abis/VRYFToken.json";
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
