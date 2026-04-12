@@ -2,6 +2,7 @@ const { ethers } = require("ethers");
 const fs = require("fs");
 const path = require("path");
 const VryfdABI = require("../abis/VryfdAttendance.json");
+const VRYFTokenABI = require("../abis/VRYFToken.json");
 const { getENSOverride } = require("./ensOverrides");
 
 // ─── Atomic JSON write helper ─────────────────────────────────────────────────
@@ -439,6 +440,39 @@ async function withRpcFallback(fn) {
       // switched to next RPC — loop and retry
     }
   }
+}
+
+/**
+ * Deploy fresh VRYFToken + VryfdAttendance contracts and rewire the relayer.
+ * Called on reset so every test cycle starts with a clean chain state.
+ */
+async function deployContracts() {
+  if (!relayerWallet) throw new Error("Relayer not initialized — cannot deploy");
+
+  console.log("[deploy] Deploying fresh VRYFToken...");
+  const vryfFactory = new ethers.ContractFactory(VRYFTokenABI.abi, VRYFTokenABI.bytecode, relayerWallet);
+  const vryfToken = await vryfFactory.deploy();
+  await vryfToken.waitForDeployment();
+  const vryfAddress = await vryfToken.getAddress();
+  console.log(`[deploy] VRYFToken deployed: ${vryfAddress}`);
+
+  console.log("[deploy] Deploying fresh VryfdAttendance...");
+  const attendanceFactory = new ethers.ContractFactory(VryfdABI.abi, VryfdABI.bytecode, relayerWallet);
+  const attendance = await attendanceFactory.deploy("ipfs://", vryfAddress);
+  await attendance.waitForDeployment();
+  const attendanceAddress = await attendance.getAddress();
+  console.log(`[deploy] VryfdAttendance deployed: ${attendanceAddress}`);
+
+  console.log("[deploy] Granting MINTER_ROLE to attendance contract...");
+  const MINTER_ROLE = await vryfToken.MINTER_ROLE();
+  const tx = await vryfToken.grantRole(MINTER_ROLE, attendanceAddress);
+  await tx.wait();
+  console.log("[deploy] MINTER_ROLE granted");
+
+  // Rewire the relayer to point at new contracts
+  contract = new ethers.Contract(attendanceAddress, VryfdABI.abi, relayerWallet);
+
+  return { attendanceAddress, vryfAddress };
 }
 
 /**
@@ -1094,4 +1128,5 @@ module.exports = {
   fixBadgeTokenURI,
   gaslessClaimBadge,
   gaslessMilestoneReward,
+  deployContracts,
 };

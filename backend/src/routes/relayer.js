@@ -30,6 +30,7 @@ const {
   getCheckinNonce,
   gaslessClaimBadge,
   gaslessMilestoneReward,
+  deployContracts,
 } = require("../services/relayerService");
 
 const router = express.Router();
@@ -562,10 +563,11 @@ router.post("/events", (req, res) => {
  * Resets deployedEvents.json to the default state (events 1 & 2 only)
  * and clears in-memory pending registrations and custom codes.
  */
-router.post("/reset", (req, res) => {
+router.post("/reset", async (req, res) => {
   try {
     resetDeployedEvents();
-    res.json({ success: true });
+    const { attendanceAddress, vryfAddress } = await deployContracts();
+    res.json({ success: true, contractAddress: attendanceAddress, vryfTokenAddress: vryfAddress });
   } catch (error) {
     console.error("reset error:", error.message);
     res.status(500).json({ error: error.message });

@@ -1235,12 +1235,20 @@ export default function Home() {
 
   // ─── Reset everything ────────────────────────────────────────────────────────
 
-  const handleReset = useCallback(() => {
-    if (!window.confirm("Reset all data to initial values? This cannot be undone.")) return;
+  const handleReset = useCallback(async () => {
+    if (!window.confirm("Reset all data? This will deploy fresh contracts on-chain. This cannot be undone.")) return;
 
-    // Reset backend state (deployedEvents.json → events 1&2 only, clear pending queue)
-    // Fire-and-forget — frontend resets immediately regardless of backend response
-    fetch(`${BACKEND}/api/relay/reset`, { method: "POST" }).catch(() => {});
+    showToast("Deploying fresh contracts on-chain… please wait", "");
+
+    // Deploy new contracts via backend, get new addresses
+    let newContractAddress: string | null = null;
+    let newVryfAddress: string | null = null;
+    try {
+      const res = await fetch(`${BACKEND}/api/relay/reset`, { method: "POST" });
+      const data = await res.json();
+      if (data.contractAddress) newContractAddress = data.contractAddress;
+      if (data.vryfTokenAddress) newVryfAddress = data.vryfTokenAddress;
+    } catch { /* backend unreachable — proceed with local reset only */ }
 
     // Clear all vryfd localStorage keys then restore version tag + reset timestamp.
     // vryfd_reset_at is used to filter out pre-reset certificates so they don't
@@ -1250,6 +1258,9 @@ export default function Home() {
     });
     localStorage.setItem("vryfd_data_version", DATA_VERSION);
     localStorage.setItem("vryfd_reset_at", Math.floor(Date.now() / 1000).toString());
+    // Store new contract addresses so wagmiConfig picks them up on reload
+    if (newContractAddress) localStorage.setItem("vryfd_contract_address", newContractAddress);
+    if (newVryfAddress) localStorage.setItem("vryfd_vryf_token_address", newVryfAddress);
     // Strip deployment info so all events appear undeployed/upcoming after reset.
     // onChainId/deployTxHash are omitted (undefined → stripped by JSON.stringify).
     const freshEvents: VEvent[] = INITIAL_EVENTS.map((ev) => ({
@@ -1286,11 +1297,9 @@ export default function Home() {
     // postResetRef suppresses any in-flight refreshCertificates calls.
     postResetRef.current = true;
     syncedAddressRef.current = undefined;
-    setCurrentPage("dashboard");
-    setMountedPages(new Set(["dashboard"]));
-    hydratedRef.current = true;
     disconnect();
-    showToast("All data reset — wallet disconnected", "");
+    // Reload so wagmiConfig picks up new contract addresses from localStorage
+    window.location.reload();
   }, [showToast, disconnect]);
 
   useEffect(() => {

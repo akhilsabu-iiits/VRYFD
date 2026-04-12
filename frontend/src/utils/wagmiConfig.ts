@@ -30,7 +30,21 @@ export const config = getDefaultConfig({
 
 /**
  * Contract addresses (Sepolia)
+ * Reads from localStorage first (updated after reset/redeploy), falls back to env var.
  */
+function getStoredAddress(key: string, envVal: string | undefined): `0x${string}` {
+  if (typeof window !== "undefined") {
+    const stored = localStorage.getItem(key);
+    if (stored && stored.startsWith("0x")) return stored as `0x${string}`;
+  }
+  return (envVal as `0x${string}`) || "0x0000000000000000000000000000000000000000";
+}
+
 export const CONTRACT_ADDRESSES: Record<number, `0x${string}`> = {
-  11155111: (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`) || "0x0000000000000000000000000000000000000000",
+  11155111: getStoredAddress("vryfd_contract_address", process.env.NEXT_PUBLIC_CONTRACT_ADDRESS),
 };
+
+export const VRYF_TOKEN_ADDRESS: `0x${string}` = getStoredAddress(
+  "vryfd_vryf_token_address",
+  process.env.NEXT_PUBLIC_VRYF_TOKEN_ADDRESS,
+);
