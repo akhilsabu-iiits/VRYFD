@@ -1307,6 +1307,22 @@ export default function Home() {
   const mobileNavIcons = ["🏠", "📅", "🎖️", "🪙", "🏆", "📜", "⚙️"];
   const mobileNavLabels = ["Home", "Events", "Badges", "VRYF", "Board", "Certs", "Org"];
 
+  if (!isConnected) {
+    return (
+      <div className="wallet-gate">
+        <div className="wallet-gate-icon">⬡</div>
+        <h1 className="wallet-gate-title">Connect Your Wallet</h1>
+        <p className="wallet-gate-sub">Sign in with your Web3 wallet to access VRYFD. Your wallet is your identity — no passwords needed.</p>
+        <button type="button" className="wallet-gate-btn" onClick={() => openConnectModal?.()}>
+          <span>Connect Wallet</span>
+          <span>→</span>
+        </button>
+        <div className="wallet-gate-hint">Supports MetaMask, WalletConnect &amp; more</div>
+        <a href="/" className="wallet-gate-back">← Back to Home</a>
+      </div>
+    );
+  }
+
   return (
     <>
       {/* Navbar */}
