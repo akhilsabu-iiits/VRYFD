@@ -8,15 +8,15 @@
 
 | Landing Page | Dashboard |
 | --- | --- |
-| <img src="docs/Screenshots/VRYFD.jpg" width="400"/> | <img src="docs/Screenshots/Dashboard.png" width="400"/> |
+| <img src="docs/Screenshots/VRYFD.jpg" width="400" height="225"/> | <img src="docs/Screenshots/Dashboard.png" width="400" height="225"/> |
 
 | Events | Leaderboard |
 | --- | --- |
-| <img src="docs/Screenshots/Events.png" width="400"/> | <img src="docs/Screenshots/Leaderboard.png" width="400"/> |
+| <img src="docs/Screenshots/Events.png" width="400" height="225"/> | <img src="docs/Screenshots/Leaderboard.png" width="400" height="225"/> |
 
 | VRYF Tokens | Certificates |
 | --- | --- |
-| <img src="docs/Screenshots/VRYF Token.png" width="400"/> | <img src="docs/Screenshots/Certificate.png" width="400"/> |
+| <img src="docs/Screenshots/VRYF Token.png" width="400" height="225"/> | <img src="docs/Screenshots/Certificate.png" width="400" height="225"/> |
 
 ---
 
