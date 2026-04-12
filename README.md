@@ -1,4 +1,4 @@
-# 🎟️ On-Chain Event Attendance System (VRYFD)
+# On-Chain Event Attendance System (VRYFD)
 
 > A decentralized event attendance platform that enables participants to verify their attendance on-chain and earn VRYF tokens for verified participation.
 
