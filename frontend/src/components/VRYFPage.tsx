@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import type { VRYFEntry } from "../app/app/page";
+import type { VRYFEntry } from "../app/page";
 
 interface VRYFPageProps {
   balance: number;
