@@ -302,6 +302,19 @@ function getDeployedEvents() {
 // and clear all in-memory pending registrations and custom codes.
 // Reads the current deployedEvents.json to build the reset baseline so the
 // onChainIds stay in sync with the actual contract even after redeployments.
+function clearAllDeployedEvents() {
+  // Fully wipe all deployed event state — used after new contract deployment
+  // so stale join codes / on-chain IDs from the old contract don't bleed through.
+  fs.writeFileSync(STORE_PATH, JSON.stringify({}, null, 2));
+  customCodeStore.clear();
+  pendingStore.clear();
+  savePendingStore();
+  confirmedCountStore.clear();
+  confirmedAttendeesStore.clear();
+  confirmedAttendeesDetailStore.clear();
+  try { fs.unlinkSync(EVENTS_STORE_PATH); } catch {}
+}
+
 function resetDeployedEvents() {
   // Build reset state: keep only events 1 & 2, strip confirmedCount/attendees
   const current = loadDeployedEvents();
@@ -1129,4 +1142,5 @@ module.exports = {
   gaslessClaimBadge,
   gaslessMilestoneReward,
   deployContracts,
+  clearAllDeployedEvents,
 };

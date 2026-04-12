@@ -31,6 +31,7 @@ const {
   gaslessClaimBadge,
   gaslessMilestoneReward,
   deployContracts,
+  clearAllDeployedEvents,
 } = require("../services/relayerService");
 
 const router = express.Router();
@@ -565,8 +566,10 @@ router.post("/events", (req, res) => {
  */
 router.post("/reset", async (req, res) => {
   try {
-    resetDeployedEvents();
     const { attendanceAddress, vryfAddress } = await deployContracts();
+    // Clear ALL event state AFTER new contracts are deployed so stale
+    // join codes / on-chain IDs from the old contract don't persist.
+    clearAllDeployedEvents();
     res.json({ success: true, contractAddress: attendanceAddress, vryfTokenAddress: vryfAddress });
   } catch (error) {
     console.error("reset error:", error.message);
