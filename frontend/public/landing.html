@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VRYFD — On-Chain Event Attendance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a12;
+      --bg2: #12121f;
+      --bg3: #1a1a2e;
+      --bg4: #22223a;
+      --text: #e8e6f0;
+      --text2: #a09cb5;
+      --text3: #6b6780;
+      --accent: #7c6cf0;
+      --accent2: #9d8fff;
+      --accent3: #5b4cc4;
+      --green: #34d399;
+      --border: rgba(124,108,240,0.12);
+      --border2: rgba(124,108,240,0.25);
+      --radius: 14px;
+      --radius-sm: 8px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', -apple-system, sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; top: -50%; left: -50%;
+      width: 200%; height: 200%;
+      background:
+        radial-gradient(ellipse at 30% 20%, rgba(124,108,240,0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 70% 80%, rgba(52,211,153,0.04) 0%, transparent 50%);
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ── Nav ───────────────────────────────────── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 2rem; height: 64px;
+      backdrop-filter: blur(20px);
+      background: rgba(10,10,18,0.8);
+      border-bottom: 1px solid var(--border);
+    }
+    .logo {
+      font-family: 'Space Mono', monospace;
+      font-size: 18px; font-weight: 700; letter-spacing: 2px;
+      background: linear-gradient(135deg, var(--accent2), var(--green));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .nav-links { display: flex; gap: 4px; list-style: none; }
+    .nav-links a {
+      padding: 8px 16px; border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 500; color: var(--text2);
+      text-decoration: none; transition: all 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); background: var(--bg3); }
+    .nav-cta {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 18px; border-radius: 50px;
+      border: 1px solid var(--border2); background: var(--bg2);
+      color: var(--text); font-size: 13px; font-weight: 500;
+      text-decoration: none; transition: all 0.3s;
+    }
+    .nav-cta:hover { border-color: var(--accent); box-shadow: 0 0 20px rgba(124,108,240,0.15); }
+
+    /* ── Shared ────────────────────────────────── */
+    section { padding: 5rem 2rem; position: relative; z-index: 1; }
+    .container { max-width: 1100px; margin: 0 auto; }
+
+    .section-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 16px; border-radius: 50px;
+      background: rgba(124,108,240,0.1); border: 1px solid var(--border);
+      font-size: 12px; color: var(--accent2);
+      font-family: 'Space Mono', monospace; letter-spacing: 1px;
+      margin-bottom: 1rem;
+    }
+    .section-title { font-size: clamp(1.75rem, 4vw, 2.5rem); font-weight: 700; margin-bottom: 0.75rem; }
+    .gradient {
+      background: linear-gradient(135deg, var(--accent2), var(--green));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .section-sub { font-size: 15px; color: var(--text2); max-width: 540px; margin-bottom: 2.5rem; }
+
+    .btn {
+      padding: 10px 24px; border-radius: var(--radius-sm);
+      font-size: 14px; font-weight: 600; border: none; cursor: pointer;
+      transition: all 0.2s; font-family: inherit;
+      display: inline-flex; align-items: center; gap: 8px;
+      text-decoration: none;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent3); transform: scale(0.98); }
+    .btn-outline { background: none; border: 1px solid var(--border2); color: var(--text); }
+    .btn-outline:hover { background: var(--bg3); }
+    .btn-lg { padding: 13px 32px; font-size: 15px; border-radius: 10px; }
+
+    /* ── Hero ──────────────────────────────────── */
+    .hero {
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding-bottom: 18rem; padding-top: 2rem; padding-left: 2rem; padding-right: 2rem;
+    }
+    .hero h1 { font-size: clamp(2.2rem, 5vw, 3.5rem); font-weight: 700; line-height: 1.1; margin-bottom: 1rem; }
+    .hero p { font-size: 17px; color: var(--text2); max-width: 540px; margin: 0 auto 2.5rem; }
+    .hero-btns { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+    .hero-stats { display: flex; gap: 3rem; justify-content: center; margin-top: 4rem; flex-wrap: wrap; }
+    .stat-value { font-family: 'Space Mono', monospace; font-size: 1.75rem; font-weight: 700; color: var(--accent2); }
+    .stat-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+
+    /* ── Cards ─────────────────────────────────── */
+    .card {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.5rem; transition: all 0.3s;
+    }
+    .card:hover { border-color: var(--border2); transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .feature-icon { font-size: 1.75rem; margin-bottom: 0.75rem; }
+    .card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 0.4rem; }
+    .card p { font-size: 13px; color: var(--text2); line-height: 1.55; }
+
+    /* ── Steps ─────────────────────────────────── */
+    .how-section { background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .steps-list { display: flex; flex-direction: column; max-width: 680px; }
+    .step-row { display: flex; gap: 1.5rem; align-items: flex-start; padding-bottom: 2rem; }
+    .step-row:last-child { padding-bottom: 0; }
+    .step-left { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+    .step-num {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: 14px; color: #fff;
+    }
+    .step-connector { width: 2px; flex: 1; background: var(--border2); margin: 6px 0; min-height: 28px; }
+    .step-row:last-child .step-connector { display: none; }
+    .step-body { padding-top: 0.4rem; }
+    .step-body h3 { font-size: 1rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .step-body p { font-size: 13px; color: var(--text2); }
+    .step-tag {
+      display: inline-block; margin-top: 0.4rem;
+      background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.25);
+      color: var(--green); font-size: 11px; font-weight: 700;
+      padding: 2px 10px; border-radius: 50px;
+      font-family: 'Space Mono', monospace;
+    }
+
+    /* ── Rewards table ─────────────────────────── */
+    .rewards-table {
+      width: 100%; border-collapse: collapse;
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+    }
+    .rewards-table th {
+      background: var(--bg3); padding: 0.9rem 1.5rem;
+      text-align: left; font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 1px; color: var(--text3);
+    }
+    .rewards-table td { padding: 0.9rem 1.5rem; border-top: 1px solid var(--border); font-size: 14px; }
+    .rewards-table tr:hover td { background: rgba(124,108,240,0.05); }
+    .reward-val { font-family: 'Space Mono', monospace; font-weight: 700; color: var(--accent2); }
+
+    /* ── Screenshots ───────────────────────────── */
+    .screenshots-section { background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .screenshots-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+    .screenshot-card { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); transition: all 0.3s; background: var(--bg2); }
+    .screenshot-card:hover { border-color: var(--border2); transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
+    .screenshot-card img { width: 100%; display: block; }
+    .screenshot-label { padding: 0.7rem 1rem; font-size: 12px; font-weight: 600; color: var(--text3); font-family: 'Space Mono', monospace; }
+
+    /* ── Tech grid ─────────────────────────────── */
+    .tech-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+    .tech-card {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.1rem 1.25rem;
+      display: flex; align-items: center; gap: 0.75rem; transition: all 0.3s;
+    }
+    .tech-card:hover { border-color: var(--border2); }
+    .tech-icon { font-size: 1.4rem; flex-shrink: 0; }
+    .tech-label { font-size: 11px; color: var(--text3); }
+    .tech-name { font-size: 14px; font-weight: 600; }
+
+    /* ── CTA ───────────────────────────────────── */
+    .cta-section { background: var(--bg2); border-top: 1px solid var(--border); text-align: center; }
+    .cta-box { background: rgba(124,108,240,0.06); border: 1px solid var(--border2); border-radius: 20px; padding: 4rem 2rem; }
+    .cta-box h2 { font-size: clamp(1.6rem, 4vw, 2.25rem); font-weight: 700; margin-bottom: 1rem; }
+    .cta-box p { color: var(--text2); margin-bottom: 2rem; max-width: 480px; margin-left: auto; margin-right: auto; }
+
+    /* ── Footer ────────────────────────────────── */
+    footer { background: var(--bg); border-top: 1px solid var(--border); padding: 2.5rem 2rem; text-align: center; position: relative; z-index: 1; }
+    .footer-logo {
+      font-family: 'Space Mono', monospace; font-size: 1rem; font-weight: 700;
+      background: linear-gradient(135deg, var(--accent2), var(--green));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 1rem;
+    }
+    .footer-links { display: flex; gap: 1.5rem; justify-content: center; margin-bottom: 1rem; flex-wrap: wrap; }
+    .footer-links a { color: var(--text3); text-decoration: none; font-size: 13px; transition: color 0.2s; }
+    .footer-links a:hover { color: var(--text2); }
+    footer p { color: var(--text3); font-size: 12px; }
+
+    @media (max-width: 640px) {
+      nav { padding: 0 1rem; }
+      .nav-links { display: none; }
+      .hero-stats { gap: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="logo">VRYFD</div>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#rewards">Rewards</a></li>
+      <li><a href="#screenshots">Screenshots</a></li>
+    </ul>
+    <a href="http://localhost:3000/app" class="nav-cta">Launch App →</a>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="section-badge">⛓️ BUILT ON ETHEREUM SEPOLIA</div>
+    <h1>On-Chain Event Attendance,<br/><span class="gradient">Reimagined</span></h1>
+    <p>A decentralized platform where every check-in is verified on the blockchain. Earn VRYF tokens, collect POAP badges, and build your verifiable attendance record — all gasless.</p>
+    <div class="hero-btns">
+      <a href="http://localhost:3000/app" class="btn btn-primary btn-lg">Launch App</a>
+      <a href="https://github.com/akhilsabu-iiits/VRYFD" class="btn btn-outline btn-lg">View on GitHub</a>
+    </div>
+    <div class="hero-stats">
+      <div><div class="stat-value">100%</div><div class="stat-label">Gasless Check-In</div></div>
+      <div><div class="stat-value">ERC-1155</div><div class="stat-label">Soulbound Badges</div></div>
+      <div><div class="stat-value">ERC-20</div><div class="stat-label">VRYF Token Rewards</div></div>
+      <div><div class="stat-value">QR</div><div class="stat-label">Verified Certificates</div></div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section id="features">
+    <div class="container">
+      <div class="section-badge">✨ FEATURES</div>
+      <h2 class="section-title">Everything you need for <span class="gradient">on-chain attendance</span></h2>
+      <p class="section-sub">From gasless check-ins to blockchain-verified certificates — built for attendees, organizers, and collectors.</p>
+      <div class="features-grid">
+        <div class="card"><div class="feature-icon">⚡</div><h3>Gasless Check-In</h3><p>Sign with your wallet using EIP-712. No ETH required — the relayer pays all on-chain gas costs on your behalf.</p></div>
+        <div class="card"><div class="feature-icon">🏅</div><h3>POAP Badges</h3><p>Earn a soulbound ERC-1155 NFT badge for every event attended. Non-transferable proof that you were there.</p></div>
+        <div class="card"><div class="feature-icon">🪙</div><h3>VRYF Token Rewards</h3><p>Earn ERC-20 VRYF tokens for check-ins, badge claims, and milestone achievements — automatically.</p></div>
+        <div class="card"><div class="feature-icon">🏆</div><h3>Milestone NFTs</h3><p>Unlock Bronze, Silver, and Gold tier NFTs at 5, 10, and 20 events attended.</p></div>
+        <div class="card"><div class="feature-icon">📜</div><h3>Blockchain Certificates</h3><p>Tamper-proof attendance certificates issued on-chain with a unique QR code for instant public verification.</p></div>
+        <div class="card"><div class="feature-icon">📊</div><h3>Leaderboard</h3><p>Ranked attendance board with ENS name resolution — your .eth name instead of a raw wallet address.</p></div>
+        <div class="card"><div class="feature-icon">🛠️</div><h3>Organizer Dashboard</h3><p>Deploy events, generate join codes, confirm attendees, and issue certificates from one dashboard.</p></div>
+        <div class="card"><div class="feature-icon">🔐</div><h3>Tamper-Proof Records</h3><p>Every check-in lives on the blockchain. No central authority can alter or delete your attendance history.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section id="how-it-works" class="how-section">
+    <div class="container">
+      <div class="section-badge">⚙️ HOW IT WORKS</div>
+      <h2 class="section-title">From wallet to certificate <span class="gradient">in minutes</span></h2>
+      <p class="section-sub">A simple, gasless flow from check-in to on-chain reward.</p>
+      <div class="steps-list">
+        <div class="step-row"><div class="step-left"><div class="step-num">1</div><div class="step-connector"></div></div><div class="step-body"><h3>Connect Your Wallet</h3><p>Use MetaMask or WalletConnect to sign in. No account or email required.</p></div></div>
+        <div class="step-row"><div class="step-left"><div class="step-num">2</div><div class="step-connector"></div></div><div class="step-body"><h3>Select an Event</h3><p>Browse available events and select the one you're attending.</p></div></div>
+        <div class="step-row"><div class="step-left"><div class="step-num">3</div><div class="step-connector"></div></div><div class="step-body"><h3>Enter the 6-Digit Join Code</h3><p>Get the code from the organizer and enter it to initiate check-in.</p></div></div>
+        <div class="step-row"><div class="step-left"><div class="step-num">4</div><div class="step-connector"></div></div><div class="step-body"><h3>Sign the EIP-712 Message</h3><p>Sign a gasless message in your wallet. The relayer submits the transaction on-chain — you pay nothing.</p><span class="step-tag">ZERO GAS COST</span></div></div>
+        <div class="step-row"><div class="step-left"><div class="step-num">5</div><div class="step-connector"></div></div><div class="step-body"><h3>Organizer Confirms Attendance</h3><p>The organizer validates your attendance, recording it permanently on-chain.</p></div></div>
+        <div class="step-row"><div class="step-left"><div class="step-num">6</div><div class="step-connector"></div></div><div class="step-body"><h3>Claim POAP Badge &amp; VRYF Tokens</h3><p>Claim your soulbound NFT badge and earn VRYF tokens. Milestone NFTs unlock at 5, 10, and 20 events.</p></div></div>
+        <div class="step-row"><div class="step-left"><div class="step-num">7</div></div><div class="step-body"><h3>Receive Your Certificate</h3><p>The organizer issues a tamper-proof attendance certificate on-chain with a scannable QR code.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Rewards -->
+  <section id="rewards">
+    <div class="container">
+      <div class="section-badge">🪙 TOKEN REWARDS</div>
+      <h2 class="section-title">Earn <span class="gradient">VRYF</span> for every action</h2>
+      <p class="section-sub">VRYF is an ERC-20 token automatically rewarded for participation and milestones.</p>
+      <table class="rewards-table">
+        <thead><tr><th>Action</th><th>Reward</th></tr></thead>
+        <tbody>
+          <tr><td>✅ &nbsp;Check-in confirmed</td><td class="reward-val">+10 VRYF</td></tr>
+          <tr><td>🏅 &nbsp;POAP Badge claimed</td><td class="reward-val">+25 VRYF</td></tr>
+          <tr><td>🥉 &nbsp;Bronze milestone (5 events)</td><td class="reward-val">+100 VRYF</td></tr>
+          <tr><td>🥈 &nbsp;Silver milestone (10 events)</td><td class="reward-val">+250 VRYF</td></tr>
+          <tr><td>🥇 &nbsp;Gold milestone (20 events)</td><td class="reward-val">+500 VRYF</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Screenshots -->
+  <section id="screenshots" class="screenshots-section">
+    <div class="container">
+      <div class="section-badge">📸 SCREENSHOTS</div>
+      <h2 class="section-title">See VRYFD <span class="gradient">in action</span></h2>
+      <p class="section-sub">Live on Ethereum Sepolia testnet at vryfd.online</p>
+      <div class="screenshots-grid">
+        <div class="screenshot-card"><img src="screenshots/Dashboard.png" alt="Dashboard" /><div class="screenshot-label">📊 Dashboard</div></div>
+        <div class="screenshot-card"><img src="screenshots/Events.png" alt="Events" /><div class="screenshot-label">🗓️ Events &amp; Check-In</div></div>
+        <div class="screenshot-card"><img src="screenshots/Leaderboard.png" alt="Leaderboard" /><div class="screenshot-label">🏆 Leaderboard</div></div>
+        <div class="screenshot-card"><img src="screenshots/VRYF Token.png" alt="VRYF Tokens" /><div class="screenshot-label">🪙 VRYF Tokens</div></div>
+        <div class="screenshot-card"><img src="screenshots/Certificate.png" alt="Certificates" /><div class="screenshot-label">📜 Certificates</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tech Stack -->
+  <section>
+    <div class="container">
+      <div class="section-badge">🏗️ TECH STACK</div>
+      <h2 class="section-title">Built with <span class="gradient">modern Web3 tools</span></h2>
+      <p class="section-sub">A full-stack decentralized application on Ethereum Sepolia.</p>
+      <div class="tech-grid">
+        <div class="tech-card"><div class="tech-icon">⚙️</div><div><div class="tech-label">Smart Contracts</div><div class="tech-name">Solidity + Hardhat</div></div></div>
+        <div class="tech-card"><div class="tech-icon">🌐</div><div><div class="tech-label">Frontend</div><div class="tech-name">Next.js 14 + wagmi</div></div></div>
+        <div class="tech-card"><div class="tech-icon">🖥️</div><div><div class="tech-label">Backend</div><div class="tech-name">Node.js + Express</div></div></div>
+        <div class="tech-card"><div class="tech-icon">🗄️</div><div><div class="tech-label">Database</div><div class="tech-name">MongoDB</div></div></div>
+        <div class="tech-card"><div class="tech-icon">📦</div><div><div class="tech-label">Storage</div><div class="tech-name">IPFS via Pinata</div></div></div>
+        <div class="tech-card"><div class="tech-icon">⛓️</div><div><div class="tech-label">Network</div><div class="tech-name">Ethereum Sepolia</div></div></div>
+        <div class="tech-card"><div class="tech-icon">👛</div><div><div class="tech-label">Wallet</div><div class="tech-name">MetaMask + WalletConnect</div></div></div>
+        <div class="tech-card"><div class="tech-icon">🚀</div><div><div class="tech-label">Deployment</div><div class="tech-name">Vercel + Railway</div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section">
+    <div class="container">
+      <div class="cta-box">
+        <h2>Start verifying attendance <span class="gradient">on-chain</span></h2>
+        <p>Connect your wallet and check in to your first event — gasless, instant, and permanently on the blockchain.</p>
+        <div class="hero-btns">
+          <a href="http://localhost:3000/app" class="btn btn-primary btn-lg">Launch App</a>
+          <a href="https://github.com/akhilsabu-iiits/VRYFD" class="btn btn-outline btn-lg">GitHub →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-logo">VRYFD</div>
+    <div class="footer-links">
+      <a href="http://localhost:3000/app">Live App</a>
+      <a href="https://github.com/akhilsabu-iiits/VRYFD">GitHub</a>
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How It Works</a>
+      <a href="#rewards">Rewards</a>
+    </div>
+    <p>Built on Ethereum Sepolia · MIT License</p>
+  </footer>
+
+</body>
+</html>

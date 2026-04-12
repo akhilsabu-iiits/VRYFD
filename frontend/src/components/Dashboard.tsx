@@ -28,18 +28,8 @@ export default function Dashboard({ events, userCheckins, userBadges, deployedEv
 
   return (
     <>
-      {/* Hero */}
-      <div className="hero fade-up">
-        <div className="hero-badge">&#9671; SEPOLIA NETWORK</div>
-        <h1>
-          Attendance,<br />
-          <span className="gradient">verified on-chain</span>
-        </h1>
-        <p>Check in with your ENS identity. Earn soulbound POAPs. Unlock milestone rewards. Get verifiable certificates.</p>
-      </div>
-
       {/* Stat cards */}
-      <div className="grid grid-4 fade-up delay-1">
+      <div className="grid grid-4 fade-up">
         <div className="card stat-card">
           <div className="stat-icon" style={{ background: "rgba(124,108,240,0.12)", color: "var(--accent2)" }}>&#9877;</div>
           <div className="stat-value">{activeCount}</div>
