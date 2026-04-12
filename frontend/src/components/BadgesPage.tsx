@@ -49,16 +49,6 @@ export default function BadgesPage({ events, userCheckins, userBadges, isConnect
                 <div className="badge-name">{ev.name}</div>
                 <div className="badge-date">{ev.date}</div>
                 <div className="badge-soulbound">SOULBOUND</div>
-                {tokenId && (
-                  <button
-                    type="button"
-                    className="btn-add-metamask"
-                    onClick={() => onAddNftToWallet(tokenId)}
-                    title={`Add NFT (Token ID: ${tokenId}) to MetaMask`}
-                  >
-                    🦊 Add to MetaMask
-                  </button>
-                )}
               </div>
             );
           })
