@@ -8,7 +8,7 @@
 
 | Landing Page | Dashboard |
 | --- | --- |
-| <img src="docs/Screenshots/VRYFD.jpg" width="400" height="225"/> | <img src="docs/Screenshots/Dashboard.png" width="400" height="225"/> |
+| <img src="docs/Screenshots/VRYFD.png" width="400" height="225"/> | <img src="docs/Screenshots/Dashboard.jpg" width="400" height="225"/> |
 
 | Events | Leaderboard |
 | --- | --- |
