@@ -6,17 +6,17 @@
 
 ## 📸 Screenshots
 
-| Landing Page                                | Dashboard                                    |
-| ------------------------------------------- | -------------------------------------------- |
-| ![Landing Page](docs/Screenshots/VRYFD.jpg) | ![Dashboard](docs/Screenshots/Dashboard.png) |
+| Landing Page | Dashboard |
+| --- | --- |
+| <img src="docs/Screenshots/VRYFD.jpg" width="400"/> | <img src="docs/Screenshots/Dashboard.png" width="400"/> |
 
-| Events                                 | Leaderboard                                      |
-| -------------------------------------- | ------------------------------------------------ |
-| ![Events](docs/Screenshots/Events.png) | ![Leaderboard](docs/Screenshots/Leaderboard.png) |
+| Events | Leaderboard |
+| --- | --- |
+| <img src="docs/Screenshots/Events.png" width="400"/> | <img src="docs/Screenshots/Leaderboard.png" width="400"/> |
 
-| VRYF Tokens                                       | Certificates                                      |
-| ------------------------------------------------- | ------------------------------------------------- |
-| ![VRYF Tokens](docs/Screenshots/VRYF%20Token.png) | ![Certificates](docs/Screenshots/Certificate.png) |
+| VRYF Tokens | Certificates |
+| --- | --- |
+| <img src="docs/Screenshots/VRYF Token.png" width="400"/> | <img src="docs/Screenshots/Certificate.png" width="400"/> |
 
 ---
 
