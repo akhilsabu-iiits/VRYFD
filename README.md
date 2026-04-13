@@ -128,6 +128,12 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ---
 
+## Documentation
+
+[High-Level Documentation](docs/VRYFD_High_Level_Documentation.pdf)
+
+---
+
 ## License
 
 MIT
