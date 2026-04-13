@@ -130,7 +130,9 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Documentation
 
-[High-Level Documentation](docs/VRYFD_High_Level_Documentation.pdf) — Architecture, features, workflows, security model, and design patterns
+| Document | Description |
+| --- | --- |
+| [High-Level Documentation](docs/VRYFD_High_Level_Documentation.pdf) | Architecture, features, workflows, security model, and design patterns |
 
 ---
 
