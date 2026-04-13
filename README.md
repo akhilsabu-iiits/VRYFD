@@ -128,15 +128,6 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ---
 
-## Documentation
-
-| Document | Description |
-| --- | --- |
-| [High-Level Documentation](docs/VRYFD_High_Level_Documentation.pdf) | Architecture, features, workflows, security model, and design patterns |
-| [Setup & Run Guide](docs/VRYFD_Setup_Guide.pdf) | Step-by-step instructions to set up, compile, deploy, and run the project |
-
----
-
 ## License
 
 MIT
