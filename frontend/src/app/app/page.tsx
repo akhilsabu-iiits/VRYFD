@@ -116,6 +116,12 @@ export default function Home() {
   // Strategy: try ERC1155 first (MetaMask v11.7+), fall back to ERC721 (broader support).
   // A 900ms delay lets MetaMask fully process the preceding transaction before handling this request.
   const promptAddNft = useCallback((contractAddr: string, tokenId: string) => {
+    // Permanent guard: reject missing, zero, or non-positive token IDs before anything else.
+    // This ensures MetaMask is never called with an invalid tokenId regardless of the caller.
+    try {
+      if (!tokenId || BigInt(tokenId) <= 0n) return;
+    } catch { return; } // unparseable tokenId — bail silently
+
     const provider: { request: (a: unknown) => Promise<unknown> } | null =
       (typeof window !== "undefined" && (window as any).ethereum)
         ? (window as any).ethereum
