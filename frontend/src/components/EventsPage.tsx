@@ -92,9 +92,6 @@ export default function EventsPage({
     ? userAddress.slice(2, 4).toUpperCase()
     : "??";
 
-  // Pending: join code accepted, awaiting organizer confirmation
-  const isPending = currentEventId !== null && pendingRegistrationIds.includes(currentEventId);
-
   // Part 1 state derivations
   const checkinDone = checkinStep >= 3 || badgeClaimed;
   const checkinLoading = checkinStep === 2;

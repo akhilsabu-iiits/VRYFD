@@ -279,8 +279,8 @@ function saveAllEvents(events) {
 // These values must match the actual on-chain IDs in deployedEvents.json.
 // Run: node -e "console.log(require('./data/deployedEvents.json'))" to verify.
 const INITIAL_DEPLOYED_EVENTS = {
-  "1": { txHash: "0x2c5f7f83fd07a92672c1aaff238c8cb1e579a76c100a2221e107c85ef37246b8", onChainId: "9", joinCode: "HK7P2T" },
-  "2": { txHash: "0xfed5292bd36a52a7dd241a8c1edd321e1c3979447b4d4fb02ebb953bd807c3e5", onChainId: "1", joinCode: "W5NX4M" },
+  "1": { txHash: "0xf235ead355af6b55ea855f1cb56882480d90d4f7681a792211ea5915ab415524", onChainId: "15", joinCode: "HK7P2T" },
+  "2": { txHash: "0x0757989ad76ca232eb664bba986a365bf099cf2e1e80d0fd884efdb5d0ef2289", onChainId: "16", joinCode: "W5NX4M" },
 };
 
 function loadDeployedEvents() {
@@ -343,7 +343,9 @@ function resetDeployedEvents() {
   try { fs.unlinkSync(EVENTS_STORE_PATH); } catch {}
 }
 
-// Load custom codes from persisted store on startup — survives server restarts
+// Load custom codes from persisted store on startup — survives server restarts.
+// Falls back to INITIAL_DEPLOYED_EVENTS when deployedEvents.json has no join codes
+// (e.g., Railway cold start where the ephemeral filesystem is empty).
 function loadCustomCodesFromStore() {
   const store = loadDeployedEvents();
   for (const info of Object.values(store)) {
@@ -363,6 +365,15 @@ function loadCustomCodesFromStore() {
         detailMap.set(d.attendee.toLowerCase(), d);
       }
       confirmedAttendeesDetailStore.set(key, detailMap);
+    }
+  }
+  // If no join codes were loaded from disk (e.g., Railway ephemeral filesystem on cold start),
+  // seed from INITIAL_DEPLOYED_EVENTS so check-in always works without manual redeploy.
+  if (customCodeStore.size === 0) {
+    for (const info of Object.values(INITIAL_DEPLOYED_EVENTS)) {
+      if (info.joinCode && info.onChainId !== undefined && info.onChainId !== null) {
+        customCodeStore.set(String(info.onChainId), info.joinCode.toUpperCase());
+      }
     }
   }
   loadPendingStore();
