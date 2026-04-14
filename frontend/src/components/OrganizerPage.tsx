@@ -118,25 +118,30 @@ export default function OrganizerPage({ events, deployedEventIds, onChainDeploye
     });
   }, [events, onChainDeployedIds, onChainEventIds, joinCodes]);
 
-  // Fetch confirmed check-in counts for all deployed events
+  // Fetch confirmed check-in counts for all deployed events, then poll every 10s
   useEffect(() => {
     const deployed = events.filter((ev) => onChainDeployedIds.has(ev.id));
     if (deployed.length === 0) return;
-    Promise.all(
-      deployed.map(async (ev) => {
-        const onChainId = onChainEventIds[ev.id];
-        if (onChainId === undefined) return null;
-        try {
-          const res = await fetch(`${BACKEND}/api/relay/attendee-count/${onChainId}`);
-          const data = await res.json();
-          return data.count !== undefined ? { id: ev.id, count: data.count as number } : null;
-        } catch { return null; }
-      })
-    ).then((results) => {
-      const patch: Record<number, number> = {};
-      results.forEach((r) => { if (r) patch[r.id] = r.count; });
-      if (Object.keys(patch).length > 0) setCheckinCounts((prev) => ({ ...prev, ...patch }));
-    });
+    const fetchCounts = () => {
+      Promise.all(
+        deployed.map(async (ev) => {
+          const onChainId = onChainEventIds[ev.id];
+          if (onChainId === undefined) return null;
+          try {
+            const res = await fetch(`${BACKEND}/api/relay/attendee-count/${onChainId}`);
+            const data = await res.json();
+            return data.count !== undefined ? { id: ev.id, count: data.count as number } : null;
+          } catch { return null; }
+        })
+      ).then((results) => {
+        const patch: Record<number, number> = {};
+        results.forEach((r) => { if (r) patch[r.id] = r.count; });
+        if (Object.keys(patch).length > 0) setCheckinCounts((prev) => ({ ...prev, ...patch }));
+      });
+    };
+    fetchCounts();
+    const id = setInterval(fetchCounts, 10000);
+    return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events, onChainDeployedIds, onChainEventIds]);
 

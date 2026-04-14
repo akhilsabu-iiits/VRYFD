@@ -61,16 +61,21 @@ export default function EventsPage({
   const ev = currentEventId !== null ? events.find((e) => e.id === currentEventId) : null;
   const badgeClaimed = currentEventId !== null && userBadges.includes(currentEventId);
 
-  // Fetch real on-chain attendee count when event panel opens
+  // Fetch real on-chain attendee count when event panel opens, then poll every 5s
   const [onChainAttendeeCount, setOnChainAttendeeCount] = useState<number | null>(null);
   useEffect(() => {
     const onChainId = currentEventId !== null ? onChainEventIds[currentEventId] : undefined;
     if (onChainId === undefined) { setOnChainAttendeeCount(null); return; }
     setOnChainAttendeeCount(null);
-    fetch(`${BACKEND}/api/relay/attendee-count/${onChainId}`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((d) => { if (d?.count !== undefined) setOnChainAttendeeCount(d.count); })
-      .catch(() => {});
+    const fetchCount = () => {
+      fetch(`${BACKEND}/api/relay/attendee-count/${onChainId}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((d) => { if (d?.count !== undefined) setOnChainAttendeeCount(d.count); })
+        .catch(() => {});
+    };
+    fetchCount();
+    const id = setInterval(fetchCount, 5000);
+    return () => clearInterval(id);
   }, [currentEventId, onChainEventIds]);
 
   const initials = userENS
