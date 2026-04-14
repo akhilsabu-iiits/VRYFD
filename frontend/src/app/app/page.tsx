@@ -47,7 +47,7 @@ export interface VRYFEntry {
 }
 
 function loadWalletData(addr: string): {
-  checkins: number; badges: number[]; vryfBalance: number;
+  checkins: number; badges: number[]; checkedInIds: number[]; vryfBalance: number;
   claimedMilestones: number[];
   badgeBlockNums: Record<number, number>;
   badgeMintTimes: Record<number, string>;
@@ -58,18 +58,18 @@ function loadWalletData(addr: string): {
 } {
   try {
     const raw = localStorage.getItem(`vryfd_wallet_${addr}`);
-    if (raw) return { vryfBalance: 0, claimedMilestones: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, milestoneNftIds: {}, ...JSON.parse(raw) };
+    if (raw) return { vryfBalance: 0, claimedMilestones: [], checkedInIds: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, milestoneNftIds: {}, ...JSON.parse(raw) };
   } catch {}
-  return { checkins: 0, badges: [], vryfBalance: 0, claimedMilestones: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, milestoneNftIds: {} };
+  return { checkins: 0, badges: [], checkedInIds: [], vryfBalance: 0, claimedMilestones: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, milestoneNftIds: {} };
 }
 
 function saveWalletData(
-  addr: string, checkins: number, badges: number[], vryfBalance: number,
+  addr: string, checkins: number, badges: number[], checkedInIds: number[], vryfBalance: number,
   claimedMilestones: number[], badgeBlockNums: Record<number, number>, badgeMintTimes: Record<number, string>,
   pendingIds: number[], vryfHistory: VRYFEntry[],
   badgeTokenIds: Record<number, string>, milestoneNftIds: Record<number, string>,
 ) {
-  localStorage.setItem(`vryfd_wallet_${addr}`, JSON.stringify({ checkins, badges, vryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingIds, vryfHistory, badgeTokenIds, milestoneNftIds }));
+  localStorage.setItem(`vryfd_wallet_${addr}`, JSON.stringify({ checkins, badges, checkedInIds, vryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingIds, vryfHistory, badgeTokenIds, milestoneNftIds }));
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -481,6 +481,7 @@ export default function Home() {
       const data = loadWalletData(address);
       setUserCheckins(data.checkins);
       setUserBadges(data.badges);
+      if (Array.isArray(data.checkedInIds) && data.checkedInIds.length > 0) setCheckedInIds(data.checkedInIds);
       setUserVryfBalance(data.vryfBalance);
       setClaimedMilestones(data.claimedMilestones);
       setBadgeBlockNums(data.badgeBlockNums);
@@ -525,8 +526,8 @@ export default function Home() {
       return;
     }
     if (!addressRef.current) return;
-    saveWalletData(addressRef.current, userCheckins, userBadges, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, milestoneNftIds);
-  }, [userCheckins, userBadges, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, milestoneNftIds]);
+    saveWalletData(addressRef.current, userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, milestoneNftIds);
+  }, [userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, milestoneNftIds]);
 
   // Persist full VEvent array to localStorage and backend on every change.
   // Skip the very first render — hydration's setEvents hasn't run yet, so events
