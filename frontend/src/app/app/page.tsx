@@ -12,6 +12,7 @@ import CertificatePage from "../../components/CertificatePage";
 import OrganizerPage from "../../components/OrganizerPage";
 import VRYFPage from "../../components/VRYFPage";
 import { type VEvent, type LBEntry, type ToastState, INITIAL_EVENTS, LEADERBOARD_DATA } from "../../lib/vryfd";
+import { decodeEventLog } from "viem";
 import { getENSOverride, getAddressOverride } from "../../lib/ensOverrides";
 import VryfdABI from "../../abis/VryfdAttendance.json";
 import VRYFTokenABI from "../../abis/VRYFToken.json";
@@ -880,12 +881,37 @@ export default function Home() {
             prev.includes(capturedBadgeEventId) ? prev : [...prev, capturedBadgeEventId]
           );
           setBadgeMintTimes((prev) => ({ ...prev, [capturedBadgeEventId]: new Date().toISOString() }));
-          // Store token ID so the Badges page can show a persistent "Add to MetaMask" button
-          if (data.tokenId && data.tokenId !== "0") setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: String(data.tokenId) }));
         }
         showToast("Soulbound POAP Badge minted! It's in your wallet.", "success");
-        // Prompt wallet to display the newly minted NFT — ERC-1155 tokens aren't auto-detected
-        if (data.tokenId && data.tokenId !== "0") promptAddNft(contractAddress, String(data.tokenId));
+
+        // Prompt wallet to add the newly minted NFT.
+        // Primary: use tokenId returned by backend (parsed from TransferSingle receipt log).
+        // Fallback: if backend didn't return it (tx.wait timeout), fetch the receipt directly
+        // from the chain using viem and decode TransferSingle ourselves — fully reliable.
+        let nftTokenId: string | null = (data.tokenId && data.tokenId !== "0") ? String(data.tokenId) : null;
+
+        if (!nftTokenId && data.txHash && publicClient) {
+          try {
+            const receipt = await publicClient.getTransactionReceipt({ hash: data.txHash as `0x${string}` });
+            for (const log of receipt.logs) {
+              try {
+                const decoded = decodeEventLog({
+                  abi: VryfdABI.abi as Parameters<typeof decodeEventLog>[0]["abi"],
+                  data: log.data,
+                  topics: log.topics as Parameters<typeof decodeEventLog>[0]["topics"],
+                  eventName: "TransferSingle",
+                });
+                const id = (decoded.args as { id?: bigint }).id;
+                if (id != null && id > 0n) { nftTokenId = id.toString(); break; }
+              } catch {}
+            }
+          } catch {}
+        }
+
+        if (nftTokenId) {
+          if (capturedBadgeEventId !== null) setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: nftTokenId! }));
+          promptAddNft(contractAddress, nftTokenId);
+        }
         refetchVryf().catch(() => {});
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Unknown error";

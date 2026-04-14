@@ -671,12 +671,19 @@ async function gaslessClaimBadge(attendee, onChainEventId, signature) {
   return withRpcFallback(async () => {
     const c = getContract();
     const tx = await c.claimBadgeGasless(attendee, BigInt(onChainEventId), sig.v, sig.r, sig.s);
-    const receipt = await tx.wait(1, 120_000).catch(() => ({ hash: tx.hash }));
+    console.log(`[gaslessClaimBadge] tx submitted: ${tx.hash}`);
+
+    let receipt = null;
+    try {
+      receipt = await tx.wait(1, 120_000);
+    } catch (waitErr) {
+      console.warn(`[gaslessClaimBadge] tx.wait() failed: ${waitErr.message} — receipt unavailable`);
+    }
 
     // Parse token ID from the TransferSingle log emitted by the ERC-1155 mint —
     // this is the authoritative source and works even if eventBadgeToken mapping is 0.
     let tokenId = null;
-    if (receipt.logs?.length) {
+    if (receipt?.logs?.length) {
       const iface = new ethers.Interface(VryfdABI.abi);
       for (const log of receipt.logs) {
         try {
@@ -687,15 +694,22 @@ async function gaslessClaimBadge(attendee, onChainEventId, signature) {
           }
         } catch {}
       }
+      console.log(`[gaslessClaimBadge] logs=${receipt.logs.length} tokenId from TransferSingle=${tokenId}`);
+    } else {
+      console.warn(`[gaslessClaimBadge] no receipt logs — skipping TransferSingle parse`);
     }
     // Fallback: read eventBadgeToken mapping (set at event-creation time)
     if (!tokenId) {
       try {
         const tid = await c.eventBadgeToken(BigInt(onChainEventId));
+        console.log(`[gaslessClaimBadge] eventBadgeToken(${onChainEventId}) = ${tid}`);
         if (BigInt(tid) > 0n) tokenId = tid.toString();
-      } catch {}
+      } catch (e) {
+        console.warn(`[gaslessClaimBadge] eventBadgeToken failed: ${e.message}`);
+      }
     }
-    return { txHash: receipt.hash, tokenId };
+    console.log(`[gaslessClaimBadge] final tokenId=${tokenId} txHash=${receipt?.hash ?? tx.hash}`);
+    return { txHash: receipt?.hash ?? tx.hash, tokenId };
   });
 }
 
