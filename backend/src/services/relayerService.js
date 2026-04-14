@@ -1078,10 +1078,19 @@ async function fixBadgeTokenURI(onChainEventId, newURI) {
 
 /**
  * Query the contract's AttendanceConfirmed logs to get the real on-chain attendee count.
- * Falls back to the in-memory store if the contract/provider isn't ready.
+ * Reads from in-memory store first (fast); falls back to a chain log scan when the store
+ * is empty so cold starts always return the correct count.
  */
 async function getOnChainAttendeeCount(onChainEventId) {
-  return getConfirmedCount(onChainEventId);
+  const cached = getConfirmedCount(onChainEventId);
+  if (cached > 0) return cached;
+  // Store empty — scan chain logs (also populates all stores as a side-effect)
+  try {
+    const attendees = await enrichAttendeesWithTxHash(onChainEventId);
+    return attendees.length;
+  } catch {
+    return 0;
+  }
 }
 
 // On startup: for any event missing confirmedCount, scan chain logs and fill in the store.
