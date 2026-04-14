@@ -647,15 +647,31 @@ async function gaslessClaimBadge(attendee, onChainEventId, signature) {
   const sig = ethers.Signature.from(signature);
   return withRpcFallback(async () => {
     const c = getContract();
-    // Read the badge token ID BEFORE sending the tx — it's stored in eventBadgeToken[]
-    // at event-creation time and never changes, so it's always available even if tx.wait() times out.
-    let tokenId = null;
-    try {
-      const tid = await c.eventBadgeToken(BigInt(onChainEventId));
-      tokenId = tid.toString();
-    } catch {}
     const tx = await c.claimBadgeGasless(attendee, BigInt(onChainEventId), sig.v, sig.r, sig.s);
     const receipt = await tx.wait(1, 120_000).catch(() => ({ hash: tx.hash }));
+
+    // Parse token ID from the TransferSingle log emitted by the ERC-1155 mint —
+    // this is the authoritative source and works even if eventBadgeToken mapping is 0.
+    let tokenId = null;
+    if (receipt.logs?.length) {
+      const iface = new ethers.Interface(VryfdABI.abi);
+      for (const log of receipt.logs) {
+        try {
+          const parsed = iface.parseLog(log);
+          if (parsed?.name === "TransferSingle") {
+            const id = parsed.args.id ?? parsed.args[3];
+            if (id != null && BigInt(id) > 0n) { tokenId = id.toString(); break; }
+          }
+        } catch {}
+      }
+    }
+    // Fallback: read eventBadgeToken mapping (set at event-creation time)
+    if (!tokenId) {
+      try {
+        const tid = await c.eventBadgeToken(BigInt(onChainEventId));
+        if (BigInt(tid) > 0n) tokenId = tid.toString();
+      } catch {}
+    }
     return { txHash: receipt.hash, tokenId };
   });
 }

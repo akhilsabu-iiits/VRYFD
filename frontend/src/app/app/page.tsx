@@ -875,11 +875,11 @@ export default function Home() {
           );
           setBadgeMintTimes((prev) => ({ ...prev, [capturedBadgeEventId]: new Date().toISOString() }));
           // Store token ID so the Badges page can show a persistent "Add to MetaMask" button
-          if (data.tokenId) setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: String(data.tokenId) }));
+          if (data.tokenId && data.tokenId !== "0") setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: String(data.tokenId) }));
         }
         showToast("Soulbound POAP Badge minted! It's in your wallet.", "success");
         // Prompt wallet to display the newly minted NFT — ERC-1155 tokens aren't auto-detected
-        if (data.tokenId) promptAddNft(contractAddress, String(data.tokenId));
+        if (data.tokenId && data.tokenId !== "0") promptAddNft(contractAddress, String(data.tokenId));
         refetchVryf().catch(() => {});
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Unknown error";
