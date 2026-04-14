@@ -8,6 +8,7 @@ interface VRYFPageProps {
   onChainBalance: number | null;
   history: VRYFEntry[];
   isConnected: boolean;
+  vryfTokenAddress?: string;
 }
 
 const TYPE_LABEL: Record<VRYFEntry["type"], string> = {
@@ -35,7 +36,18 @@ function fmt(ts: number) {
   });
 }
 
-export default function VRYFPage({ balance, onChainBalance, history, isConnected }: VRYFPageProps) {
+async function addVryfToMetaMask(tokenAddress: string) {
+  const provider = typeof window !== "undefined" ? (window as any).ethereum : null;
+  if (!provider) { alert("MetaMask not detected"); return; }
+  try {
+    await provider.request({
+      method: "wallet_watchAsset",
+      params: { type: "ERC20", options: { address: tokenAddress, symbol: "VRYF", decimals: 18 } },
+    });
+  } catch {}
+}
+
+export default function VRYFPage({ balance, onChainBalance, history, isConnected, vryfTokenAddress }: VRYFPageProps) {
   const totalCheckin   = history.filter((e) => e.type === "checkin").reduce((s, e) => s + e.amount, 0);
   const totalBadge     = history.filter((e) => e.type === "badge").reduce((s, e) => s + e.amount, 0);
   const totalMilestone = history.filter((e) => e.type === "milestone").reduce((s, e) => s + e.amount, 0);
@@ -69,7 +81,14 @@ export default function VRYFPage({ balance, onChainBalance, history, isConnected
               </div>
             )}
           </div>
-          <div style={{ fontSize: "3.5rem" }}>🪙</div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
+            <div style={{ fontSize: "3.5rem" }}>🪙</div>
+            {vryfTokenAddress && (
+              <button type="button" className="vryf-add-metamask-btn" onClick={() => addVryfToMetaMask(vryfTokenAddress)}>
+                + Add VRYF to MetaMask
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

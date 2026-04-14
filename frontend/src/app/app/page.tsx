@@ -1266,6 +1266,15 @@ export default function Home() {
     // Store new contract addresses so wagmiConfig picks them up on reload
     if (newContractAddress) localStorage.setItem("vryfd_contract_address", newContractAddress);
     if (newVryfAddress) localStorage.setItem("vryfd_vryf_token_address", newVryfAddress);
+    // Prompt MetaMask to add the new VRYF ERC-20 token so users see it immediately
+    if (newVryfAddress && typeof window !== "undefined" && (window as any).ethereum) {
+      try {
+        await (window as any).ethereum.request({
+          method: "wallet_watchAsset",
+          params: { type: "ERC20", options: { address: newVryfAddress, symbol: "VRYF", decimals: 18 } },
+        });
+      } catch { /* user dismissed — not fatal */ }
+    }
     // Strip deployment info so all events appear undeployed/upcoming after reset.
     // onChainId/deployTxHash are omitted (undefined → stripped by JSON.stringify).
     const freshEvents: VEvent[] = INITIAL_EVENTS.map((ev) => ({
@@ -1460,6 +1469,7 @@ export default function Home() {
               onChainBalance={vryfOnChain !== undefined ? Number(vryfOnChain) / 1e18 : null}
               history={vryfHistory}
               isConnected={isConnected}
+              vryfTokenAddress={vryfTokenAddress}
             />
           )}
         </div>
