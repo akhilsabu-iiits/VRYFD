@@ -1245,7 +1245,7 @@ export default function Home() {
   // ─── Reset everything ────────────────────────────────────────────────────────
 
   const handleReset = useCallback(async () => {
-    if (!window.confirm("Reset all data? This will deploy fresh contracts on-chain. This cannot be undone.")) return;
+    if (!window.confirm("Deploy new contracts on-chain? This will reset all data and cannot be undone.")) return;
 
     showToast("Deploying fresh contracts on-chain… please wait", "");
 
@@ -1356,8 +1356,8 @@ export default function Home() {
       <nav className="nav">
         <div className="nav-left">
           <div className="nav-brand">VRYFD</div>
-          <button type="button" className="btn-reset" onClick={handleReset} title="Reset all data">
-            ↺ Reset
+          <button type="button" className="btn-reset" onClick={handleReset} title="Deploy new contracts on-chain">
+            ↺ New Contract Deployed
           </button>
         </div>
         <div className="nav-links">
