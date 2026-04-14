@@ -1241,14 +1241,42 @@ export default function Home() {
         ? `${eligible[0].icon} ${eligible[0].label} NFT claimed! +${eligible[0].bonus} VRYF`
         : `${eligible.length} milestone NFTs claimed! +${totalBonus} VRYF`;
       showToast(label, "success");
-      // Store milestone token IDs for persistent "Add to MetaMask" buttons, then prompt wallet
-      if (data.tokenIds?.length) {
+      // Store milestone token IDs for persistent "Add to MetaMask" buttons, then prompt wallet.
+      // If backend didn't return tokenIds (tx.wait() timed out), fetch the receipt directly
+      // from chain and decode MilestoneReached / TransferSingle logs client-side.
+      let milestoneTokenIds: string[] = (data.tokenIds ?? []).map(String).filter((t: string) => t && t !== "0");
+
+      if (milestoneTokenIds.length === 0 && data.txHash && publicClient) {
+        try {
+          const receipt = await publicClient.getTransactionReceipt({ hash: data.txHash as `0x${string}` });
+          const abi = VryfdABI.abi as Parameters<typeof decodeEventLog>[0]["abi"];
+          for (const log of receipt.logs) {
+            try {
+              const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics as Parameters<typeof decodeEventLog>[0]["topics"], eventName: "MilestoneReached" });
+              const tid = (decoded.args as { tokenId?: bigint }).tokenId;
+              if (tid != null && tid > 0n) milestoneTokenIds.push(tid.toString());
+            } catch {}
+          }
+          // Fallback: TransferSingle logs if MilestoneReached not found
+          if (milestoneTokenIds.length === 0) {
+            for (const log of receipt.logs) {
+              try {
+                const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics as Parameters<typeof decodeEventLog>[0]["topics"], eventName: "TransferSingle" });
+                const tid = (decoded.args as { id?: bigint }).id;
+                if (tid != null && tid > 0n) milestoneTokenIds.push(tid.toString());
+              } catch {}
+            }
+          }
+        } catch {}
+      }
+
+      if (milestoneTokenIds.length > 0) {
         setMilestoneNftIds((prev) => {
           const next = { ...prev };
-          eligible.forEach((m, i) => { if (data.tokenIds[i] != null) next[m.threshold] = String(data.tokenIds[i]); });
+          eligible.forEach((m, i) => { if (milestoneTokenIds[i] != null) next[m.threshold] = milestoneTokenIds[i]; });
           return next;
         });
-        for (const tid of data.tokenIds) promptAddNft(contractAddress, String(tid));
+        for (const tid of milestoneTokenIds) promptAddNft(contractAddress, tid);
       }
       refetchVryf().catch(() => {});
     } catch (err: unknown) {

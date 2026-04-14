@@ -765,9 +765,17 @@ async function gaslessMilestoneReward(attendee, signature) {
       }
     } catch {}
     const tx = await c.milestoneRewardGasless(attendee, sig.v, sig.r, sig.s);
-    const receipt = await tx.wait(1, 120_000).catch(() => ({ hash: tx.hash }));
+    console.log(`[gaslessMilestoneReward] tx submitted: ${tx.hash}, predicted tokenIds: ${JSON.stringify(tokenIds)}`);
+
+    let receipt = null;
+    try {
+      receipt = await tx.wait(1, 120_000);
+    } catch (waitErr) {
+      console.warn(`[gaslessMilestoneReward] tx.wait() failed: ${waitErr.message} — using predicted tokenIds`);
+    }
+
     // If receipt has logs, prefer the actual emitted IDs (handles any edge cases)
-    if (receipt.logs?.length) {
+    if (receipt?.logs?.length) {
       const iface = new ethers.Interface(VryfdABI.abi);
       const fromLogs = [];
       for (const log of receipt.logs) {
@@ -777,8 +785,11 @@ async function gaslessMilestoneReward(attendee, signature) {
         } catch {}
       }
       if (fromLogs.length > 0) tokenIds = fromLogs;
+      console.log(`[gaslessMilestoneReward] tokenIds from logs: ${JSON.stringify(tokenIds)}`);
+    } else {
+      console.log(`[gaslessMilestoneReward] no receipt logs — returning predicted tokenIds: ${JSON.stringify(tokenIds)}`);
     }
-    return { txHash: receipt.hash, tokenIds };
+    return { txHash: receipt?.hash ?? tx.hash, tokenIds };
   });
 }
 
