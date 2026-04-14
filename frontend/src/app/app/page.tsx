@@ -1357,7 +1357,7 @@ export default function Home() {
         <div className="nav-left">
           <div className="nav-brand">VRYFD</div>
           <button type="button" className="btn-reset" onClick={handleReset} title="Deploy new contracts on-chain">
-            ↺ New Contract Deployed
+            ↺ Reset
           </button>
         </div>
         <div className="nav-links">
