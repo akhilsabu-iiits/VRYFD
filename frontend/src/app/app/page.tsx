@@ -178,12 +178,17 @@ export default function Home() {
   const [checkedInIds, setCheckedInIds] = useState<number[]>([]);
 
 
-  // Read VRYF balance live from chain.
-  // VRYF_TOKEN_ADDRESS reads localStorage first (updated on reset) then falls back to env var,
-  // so after a new contract deployment the correct on-chain balance is always shown.
-  const vryfTokenAddress = VRYF_TOKEN_ADDRESS !== "0x0000000000000000000000000000000000000000"
-    ? VRYF_TOKEN_ADDRESS
-    : undefined;
+  // Read VRYF token address at render time from localStorage (updated on reset),
+  // falling back to the module constant (env var). Reading localStorage here avoids
+  // the SSR stale-constant problem where VRYF_TOKEN_ADDRESS is set before the page
+  // reloads with the new address after a fresh contract deployment.
+  const vryfTokenAddress = useMemo((): `0x${string}` | undefined => {
+    const stored = typeof window !== "undefined" ? localStorage.getItem("vryfd_vryf_token_address") : null;
+    const addr = (stored && stored.startsWith("0x") ? stored : null)
+      ?? (VRYF_TOKEN_ADDRESS !== "0x0000000000000000000000000000000000000000" ? VRYF_TOKEN_ADDRESS : null)
+      ?? process.env.NEXT_PUBLIC_VRYF_TOKEN_ADDRESS;
+    return addr && addr !== "0x0000000000000000000000000000000000000000" ? addr as `0x${string}` : undefined;
+  }, []);
   const { data: vryfOnChain, refetch: refetchVryf } = useReadContract({
     address: vryfTokenAddress,
     abi: VRYFTokenABI.abi,

@@ -36,7 +36,14 @@ function fmt(ts: number) {
   });
 }
 
-async function addVryfToMetaMask(tokenAddress: string) {
+async function addVryfToMetaMask(fallbackAddress: string) {
+  // Read from localStorage at click time so a post-reset new contract address is always used.
+  // The module-level VRYF_TOKEN_ADDRESS constant may be stale (computed before localStorage
+  // was updated), so we bypass it here and read the freshest value directly.
+  const tokenAddress =
+    (typeof window !== "undefined" && localStorage.getItem("vryfd_vryf_token_address")) ||
+    fallbackAddress;
+  if (!tokenAddress || tokenAddress === "0x0000000000000000000000000000000000000000") return;
   const provider = typeof window !== "undefined" ? (window as any).ethereum : null;
   if (!provider) { alert("MetaMask not detected"); return; }
   try {
