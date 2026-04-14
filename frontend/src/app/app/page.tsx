@@ -1275,14 +1275,13 @@ export default function Home() {
     // Store new contract addresses so wagmiConfig picks them up on reload
     if (newContractAddress) localStorage.setItem("vryfd_contract_address", newContractAddress);
     if (newVryfAddress) localStorage.setItem("vryfd_vryf_token_address", newVryfAddress);
-    // Prompt MetaMask to add the new VRYF ERC-20 token so users see it immediately
+    // Prompt MetaMask to add the new VRYF ERC-20 token — fire-and-forget so it never
+    // blocks disconnect() or window.location.reload() below.
     if (newVryfAddress && typeof window !== "undefined" && (window as any).ethereum) {
-      try {
-        await (window as any).ethereum.request({
-          method: "wallet_watchAsset",
-          params: { type: "ERC20", options: { address: newVryfAddress, symbol: "VRYF", decimals: 18 } },
-        });
-      } catch { /* user dismissed — not fatal */ }
+      (window as any).ethereum.request({
+        method: "wallet_watchAsset",
+        params: { type: "ERC20", options: { address: newVryfAddress, symbol: "VRYF", decimals: 18 } },
+      }).catch(() => {});
     }
     // Strip deployment info so all events appear undeployed/upcoming after reset.
     // onChainId/deployTxHash are omitted (undefined → stripped by JSON.stringify).
