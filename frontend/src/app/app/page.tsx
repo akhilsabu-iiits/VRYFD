@@ -1154,7 +1154,7 @@ export default function Home() {
     } catch {
       showToast("Could not check status — try again", "error");
     }
-  }, [address, currentEventId, onChainEventIds, userCheckins, checkedInIds, showToast, refetchVryf]);
+  }, [address, currentEventId, onChainEventIds, userCheckins, checkedInIds, events, showToast, refetchVryf, addVryfEntry]);
 
   // ─── Milestone NFT claim ────────────────────────────────────────────────────
 

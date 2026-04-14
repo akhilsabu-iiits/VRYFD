@@ -61,6 +61,14 @@ export default function EventsPage({
   const ev = currentEventId !== null ? events.find((e) => e.id === currentEventId) : null;
   const badgeClaimed = currentEventId !== null && userBadges.includes(currentEventId);
 
+  // Auto-poll confirmation status every 5s when the current event is in a pending state
+  const isPending = currentEventId !== null && pendingRegistrationIds.includes(currentEventId);
+  useEffect(() => {
+    if (!isPending) return;
+    const id = setInterval(() => { onCheckPendingStatus(); }, 5000);
+    return () => clearInterval(id);
+  }, [isPending, onCheckPendingStatus]);
+
   // Fetch real on-chain attendee count when event panel opens, then poll every 5s
   const [onChainAttendeeCount, setOnChainAttendeeCount] = useState<number | null>(null);
   useEffect(() => {
