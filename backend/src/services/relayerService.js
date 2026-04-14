@@ -179,7 +179,12 @@ function addConfirmedAttendeeDetail(onChainEventId, attendee, timestamp, txHash)
 }
 
 function getConfirmedCount(onChainEventId) {
-  return confirmedCountStore.get(String(onChainEventId)) ?? 0;
+  const key = String(onChainEventId);
+  // Prefer explicit count store; fall back to address-set size so the two never diverge
+  return confirmedCountStore.get(key)
+    ?? confirmedAttendeesStore.get(key)?.size
+    ?? confirmedAttendeesDetailStore.get(key)?.size
+    ?? 0;
 }
 
 function incrementConfirmedCount(onChainEventId, attendee) {
@@ -769,17 +774,21 @@ async function enrichAttendeesWithTxHash(onChainEventId) {
   }));
   for (const a of result) {
     addConfirmedAttendeeDetail(onChainEventId, a.attendee, a.timestamp, a.txHash);
+    // Sync address store so confirmedCountStore and confirmedAttendeesStore stay consistent
+    const key2 = String(onChainEventId);
+    if (!confirmedAttendeesStore.has(key2)) confirmedAttendeesStore.set(key2, new Set());
+    confirmedAttendeesStore.get(key2).add(a.attendee.toLowerCase());
   }
-  // Only persist if we actually found results — don't overwrite with empty on RPC failure
+  // Update count store from chain truth — this is what attendee-count endpoint reads
   if (result.length > 0) {
     const key = String(onChainEventId);
+    confirmedCountStore.set(key, confirmedAttendeesStore.get(key)?.size ?? result.length);
     try {
       const store = loadDeployedEvents();
       for (const info of Object.values(store)) {
         if (String(info.onChainId) === key) {
           const details = confirmedAttendeesDetailStore.get(key);
           info.confirmedAttendeesDetail = details ? [...details.values()] : [];
-          // Also sync address list and count
           info.confirmedAttendees = [...(confirmedAttendeesStore.get(key) ?? [])];
           info.confirmedCount = info.confirmedAttendees.length;
         }
