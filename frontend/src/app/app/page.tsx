@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useAccount, useDisconnect, useChainId, useEnsName, useWriteContract, usePublicClient, useReadContract, useSignTypedData, useWalletClient } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
-import { CONTRACT_ADDRESSES } from "../../utils/wagmiConfig";
+import { CONTRACT_ADDRESSES, VRYF_TOKEN_ADDRESS } from "../../utils/wagmiConfig";
 import Dashboard from "../../components/Dashboard";
 import EventsPage from "../../components/EventsPage";
 import BadgesPage from "../../components/BadgesPage";
@@ -178,8 +178,12 @@ export default function Home() {
   const [checkedInIds, setCheckedInIds] = useState<number[]>([]);
 
 
-  // Read VRYF balance live from chain
-  const vryfTokenAddress = process.env.NEXT_PUBLIC_VRYF_TOKEN_ADDRESS as `0x${string}` | undefined;
+  // Read VRYF balance live from chain.
+  // VRYF_TOKEN_ADDRESS reads localStorage first (updated on reset) then falls back to env var,
+  // so after a new contract deployment the correct on-chain balance is always shown.
+  const vryfTokenAddress = VRYF_TOKEN_ADDRESS !== "0x0000000000000000000000000000000000000000"
+    ? VRYF_TOKEN_ADDRESS
+    : undefined;
   const { data: vryfOnChain, refetch: refetchVryf } = useReadContract({
     address: vryfTokenAddress,
     abi: VRYFTokenABI.abi,
