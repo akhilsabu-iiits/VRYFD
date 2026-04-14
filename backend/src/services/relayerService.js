@@ -227,20 +227,13 @@ async function confirmAttendee(onChainEventId, attendee) {
       return { alreadyConfirmed: true, txHash: null };
     }
 
-    // Simulate first to get a readable revert reason before spending gas
-    try {
-      await c.checkInFor.staticCall(attendee, BigInt(onChainEventId));
-    } catch (simErr) {
-      const reason = simErr?.reason || simErr?.revert?.args?.[0] || simErr?.message || "Unknown revert";
-      throw new Error(reason);
-    }
-
     const tx = await c.checkInFor(attendee, BigInt(onChainEventId));
     const receipt = await tx.wait(1, 120_000);
     if (!receipt) throw new Error("Transaction failed — no receipt returned");
     removePending(onChainEventId, attendee);
-    const block = await provider.getBlock(receipt.blockNumber);
-    const timestamp = block ? Number(block.timestamp) : Math.floor(Date.now() / 1000);
+    // Use wall-clock time instead of fetching the block — saves one extra RPC round trip
+    // after an already slow tx.wait(). Close enough for display purposes.
+    const timestamp = Math.floor(Date.now() / 1000);
     // Upsert into the detail cache — addConfirmedAttendeeDetail uses map.set() so previous
     // attendees are preserved. Do NOT delete the whole map first or every confirmation
     // would wipe prior attendees from the cache, causing getEventAttendees to under-count.
