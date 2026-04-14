@@ -236,8 +236,9 @@ async function confirmAttendee(onChainEventId, attendee) {
     removePending(onChainEventId, attendee);
     const block = await provider.getBlock(receipt.blockNumber);
     const timestamp = block ? Number(block.timestamp) : Math.floor(Date.now() / 1000);
-    // Invalidate the detail cache for this event so stale data is never served
-    confirmedAttendeesDetailStore.delete(String(onChainEventId));
+    // Upsert into the detail cache — addConfirmedAttendeeDetail uses map.set() so previous
+    // attendees are preserved. Do NOT delete the whole map first or every confirmation
+    // would wipe prior attendees from the cache, causing getEventAttendees to under-count.
     addConfirmedAttendeeDetail(onChainEventId, attendee, timestamp, receipt.hash);
     incrementConfirmedCount(onChainEventId, attendee); // persists to disk — must come after addConfirmedAttendeeDetail
     return { txHash: receipt.hash };
