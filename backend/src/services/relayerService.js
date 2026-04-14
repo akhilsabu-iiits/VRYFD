@@ -221,25 +221,37 @@ function incrementConfirmedCount(onChainEventId, attendee) {
 async function confirmAttendee(onChainEventId, attendee) {
   return withRpcFallback(async () => {
     const c = getContract();
-    const record = await c.getAttendanceRecord(BigInt(onChainEventId), attendee);
-    if (Number(record.timestamp) > 0) {
-      removePending(onChainEventId, attendee);
-      return { alreadyConfirmed: true, txHash: null };
+
+    // Submit the tx — if the contract reverts (already checked in), catch it here
+    let tx;
+    try {
+      tx = await c.checkInFor(attendee, BigInt(onChainEventId));
+    } catch (err) {
+      const msg = (err.message || "").toLowerCase();
+      if (msg.includes("already") || msg.includes("checked in") || msg.includes("confirmed")) {
+        removePending(onChainEventId, attendee);
+        return { alreadyConfirmed: true, txHash: null };
+      }
+      throw err;
     }
 
-    const tx = await c.checkInFor(attendee, BigInt(onChainEventId));
-    const receipt = await tx.wait(1, 120_000);
-    if (!receipt) throw new Error("Transaction failed — no receipt returned");
+    const txHash = tx.hash;
+
+    // Remove from pending immediately so the organizer UI updates right away
     removePending(onChainEventId, attendee);
-    // Use wall-clock time instead of fetching the block — saves one extra RPC round trip
-    // after an already slow tx.wait(). Close enough for display purposes.
+
+    // Seed the detail cache optimistically so the attendee count increments now
+    // (doesn't wait for block confirmation — receipt.hash === txHash on Sepolia)
     const timestamp = Math.floor(Date.now() / 1000);
-    // Upsert into the detail cache — addConfirmedAttendeeDetail uses map.set() so previous
-    // attendees are preserved. Do NOT delete the whole map first or every confirmation
-    // would wipe prior attendees from the cache, causing getEventAttendees to under-count.
-    addConfirmedAttendeeDetail(onChainEventId, attendee, timestamp, receipt.hash);
-    incrementConfirmedCount(onChainEventId, attendee); // persists to disk — must come after addConfirmedAttendeeDetail
-    return { txHash: receipt.hash };
+    addConfirmedAttendeeDetail(onChainEventId, attendee, timestamp, txHash);
+    incrementConfirmedCount(onChainEventId, attendee);
+
+    // Wait for receipt in background — no need to block the HTTP response
+    tx.wait(1, 120_000).catch((err) => {
+      console.warn(`[confirmAttendee] tx ${txHash} wait failed:`, err.message);
+    });
+
+    return { txHash };
   });
 }
 
