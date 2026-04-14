@@ -121,6 +121,11 @@ export default function Home() {
         ? (window as any).ethereum
         : (walletClientRef.current as any) ?? null;
 
+    // wallet_watchAsset requires tokenId as a 0x-prefixed hex string for both ERC-1155 and ERC-721
+    const hexTokenId = tokenId.startsWith("0x")
+      ? tokenId
+      : `0x${BigInt(tokenId).toString(16)}`;
+
     const showFallbackToast = () => showToastRef.current(
       `NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${contractAddr.slice(0, 8)}… Token ID: ${tokenId}`,
       ""
@@ -129,7 +134,7 @@ export default function Home() {
     if (!provider) { showFallbackToast(); return; }
 
     const tryWatch = (type: string): Promise<boolean> =>
-      provider.request({ method: "wallet_watchAsset", params: { type, options: { address: contractAddr, tokenId } } }) as Promise<boolean>;
+      provider.request({ method: "wallet_watchAsset", params: { type, options: { address: contractAddr, tokenId: hexTokenId } } }) as Promise<boolean>;
 
     // Wait for MetaMask to settle after the minting transaction, then try both NFT types
     setTimeout(async () => {
