@@ -7,6 +7,7 @@ const {
   generateJoinCode,
   getJoinCode,
   setCustomCode,
+  setEventMeta,
   joinCodeCheckin,
   addPending,
   getPendingAttendees,
@@ -52,9 +53,13 @@ router.post("/createEvent", async (req, res) => {
     }
     const result = await createEvent(name, metadataURI || "", startTime, endTime);
     if (demoId !== undefined && demoId !== null) {
-      try { saveDeployedEvent(demoId, result.txHash, result.eventId, joinCode || null); } catch (e) {
+      try { saveDeployedEvent(demoId, result.txHash, result.eventId, joinCode || null, startTime, endTime); } catch (e) {
         console.error("saveDeployedEvent failed (non-fatal):", e.message);
       }
+    }
+    // Cache event metadata so join code check-in skips RPC calls
+    try { setEventMeta(result.eventId, startTime, endTime); } catch (e) {
+      console.error("setEventMeta failed (non-fatal):", e.message);
     }
     // Register custom join code so attendees can check in with it
     if (joinCode) {

@@ -31,6 +31,14 @@ function setCustomCode(onChainEventId, code) {
   customCodeStore.set(String(onChainEventId), code.toUpperCase().trim());
 }
 
+// ─── Event meta cache: populated at deploy time, avoids RPC calls during check-in ───
+// onChainEventId (string) → { startTime: number, endTime: number }
+const eventMetaCache = new Map();
+
+function setEventMeta(onChainEventId, startTime, endTime) {
+  eventMetaCache.set(String(onChainEventId), { startTime: Number(startTime), endTime: Number(endTime) });
+}
+
 function getJoinCode(onChainEventId) {
   const code = customCodeStore.get(String(onChainEventId));
   if (!code) throw new Error("No join code registered for this event");
@@ -104,7 +112,7 @@ function getPendingEntry(onChainEventId, attendee) {
 }
 
 // Join code → pending registration (organizer confirms later via checkInFor — no sig needed on-chain)
-async function joinCodeCheckin(onChainEventId, attendee, code, signature, ens = null, demoId = null) {
+function joinCodeCheckin(onChainEventId, attendee, code, signature, ens = null, demoId = null) {
   // 1. Verify code — use customCodeStore if available, else fall back to DEMO_JOIN_CODES by demoId
   let expected;
   const stored = customCodeStore.get(String(onChainEventId));
@@ -129,25 +137,19 @@ async function joinCodeCheckin(onChainEventId, attendee, code, signature, ens = 
       throw new Error(`Signature does not match: expected ${attendee} got ${recovered}`);
   }
 
-  // 2 & 3. Run on-chain checks in parallel to cut RPC round-trip time in half.
-  const c = getContract();
-  const [recordResult, eventResult] = await Promise.allSettled([
-    c.getAttendanceRecord(BigInt(onChainEventId), attendee),
-    c.events(BigInt(onChainEventId)),
-  ]);
-
-  if (recordResult.status === "fulfilled" && Number(recordResult.value.timestamp) > 0) {
+  // 2. Already confirmed? — use in-memory store (no RPC needed)
+  if (confirmedAttendeesStore.get(String(onChainEventId))?.has(attendee.toLowerCase())) {
     throw new Error("Already confirmed on-chain");
   }
 
-  if (eventResult.status === "fulfilled") {
-    const ev = eventResult.value;
+  // 3. Event time window — use cached metadata if available (set at deploy time)
+  const meta = eventMetaCache.get(String(onChainEventId));
+  if (meta) {
     const now = Math.floor(Date.now() / 1000);
-    if (!ev.active) throw new Error("Event is not active");
-    if (now < Number(ev.startTime)) throw new Error("Event has not started yet");
-    if (now > Number(ev.endTime)) throw new Error("Event has ended");
+    if (now < meta.startTime) throw new Error("Event has not started yet");
+    if (now > meta.endTime) throw new Error("Event has ended");
   }
-  // RPC failures on either check — fall through to pending flow
+  // No meta cached (e.g. pre-seeded INITIAL_DEPLOYED_EVENTS) — skip time check, join code is sufficient auth
 
   // 4. Already in pending queue?
   if (isPending(onChainEventId, attendee)) {
@@ -311,9 +313,15 @@ function loadDeployedEvents() {
   try { return JSON.parse(fs.readFileSync(STORE_PATH, "utf8")); } catch { return {}; }
 }
 
-function saveDeployedEvent(demoId, txHash, onChainId, joinCode) {
+function saveDeployedEvent(demoId, txHash, onChainId, joinCode, startTime = null, endTime = null) {
   const store = loadDeployedEvents();
-  store[String(demoId)] = { txHash, onChainId, ...(joinCode ? { joinCode } : {}) };
+  store[String(demoId)] = {
+    txHash,
+    onChainId,
+    ...(joinCode ? { joinCode } : {}),
+    ...(startTime != null ? { startTime: Number(startTime) } : {}),
+    ...(endTime != null ? { endTime: Number(endTime) } : {}),
+  };
   atomicWriteJSON(STORE_PATH, store);
 }
 
@@ -376,6 +384,9 @@ function loadCustomCodesFromStore() {
   for (const info of Object.values(store)) {
     if (info.joinCode && info.onChainId !== undefined && info.onChainId !== null) {
       customCodeStore.set(String(info.onChainId), info.joinCode.toUpperCase());
+    }
+    if (info.startTime != null && info.endTime != null && info.onChainId !== undefined && info.onChainId !== null) {
+      eventMetaCache.set(String(info.onChainId), { startTime: Number(info.startTime), endTime: Number(info.endTime) });
     }
     if (info.confirmedCount && info.onChainId !== undefined && info.onChainId !== null) {
       confirmedCountStore.set(String(info.onChainId), info.confirmedCount);
@@ -1319,6 +1330,7 @@ module.exports = {
   generateJoinCode,
   getJoinCode,
   setCustomCode,
+  setEventMeta,
   joinCodeCheckin,
   addPending,
   getPendingAttendees,
