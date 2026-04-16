@@ -1340,32 +1340,34 @@ export default function Home() {
         ? `${eligible[0].icon} ${eligible[0].label} NFT claimed! +${eligible[0].bonus} VRYF`
         : `${eligible.length} milestone NFTs claimed! +${totalBonus} VRYF`;
       showToast(label, "success");
-      // Store milestone token IDs for persistent "Add to MetaMask" buttons, then prompt wallet.
-      // If backend didn't return tokenIds (tx.wait() timed out), fetch the receipt directly
-      // from chain and decode MilestoneReached / TransferSingle logs client-side.
+      // Wait for tx to mine before calling promptAddNft — MetaMask validates token
+      // existence on-chain and silently rejects watchAsset for unminted tokens.
       let milestoneTokenIds: string[] = (data.tokenIds ?? []).map(String).filter((t: string) => t && t !== "0");
 
-      if (milestoneTokenIds.length === 0 && data.txHash && publicClient) {
+      if (data.txHash && publicClient) {
         try {
+          showToast("Waiting for NFT to mint on-chain...", "");
           const receipt = await publicClient.waitForTransactionReceipt({ hash: data.txHash as `0x${string}`, timeout: 90_000, pollingInterval: 4_000 });
+          // Try to get confirmed tokenIds from logs — overrides predicted values if present
           const abi = VryfdABI.abi as Parameters<typeof decodeEventLog>[0]["abi"];
+          const fromLogs: string[] = [];
           for (const log of receipt.logs) {
             try {
               const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics as Parameters<typeof decodeEventLog>[0]["topics"], eventName: "MilestoneReached" });
               const tid = (decoded.args as { tokenId?: bigint }).tokenId;
-              if (tid != null && tid > 0n) milestoneTokenIds.push(tid.toString());
+              if (tid != null && tid > 0n) fromLogs.push(tid.toString());
             } catch {}
           }
-          // Fallback: TransferSingle logs if MilestoneReached not found
-          if (milestoneTokenIds.length === 0) {
+          if (fromLogs.length === 0) {
             for (const log of receipt.logs) {
               try {
                 const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics as Parameters<typeof decodeEventLog>[0]["topics"], eventName: "TransferSingle" });
                 const tid = (decoded.args as { id?: bigint }).id;
-                if (tid != null && tid > 0n) milestoneTokenIds.push(tid.toString());
+                if (tid != null && tid > 0n) fromLogs.push(tid.toString());
               } catch {}
             }
           }
+          if (fromLogs.length > 0) milestoneTokenIds = fromLogs;
         } catch {}
       }
 
