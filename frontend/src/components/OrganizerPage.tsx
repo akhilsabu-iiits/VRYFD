@@ -22,12 +22,7 @@ interface OrganizerPageProps {
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
 
 function adminHeaders(extra?: Record<string, string>): Record<string, string> {
-  const secret = process.env.NEXT_PUBLIC_ADMIN_SECRET;
-  return {
-    "Content-Type": "application/json",
-    ...(secret ? { "x-admin-secret": secret } : {}),
-    ...extra,
-  };
+  return { "Content-Type": "application/json", ...extra };
 }
 
 // For "live" events: startTime is 1 hour ago so check-in works immediately;

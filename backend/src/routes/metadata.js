@@ -1,5 +1,4 @@
 const express = require("express");
-const adminAuth = require("../middleware/adminAuth");
 const router = express.Router();
 
 // XML-safe symbols and names — no raw <, >, & in SVG text
@@ -146,7 +145,7 @@ async function pinMilestoneMetadata(m) {
 }
 
 // POST /api/metadata/badge/register  → register a custom event for badge generation
-router.post("/badge/register", adminAuth, (req, res) => {
+router.post("/badge/register", (req, res) => {
   const { id, name, date, color, emoji } = req.body;
 
   if (id === undefined || !name) return res.status(400).json({ error: "Missing id or name" });
