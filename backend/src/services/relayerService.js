@@ -688,6 +688,34 @@ async function getCheckinNonce(attendee) {
  */
 async function gaslessClaimBadge(attendee, onChainEventId, signature) {
   const sig = ethers.Signature.from(signature);
+
+  // If the organizer's confirmAttendee tx is still in-flight, wait for it to mine
+  // before submitting the badge mint — otherwise the contract reverts with "Not attended".
+  // confirmAttendee seeds the detail store optimistically (before block confirmation),
+  // so the attendee can reach step 3 while the tx is still pending.
+  try {
+    const onChainRecord = await withRpcFallback(() =>
+      getContract().getAttendanceRecord(BigInt(onChainEventId), attendee)
+    );
+    if (Number(onChainRecord.timestamp) === 0) {
+      const detail = confirmedAttendeesDetailStore.get(String(onChainEventId))?.get(attendee.toLowerCase());
+      if (detail?.txHash) {
+        console.log(`[gaslessClaimBadge] attendance tx pending (${detail.txHash}), waiting for confirmation...`);
+        await provider.waitForTransaction(detail.txHash, 1, 60_000);
+        console.log(`[gaslessClaimBadge] attendance tx confirmed, proceeding with badge mint`);
+      } else {
+        throw new Error("Not attended");
+      }
+    }
+  } catch (e) {
+    if (e.message === "Not attended") throw e;
+    if (e.message?.toLowerCase().includes("timeout") || e.message?.toLowerCase().includes("wait")) {
+      throw new Error("Attendance confirmation is still pending — please try again in a moment");
+    }
+    // RPC error during pre-check — proceed and let the contract decide
+    console.warn(`[gaslessClaimBadge] pre-check failed: ${e.message} — proceeding anyway`);
+  }
+
   return withRpcFallback(async () => {
     const c = getContract();
     const tx = await c.claimBadgeGasless(attendee, BigInt(onChainEventId), sig.v, sig.r, sig.s);

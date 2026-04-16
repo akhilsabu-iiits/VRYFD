@@ -6,6 +6,7 @@ import type { LBEntry } from "../lib/vryfd";
 interface LeaderboardPageProps {
   leaderboard: LBEntry[];
   userENS: string;
+  userAddr: string;
   isConnected: boolean;
 }
 
@@ -21,7 +22,7 @@ const TIER_CLASSES: Record<string, string> = {
   "Bronze Explorer": "tier-bronze",
 };
 
-export default function LeaderboardPage({ leaderboard, userENS, isConnected }: LeaderboardPageProps) {
+export default function LeaderboardPage({ leaderboard, userENS, userAddr, isConnected }: LeaderboardPageProps) {
   const sorted = [...leaderboard].sort((a, b) => b.count - a.count);
 
   return (
@@ -35,7 +36,7 @@ export default function LeaderboardPage({ leaderboard, userENS, isConnected }: L
           const rank = i + 1;
           const rankClass = rank === 1 ? "lb-rank gold" : rank === 2 ? "lb-rank silver" : rank === 3 ? "lb-rank bronze" : "lb-rank";
           const tierClass = TIER_CLASSES[entry.tier] || "tier-new";
-          const isMe = userENS && entry.ens === userENS;
+          const isMe = (userENS && entry.ens === userENS) || (userAddr && entry.addr === userAddr);
           const [bg, fg] = ROW_COLORS[i % ROW_COLORS.length];
 
           return (

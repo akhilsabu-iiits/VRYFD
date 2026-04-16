@@ -358,9 +358,10 @@ router.post("/gaslessClaimBadge", async (req, res) => {
     res.json(result);
   } catch (error) {
     const msg = error.message || "";
-    if (msg.includes("Badge already claimed")) return res.status(409).json({ error: "Badge already claimed" });
-    if (msg.includes("Not attended"))          return res.status(403).json({ error: "Attendance not confirmed on-chain" });
-    if (msg.includes("Invalid signature"))     return res.status(400).json({ error: "Invalid signature" });
+    if (msg.includes("Badge already claimed"))  return res.status(409).json({ error: "Badge already claimed" });
+    if (msg.includes("Not attended"))           return res.status(403).json({ error: "Attendance not confirmed on-chain" });
+    if (msg.includes("still pending"))          return res.status(202).json({ error: msg });
+    if (msg.includes("Invalid signature"))      return res.status(400).json({ error: "Invalid signature" });
     console.error("gaslessClaimBadge error:", msg);
     res.status(500).json({ error: msg || "Badge claim failed" });
   }

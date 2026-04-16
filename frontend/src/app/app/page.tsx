@@ -977,6 +977,7 @@ export default function Home() {
           body: JSON.stringify({ attendee: address, onChainEventId, signature }),
         });
         const data = await res.json();
+        if (res.status === 202) throw new Error(data.error || "Attendance confirmation still pending");
         if (!res.ok) throw new Error(data.error || "Badge claim failed");
 
         // Optimistic state update
@@ -1595,7 +1596,7 @@ export default function Home() {
 
         <div className={`page${currentPage === "leaderboard" ? " active" : ""}`}>
           {mountedPages.has("leaderboard") && (
-            <LeaderboardPage leaderboard={liveLeaderboard} userENS={effectiveENS} isConnected={isConnected} />
+            <LeaderboardPage leaderboard={liveLeaderboard} userENS={effectiveENS} userAddr={userAddress} isConnected={isConnected} />
           )}
         </div>
 

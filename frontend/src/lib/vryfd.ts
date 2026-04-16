@@ -37,7 +37,7 @@ export const INITIAL_EVENTS: VEvent[] = [
 
 export const LEADERBOARD_DATA: LBEntry[] = [
   { ens: "mouni.eth", addr: "0xAb5...9eF1", count: 23, tier: "Gold Legend" },
-  { ens: "akhil.eth", addr: "0x71C...976F", count: 0, tier: "Newcomer" },
+  { ens: "akhil.eth", addr: "0x2bc1...42F6", count: 0, tier: "Newcomer" },
   { ens: "ganana.eth", addr: "0x3F2...7bC4", count: 17, tier: "Silver Pioneer" },
   { ens: "priya.eth", addr: "0xD81...2aE8", count: 14, tier: "Silver Pioneer" },
   { ens: "deepak.eth", addr: "0x92A...5cD3", count: 9, tier: "Bronze Explorer" },
