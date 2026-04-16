@@ -120,13 +120,10 @@ export default function Home() {
     setVryfHistory((prev) => [entry, ...prev].slice(0, 100));
   }, []);
 
-  // Prompt the connected wallet to display a newly minted ERC-1155 NFT.
-  // Strategy: try ERC1155 first (MetaMask v11.7+), fall back to ERC721 (broader support).
-  // A 900ms delay lets MetaMask fully process the preceding transaction before handling this request.
-  // promptAddNft: fires wallet_watchAsset after a 900ms delay (lets MetaMask settle post-mint).
-  // The 900ms setTimeout is intentional — this is the mechanism that produces the MetaMask popup.
-  // onSuccess is called when MetaMask confirms the asset was added (wallet_watchAsset returns true).
-  const promptAddNft = useCallback((contractAddr: string, tokenId: string, onSuccess?: () => void) => {
+  // Fires wallet_watchAsset to prompt MetaMask to add an NFT.
+  // delay: 900ms after auto-mint (lets MetaMask settle post-tx), 0ms for manual button clicks.
+  // onSuccess: called only when wallet_watchAsset returns true (MetaMask confirmed).
+  const promptAddNft = useCallback((contractAddr: string, tokenId: string, onSuccess?: () => void, delay = 900) => {
     try {
       if (!tokenId || BigInt(tokenId) <= 0n) return;
     } catch { return; }
@@ -153,24 +150,16 @@ export default function Home() {
     setTimeout(async () => {
       try {
         const added1155 = await tryWatch("ERC1155");
-        if (added1155) {
-          showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success");
-          onSuccess?.();
-          return;
-        }
+        if (added1155) { showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success"); onSuccess?.(); return; }
       } catch { /* ERC1155 not supported */ }
 
       try {
         const added721 = await tryWatch("ERC721");
-        if (added721) {
-          showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success");
-          onSuccess?.();
-          return;
-        }
+        if (added721) { showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success"); onSuccess?.(); return; }
       } catch { /* ERC721 also failed */ }
 
       showFallbackToast();
-    }, 900);
+    }, delay);
   }, []);
   const [isMilestoneLoading, setIsMilestoneLoading] = useState(false);
   const [joinCode, setJoinCode] = useState("");
@@ -1575,10 +1564,10 @@ export default function Home() {
               badgeMmAdded={badgeMmAdded}
               contractAddress={CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111] ?? ""}
               onClaimMilestone={handleClaimMilestone}
-              onAddNftToWallet={(tokenId) => promptAddNft(CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111], tokenId)}
+              onAddNftToWallet={(tokenId) => promptAddNft(CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111], tokenId, undefined, 0)}
               onAddBadgeToWallet={(eventId, tokenId) => {
                 const addr = CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111];
-                promptAddNft(addr, tokenId, () => setBadgeMmAdded((prev) => ({ ...prev, [eventId]: true })));
+                promptAddNft(addr, tokenId, () => setBadgeMmAdded((prev) => ({ ...prev, [eventId]: true })), 0);
               }}
             />
           )}
