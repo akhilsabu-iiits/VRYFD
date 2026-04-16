@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import type { VEvent } from "../lib/vryfd";
 
@@ -28,6 +28,7 @@ interface CertificatePageProps {
   checkedInIds?: number[];
   onChainEventIds?: Record<number, number>;
   walletAddress?: string;
+  onRefresh?: () => Promise<void>;
 }
 
 interface VerifyResult {
@@ -237,7 +238,23 @@ export default function CertificatePage({
   userCertificates = [],
   checkedInIds = [],
   onChainEventIds = {},
+  onRefresh,
 }: CertificatePageProps) {
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Auto-poll every 15s so newly issued certificates appear without manual action
+  useEffect(() => {
+    if (!onRefresh) return;
+    const id = setInterval(() => { onRefresh(); }, 15_000);
+    return () => clearInterval(id);
+  }, [onRefresh]);
+
+  async function handleRefresh() {
+    if (!onRefresh || refreshing) return;
+    setRefreshing(true);
+    await onRefresh();
+    setRefreshing(false);
+  }
   if (!isConnected) {
     return (
       <>
@@ -325,9 +342,21 @@ export default function CertificatePage({
       {/* ── Certificates ── */}
       <div className="section-header fade-up">
         <span className="section-title">Your Certificates</span>
-        <span className="section-sub">
-          Blockchain-verified · QR scannable
-          {hasAnyCerts && ` · ${validCerts.length} certificate${validCerts.length !== 1 ? "s" : ""}`}
+        <span className="section-sub section-sub-row">
+          <span>
+            Blockchain-verified · QR scannable
+            {hasAnyCerts && ` · ${validCerts.length} certificate${validCerts.length !== 1 ? "s" : ""}`}
+          </span>
+          {onRefresh && (
+            <button
+              type="button"
+              className="btn btn-outline btn-refresh"
+              disabled={refreshing}
+              onClick={handleRefresh}
+            >
+              {refreshing ? "Refreshing…" : "↻ Refresh"}
+            </button>
+          )}
         </span>
       </div>
 

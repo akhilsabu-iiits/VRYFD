@@ -1622,6 +1622,7 @@ export default function Home() {
               checkedInIds={checkedInIds}
               onChainEventIds={onChainEventIds}
               walletAddress={address}
+              onRefresh={refreshCertificates}
             />
           )}
         </div>

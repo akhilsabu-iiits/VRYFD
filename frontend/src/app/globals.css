@@ -269,6 +269,8 @@ body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%
 .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
 .section-title{font-size:18px;font-weight:700}
 .section-sub{font-size:13px;color:var(--text3)}
+.section-sub-row{display:flex;align-items:center;gap:.75rem}
+.btn-refresh{padding:.2rem .7rem;font-size:.78rem}
 
 /* Animations */
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
