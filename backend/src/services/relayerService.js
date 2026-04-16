@@ -507,10 +507,15 @@ function buildProviderForUrl(url) {
   const _getFeeData = p.getFeeData.bind(p);
   p.getFeeData = async () => {
     const base = await _getFeeData();
+    const wantedTip = ethers.parseUnits("5", "gwei");
+    const baseMax = base.maxFeePerGas ?? ethers.parseUnits("50", "gwei");
+    // maxFeePerGas must be >= maxPriorityFeePerGas — if Sepolia base fee is very low
+    // the provider's maxFeePerGas can be less than our 5 gwei tip, causing a BAD_DATA error.
+    const safeMax = baseMax < wantedTip ? wantedTip * 2n : baseMax;
     return {
       gasPrice: base.gasPrice,
-      maxFeePerGas: base.maxFeePerGas ?? ethers.parseUnits("50", "gwei"),
-      maxPriorityFeePerGas: ethers.parseUnits("5", "gwei"), // tip ensures next-block inclusion
+      maxFeePerGas: safeMax,
+      maxPriorityFeePerGas: wantedTip,
     };
   };
   return p;
@@ -604,6 +609,7 @@ async function deployContracts() {
       to: vryfAddress,
       data: new ethers.Interface(VRYFTokenABI.abi).encodeFunctionData("grantRole", [MINTER_ROLE, attendanceAddress]),
       nonce: nonce + 2,
+      gasLimit: 150_000n, // explicit limit: gas estimation targets an empty address before deploy, would underestimate
     }),
   ]);
 
