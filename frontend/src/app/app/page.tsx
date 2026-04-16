@@ -127,7 +127,6 @@ export default function Home() {
     } catch { return; }
 
     const decimalTokenId = tokenId.startsWith("0x") ? BigInt(tokenId).toString() : tokenId;
-    const tokenIdBigInt = BigInt(decimalTokenId);
 
     const showFallbackToast = () => showToastRef.current(
       `NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${contractAddr.slice(0, 8)}… Token ID: ${decimalTokenId}`,
@@ -135,18 +134,8 @@ export default function Home() {
     );
 
     setTimeout(async () => {
-      // Primary: wagmi walletClient.watchAsset() — always uses the correct connected wallet
-      const wc = walletClientRef.current;
-      if (wc) {
-        for (const type of ["ERC1155", "ERC721"] as const) {
-          try {
-            const added = await wc.watchAsset({ type, options: { address: contractAddr as `0x${string}`, tokenId: tokenIdBigInt } });
-            if (added) { showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success"); onSuccess?.(); return; }
-          } catch { /* try next type */ }
-        }
-      }
-
-      // Fallback: raw window.ethereum (wallets not exposed through wagmi)
+      // wallet_watchAsset for ERC721/ERC1155 must go through window.ethereum directly —
+      // wagmi's walletClient.watchAsset() only supports ERC20 in its type definitions.
       const provider = typeof window !== "undefined" ? (window as any).ethereum : null;
       if (provider) {
         for (const type of ["ERC1155", "ERC721"]) {
@@ -1281,7 +1270,7 @@ export default function Home() {
 
   // ─── Milestone NFT claim ────────────────────────────────────────────────────
 
-  const handleClaimMilestone = useCallback(async (threshold: number) => {
+  const handleClaimMilestone = useCallback(async (_threshold: number) => {
     const contractAddress = CONTRACT_ADDRESSES[chainId];
     if (chainId !== 11155111) { showToast("Please switch to Sepolia", "error"); return; }
     if (!contractAddress) { showToast("Contract not configured", "error"); return; }
