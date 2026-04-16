@@ -1160,31 +1160,23 @@ async function issueCertificatesBulk(onChainEventId, baseMetadataURI) {
     }
   }
 
-  // Check attendance records in parallel batches of 10 — read-only calls, safe to parallelize.
-  // Alchemy handles concurrent eth_call without 429s at this batch size.
+  // Check attendance records sequentially — no sleep needed. Each eth_call naturally takes
+  // ~100-200ms (network round-trip), which keeps us well under Alchemy's 330 CU/s limit.
+  // Parallel batches caused 429 bursts when many attendees are checked simultaneously.
   const results = [];
   const eligible = [];
-  const BATCH = 10;
-  for (let i = 0; i < attendeeAddresses.length; i += BATCH) {
-    const batch = attendeeAddresses.slice(i, i + BATCH);
-    const checks = await Promise.all(batch.map(async (attendee) => {
-      try {
-        const record = await withRpcFallback(() => c.getAttendanceRecord(BigInt(onChainEventId), attendee));
-        return { attendee, confirmed: Number(record.timestamp) > 0 };
-      } catch (err) {
-        return { attendee, confirmed: false, error: err.message };
-      }
-    }));
-    for (const { attendee, confirmed, error } of checks) {
-      if (confirmed) {
+  for (const attendee of attendeeAddresses) {
+    try {
+      const record = await withRpcFallback(() => c.getAttendanceRecord(BigInt(onChainEventId), attendee));
+      if (Number(record.timestamp) > 0) {
         eligible.push(attendee);
-      } else if (error) {
-        results.push({ attendee, status: "failed", reason: `RPC error: ${error}` });
       } else {
         results.push({ attendee, status: "skipped", reason: "attendance not confirmed on-chain" });
       }
+    } catch (err) {
+      results.push({ attendee, status: "failed", reason: `RPC error: ${err.message}` });
     }
-    if (i + BATCH < attendeeAddresses.length) await sleep(50); // small gap between batches
+    // No explicit sleep — RPC latency (~100-200ms) is natural throttle
   }
 
   if (eligible.length === 0) return results;
