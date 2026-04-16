@@ -543,12 +543,17 @@ export default function Home() {
       // This ensures a reset (which strips onChainId) is never overridden on reload.
       try {
         const r = await fetch(`${BACKEND}/api/relay/deployedEvents`);
-        const d = await r.json() as Record<string, { txHash: string; onChainId: string }>;
+        const d = await r.json() as Record<string, { txHash: string; onChainId: string; confirmedCount?: number }>;
         setEvents((prev) => prev.map((ev) => {
           const info = d[String(ev.id)];
           if (!info) return ev;
           if (loadedFromSource && ev.onChainId === undefined) return ev;
-          return { ...ev, onChainId: Number(info.onChainId), deployTxHash: info.txHash };
+          return {
+            ...ev,
+            onChainId: Number(info.onChainId),
+            deployTxHash: info.txHash,
+            ...(info.confirmedCount != null ? { attendees: Number(info.confirmedCount) } : {}),
+          };
         }));
       } catch {}
     })();
