@@ -293,10 +293,8 @@ export default function Home() {
     const fallbackToast = () =>
       showToastRef.current(`NFT minted ✓  To add: MetaMask → NFTs → Import NFT → Contract: ${addr.slice(0, 10)}… Token ID: ${decimalTokenId}`, "");
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tryWatch = async (type: "ERC1155" | "ERC721"): Promise<boolean> =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (wc as any).request({
+      (wc as unknown as { request: (args: unknown) => Promise<boolean> }).request({
         method: "wallet_watchAsset",
         params: { type, options: { address: addr, tokenId: decimalTokenId } },
       }) as Promise<boolean>;
