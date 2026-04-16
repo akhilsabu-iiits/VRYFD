@@ -879,27 +879,35 @@ async function enrichAttendeesWithTxHash(onChainEventId) {
 }
 
 /**
- * Get attendance record for a wallet+event
- * Also returns the txHash of the AttendanceConfirmed event if the attendee is confirmed
+ * Get attendance record for a wallet+event.
+ * Also returns the txHash of the confirmation tx.
+ *
+ * Timing gap fix: confirmAttendee adds the attendee to confirmedAttendeesDetailStore
+ * immediately when the tx is submitted (optimistic), but tx.wait() runs in the background
+ * and the chain read may return timestamp=0 for up to ~12 seconds (one Sepolia block).
+ * We check the in-memory store first so "Check Status" reflects the organiser's action
+ * the moment it happens, not a block later.
  */
 async function getAttendanceRecord(eventId, attendee) {
   const c = getContract();
-  const record = await c.getAttendanceRecord(BigInt(eventId), attendee);
-  const checkedIn = Number(record.timestamp) > 0;
 
-  // Look up txHash from the in-memory detail store (populated by confirmAttendee and loaded
-  // from disk on startup). No log scan needed — avoids thousands of RPC calls.
-  let txHash = null;
-  if (checkedIn) {
-    const detail = confirmedAttendeesDetailStore.get(String(eventId))?.get(attendee.toLowerCase());
-    if (detail?.txHash) txHash = detail.txHash;
-  }
+  // Fast path: organiser already confirmed in this session (detail store is populated
+  // by confirmAttendee as soon as the tx is submitted, before the block is mined).
+  const storeDetail = confirmedAttendeesDetailStore.get(String(eventId))?.get(attendee.toLowerCase());
+
+  // Always read chain for badgeClaimed — that state only changes when the attendee
+  // calls claimBadgeGasless, which is unrelated to the confirmation timing gap.
+  const record = await c.getAttendanceRecord(BigInt(eventId), attendee);
+  const onChainCheckedIn = Number(record.timestamp) > 0;
+
+  // checkedIn = true if chain confirms it OR if the organiser's tx is in-flight
+  const checkedIn = onChainCheckedIn || !!storeDetail;
 
   return {
     checkedIn,
-    timestamp: Number(record.timestamp),
+    timestamp: onChainCheckedIn ? Number(record.timestamp) : (storeDetail?.timestamp ?? 0),
     badgeClaimed: record.badgeClaimed,
-    txHash,
+    txHash: storeDetail?.txHash ?? null,
   };
 }
 
