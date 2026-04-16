@@ -1112,21 +1112,33 @@ async function issueCertificatesBulk(onChainEventId, baseMetadataURI) {
     }
   }
 
-  // Wait for all submitted txs in parallel — all mine in the same Sepolia block window.
-  const receiptResults = await Promise.allSettled(
-    pendingTxs.map(({ tx }) => tx.wait(1, 120_000))
-  );
+  // Wait for all receipts with a single polling loop — avoids N parallel tx.wait() calls
+  // each independently calling eth_blockNumber which triggers Alchemy 429 bursts.
+  const pending = new Map(pendingTxs.map(({ attendee, tx }) => [tx.hash, attendee]));
+  const receiptMap = new Map(); // txHash → receipt
+  const deadline = Date.now() + 120_000;
 
-  for (let i = 0; i < pendingTxs.length; i++) {
-    const { attendee } = pendingTxs[i];
-    const r = receiptResults[i];
-    if (r.status === "fulfilled") {
-      console.log(`[cert] issued certId for attendee=${attendee} event=${onChainEventId} tx=${r.value.hash}`);
-      results.push({ attendee, status: "issued", txHash: r.value.hash });
+  while (pending.size > 0 && Date.now() < deadline) {
+    await sleep(4_000);
+    for (const hash of [...pending.keys()]) {
+      try {
+        const receipt = await provider.getTransactionReceipt(hash);
+        if (receipt?.blockNumber) {
+          receiptMap.set(hash, receipt);
+          pending.delete(hash);
+        }
+      } catch {}
+    }
+  }
+
+  for (const { attendee, tx } of pendingTxs) {
+    const receipt = receiptMap.get(tx.hash);
+    if (receipt) {
+      console.log(`[cert] issued cert attendee=${attendee} event=${onChainEventId} tx=${receipt.hash}`);
+      results.push({ attendee, status: "issued", txHash: receipt.hash });
     } else {
-      const reason = r.reason?.message || "tx.wait failed";
-      console.error(`[cert] receipt failed attendee=${attendee}:`, reason);
-      results.push({ attendee, status: "failed", reason });
+      console.error(`[cert] receipt timeout attendee=${attendee} tx=${tx.hash}`);
+      results.push({ attendee, status: "failed", reason: "tx not mined within 2 minutes" });
     }
   }
 
