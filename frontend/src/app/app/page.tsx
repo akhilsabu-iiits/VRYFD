@@ -986,13 +986,15 @@ export default function Home() {
         }
         showToast("Soulbound POAP Badge minted! It's in your wallet.", "success");
 
-        // Backend waits for receipt and returns tokenId — token is confirmed on-chain.
-        // Call promptAddNft directly. If tokenId is missing (rare tx.wait timeout),
-        // poll the receipt ourselves as fallback.
+        // Backend now returns immediately after tx submission (no longer waits for mining).
+        // We always wait for the receipt here so the MetaMask popup fires on a
+        // confirmed on-chain token. The predicted tokenId from the backend is used as
+        // a fallback if log parsing fails.
         let nftTokenId: string | null = (data.tokenId && data.tokenId !== "0") ? String(data.tokenId) : null;
 
-        if (!nftTokenId && data.txHash && publicClient) {
+        if (data.txHash && publicClient) {
           try {
+            showToast("Waiting for NFT to mint on-chain...", "");
             const receipt = await publicClient.waitForTransactionReceipt({
               hash: data.txHash as `0x${string}`,
               timeout: 90_000,
@@ -1017,7 +1019,7 @@ export default function Home() {
                 } catch {}
               }
             }
-          } catch {}
+          } catch { /* receipt timeout — use predicted tokenId from backend if available */ }
         }
 
         if (nftTokenId) {
