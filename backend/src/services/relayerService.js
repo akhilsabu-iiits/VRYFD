@@ -1141,7 +1141,7 @@ async function issueCertificatesBulk(onChainEventId, baseMetadataURI) {
     } catch (err) {
       results.push({ attendee, status: "failed", reason: `RPC error reading attendance: ${err.message}` });
     }
-    await sleep(200);
+    await sleep(100);
   }
 
   if (eligible.length === 0) return results;
@@ -1167,7 +1167,7 @@ async function issueCertificatesBulk(onChainEventId, baseMetadataURI) {
       results.push({ attendee, status: "failed", reason });
       // tx was NOT submitted — nonce unchanged, no increment needed
     }
-    await sleep(200);
+    await sleep(100);
   }
 
   if (pendingTxs.length === 0) return results;
@@ -1179,7 +1179,7 @@ async function issueCertificatesBulk(onChainEventId, baseMetadataURI) {
   const deadline = Date.now() + 120_000;
 
   while (pending.size > 0 && Date.now() < deadline) {
-    await sleep(4_000);
+    await sleep(1_000);
     for (const hash of [...pending.keys()]) {
       try {
         const receipt = await provider.getTransactionReceipt(hash);
@@ -1188,7 +1188,7 @@ async function issueCertificatesBulk(onChainEventId, baseMetadataURI) {
           pending.delete(hash);
         }
       } catch {}
-      await sleep(300); // small gap between receipt checks to stay under CU limit
+      await sleep(150); // small gap between receipt checks to stay under CU limit
     }
   }
 

@@ -999,7 +999,7 @@ export default function Home() {
             const receipt = await publicClient.waitForTransactionReceipt({
               hash: data.txHash as `0x${string}`,
               timeout: 90_000,
-              pollingInterval: 4_000,
+              pollingInterval: 1_000,
             });
             const abi = VryfdABI.abi as Parameters<typeof decodeEventLog>[0]["abi"];
             // Primary: BadgeMinted(eventId, attendee, tokenId) — contract's own event
@@ -1340,7 +1340,7 @@ export default function Home() {
       if (data.txHash && publicClient) {
         try {
           showToast("Waiting for NFT to mint on-chain...", "");
-          const receipt = await publicClient.waitForTransactionReceipt({ hash: data.txHash as `0x${string}`, timeout: 90_000, pollingInterval: 4_000 });
+          const receipt = await publicClient.waitForTransactionReceipt({ hash: data.txHash as `0x${string}`, timeout: 90_000, pollingInterval: 1_000 });
           // Try to get confirmed tokenIds from logs — overrides predicted values if present
           const abi = VryfdABI.abi as Parameters<typeof decodeEventLog>[0]["abi"];
           const fromLogs: string[] = [];
