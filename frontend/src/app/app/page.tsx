@@ -1007,23 +1007,24 @@ export default function Home() {
           setBadgeMintTimes((prev) => ({ ...prev, [capturedBadgeEventId]: new Date().toISOString() }));
         }
         showToast("Soulbound POAP Badge minted! It's in your wallet.", "success");
+        refetchVryf().catch(() => {});
 
-        // Backend now returns immediately after tx submission (no longer waits for mining).
-        // We always wait for the receipt here so the MetaMask popup fires on a
-        // confirmed on-chain token. The predicted tokenId from the backend is used as
-        // a fallback if log parsing fails.
-        let nftTokenId: string | null = (data.tokenId && data.tokenId !== "0") ? String(data.tokenId) : null;
+        // Release the UI immediately — badge is credited, tx is in mempool.
+        // Receipt wait + MetaMask popup run in the background so the button
+        // re-enables right away instead of staying locked for a full block (~12s).
+        setIsMinting(false);
 
+        // Background: wait for receipt then fire wallet_watchAsset on the confirmed token.
+        const predictedTokenId: string | null = (data.tokenId && data.tokenId !== "0") ? String(data.tokenId) : null;
         if (data.txHash && publicClient) {
-          try {
-            showToast("Waiting for NFT to mint on-chain...", "");
-            const receipt = await publicClient.waitForTransactionReceipt({
-              hash: data.txHash as `0x${string}`,
-              timeout: 90_000,
-              pollingInterval: 1_000,
-            });
+          publicClient.waitForTransactionReceipt({
+            hash: data.txHash as `0x${string}`,
+            timeout: 90_000,
+            pollingInterval: 1_000,
+          }).then((receipt) => {
             const abi = VryfdABI.abi as Parameters<typeof decodeEventLog>[0]["abi"];
-            // Primary: BadgeMinted(eventId, attendee, tokenId) — contract's own event
+            let nftTokenId: string | null = predictedTokenId;
+            // Primary: BadgeMinted(eventId, attendee, tokenId)
             for (const log of receipt.logs) {
               try {
                 const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics as Parameters<typeof decodeEventLog>[0]["topics"], eventName: "BadgeMinted" });
@@ -1031,7 +1032,7 @@ export default function Home() {
                 if (id != null && id > 0n) { nftTokenId = id.toString(); break; }
               } catch {}
             }
-            // Fallback: TransferSingle (ERC1155 standard)
+            // Fallback: TransferSingle
             if (!nftTokenId) {
               for (const log of receipt.logs) {
                 try {
@@ -1041,19 +1042,27 @@ export default function Home() {
                 } catch {}
               }
             }
-          } catch { /* receipt timeout — use predicted tokenId from backend if available */ }
-        }
-
-        if (nftTokenId) {
-          // Store tokenId so Badges page shows persistent "Add to Wallet" button
-          if (capturedBadgeEventId !== null) setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: nftTokenId! }));
-          // Use signingContractAddress (from backend nonce response) — always the live
-          // post-reset contract, never a stale env var. Badge was minted there, popup must match.
-          promptAddNft(signingContractAddress, nftTokenId);
+            if (nftTokenId) {
+              if (capturedBadgeEventId !== null) setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: nftTokenId! }));
+              promptAddNft(signingContractAddress, nftTokenId, undefined, 0);
+            } else {
+              showToastRef.current(`NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${signingContractAddress.slice(0, 8)}…`, "");
+            }
+          }).catch(() => {
+            // Receipt timed out — use predicted tokenId if available, else fallback toast
+            if (predictedTokenId) {
+              if (capturedBadgeEventId !== null) setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: predictedTokenId }));
+              promptAddNft(signingContractAddress, predictedTokenId, undefined, 0);
+            } else {
+              showToastRef.current(`NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${signingContractAddress.slice(0, 8)}…`, "");
+            }
+          });
+        } else if (predictedTokenId) {
+          if (capturedBadgeEventId !== null) setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: predictedTokenId }));
+          promptAddNft(signingContractAddress, predictedTokenId);
         } else {
-          showToast(`NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${signingContractAddress.slice(0, 8)}…`, "");
+          showToastRef.current(`NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${signingContractAddress.slice(0, 8)}…`, "");
         }
-        refetchVryf().catch(() => {});
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Unknown error";
         if (msg.includes("User rejected") || msg.includes("denied")) {
