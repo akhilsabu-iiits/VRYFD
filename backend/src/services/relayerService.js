@@ -627,6 +627,30 @@ async function deployContracts() {
   // Rewire the relayer to point at new contracts
   contract = new ethers.Contract(attendanceAddress, VryfdABI.abi, relayerWallet);
 
+  // Submit milestone URI txs immediately with explicit sequential nonces (nonce+3,+4,+5).
+  // This prevents nonce collisions with createEvent calls that arrive right after the
+  // frontend reloads — without explicit nonces both callers would get the same pending count.
+  const baseUrl = process.env.BACKEND_URL ||
+    (process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : null);
+  if (baseUrl) {
+    try {
+      const milestoneNonce = nonce + 3;
+      const thresholds = [5, 10, 20];
+      const milestoneTxs = await Promise.all(
+        thresholds.map((t, i) =>
+          contract.setMilestoneURI(BigInt(t), `${baseUrl}/api/metadata/milestone/${t}`, { nonce: milestoneNonce + i })
+            .catch((e) => { console.warn(`[deploy] setMilestoneURI(${t}) submit failed: ${e.message}`); return null; })
+        )
+      );
+      console.log(`[deploy] milestone URI txs submitted (nonces ${milestoneNonce}-${milestoneNonce + 2})`);
+      // Wait for confirmations in background — don't block deploy-status becoming "ready"
+      Promise.all(milestoneTxs.filter(Boolean).map((tx) => tx.wait(1, 60_000).catch(() => {})))
+        .then(() => console.log("[deploy] milestone URIs confirmed"));
+    } catch (e) {
+      console.warn(`[deploy] milestone URI submission failed (non-fatal): ${e.message}`);
+    }
+  }
+
   // Persist new addresses to disk
   try {
     const contractStatePath = path.join(__dirname, "../../data/contractState.json");
@@ -653,19 +677,9 @@ async function deployContractsAsync() {
   try {
     const { attendanceAddress, vryfAddress } = await deployContracts();
 
-    // Mark ready immediately — frontend can reload and use the new contracts.
-    // Milestone URIs are set in the background; they're only needed when a user
-    // hits a milestone threshold, which won't happen right after a reset.
+    // Mark ready — milestone URI txs are already in the mempool (submitted with explicit
+    // nonces inside deployContracts), so createEvent nonces won't collide with them.
     deployState = { status: "ready", contractAddress: attendanceAddress, vryfTokenAddress: vryfAddress, error: null };
-
-    // Set milestone URIs in background (non-blocking)
-    const baseUrl = process.env.BACKEND_URL ||
-      (process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : null);
-    if (baseUrl) {
-      setMilestoneURIs(baseUrl)
-        .then(() => console.log("[deploy] milestone URIs set"))
-        .catch((e) => console.warn(`[deploy] setMilestoneURIs failed (non-fatal): ${e.message}`));
-    }
   } catch (err) {
     deployState = { status: "error", contractAddress: null, vryfTokenAddress: null, error: err.message };
     console.error("[deploy] async deployment failed:", err.message);

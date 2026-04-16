@@ -416,7 +416,7 @@ export default function Home() {
   useEffect(() => {
     if (!isDeployingContracts) return;
     let attempts = 0;
-    const MAX_ATTEMPTS = 100; // 100 × 3s = 5 min timeout
+    const MAX_ATTEMPTS = 300; // 300 × 1s = 5 min timeout
     const id = setInterval(async () => {
       attempts++;
       try {
@@ -448,7 +448,7 @@ export default function Home() {
           showToast("Deploy timed out — please try reset again", "error");
         }
       } catch { /* backend unreachable — keep polling */ }
-    }, 3000);
+    }, 1000);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDeployingContracts]);
