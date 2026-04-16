@@ -267,7 +267,51 @@ export default function Home() {
       showToastRef.current(`NFT minted ✓  To add manually: MetaMask → NFTs → Import NFT → Contract: ${addr.slice(0, 10)}…`, "");
       return;
     }
-    promptAddNft(addr, resolvedTokenId, onSuccess, 900);
+
+    // Normalise tokenId to decimal string (MetaMask rejects hex / BigInt)
+    let decimalTokenId: string;
+    try {
+      const n = BigInt(resolvedTokenId);
+      if (n <= 0n) { showToastRef.current(`NFT minted ✓  To add manually: MetaMask → NFTs → Import NFT → Contract: ${addr.slice(0, 10)}… Token ID: ${resolvedTokenId}`, ""); return; }
+      decimalTokenId = n.toString();
+    } catch {
+      showToastRef.current(`NFT minted ✓  To add manually: MetaMask → NFTs → Import NFT → Contract: ${addr.slice(0, 10)}… Token ID: ${resolvedTokenId}`, "");
+      return;
+    }
+
+    const wc = walletClientRef.current;
+    if (!wc) {
+      // Fallback to window.ethereum if wagmi walletClient not ready
+      promptAddNft(addr, decimalTokenId, onSuccess, 900);
+      return;
+    }
+
+    // Use walletClient.request directly — this targets the CONNECTED wallet (MetaMask) rather
+    // than window.ethereum which can be intercepted by other wallet extensions.
+    // We pass tokenId as a decimal STRING — wagmi's watchAsset() passes it as BigInt which
+    // MetaMask silently rejects, so we bypass it and craft the params ourselves.
+    const fallbackToast = () =>
+      showToastRef.current(`NFT minted ✓  To add: MetaMask → NFTs → Import NFT → Contract: ${addr.slice(0, 10)}… Token ID: ${decimalTokenId}`, "");
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tryWatch = async (type: "ERC1155" | "ERC721"): Promise<boolean> =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (wc as any).request({
+        method: "wallet_watchAsset",
+        params: { type, options: { address: addr, tokenId: decimalTokenId } },
+      }) as Promise<boolean>;
+
+    setTimeout(async () => {
+      try {
+        const added = await tryWatch("ERC1155");
+        if (added) { showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success"); onSuccess(); return; }
+      } catch {}
+      try {
+        const added = await tryWatch("ERC721");
+        if (added) { showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success"); onSuccess(); return; }
+      } catch {}
+      fallbackToast();
+    }, 900);
   }, [promptAddNft, publicClient, onChainEventIds]);
 
   // No loadBackendDeployedEvents needed — onChainId/deployTxHash live on the VEvent itself.
