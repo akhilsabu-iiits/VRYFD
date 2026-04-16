@@ -777,23 +777,23 @@ function getProvider() {
 async function createEvent(name, metadataURI, startTime, endTime) {
   return withRpcFallback(async () => {
     const c = getContract();
+
+    // Read nextEventId BEFORE submitting — lets us return without waiting for block confirmation.
+    // nextEventId is the slot that will be assigned to this tx (contract increments after creation).
+    const nextId = await c.nextEventId();
+    const eventId = nextId.toString();
+
     const tx = await c.createEvent(name, metadataURI, BigInt(startTime), BigInt(endTime));
-    const receipt = await tx.wait(1, 120_000); // 1 confirmation, 2-min timeout
+    console.log(`[createEvent] tx submitted: ${tx.hash}, predicted eventId: ${eventId}`);
 
-    const iface = new ethers.Interface(VryfdABI.abi);
-    let eventId = null;
-    for (const log of receipt.logs) {
-      try {
-        const parsed = iface.parseLog(log);
-        if (parsed?.name === "EventCreated") {
-          eventId = parsed.args[0].toString();
-          break;
-        }
-      } catch {}
-    }
+    // Fire-and-forget — don't block the HTTP response on block confirmation.
+    // The event is registered optimistically; on revert (shouldn't happen) the
+    // frontend will show a stale onChainId but the user can redeploy.
+    tx.wait(1, 120_000)
+      .then((receipt) => console.log(`[createEvent] confirmed: ${receipt.hash} eventId=${eventId}`))
+      .catch((e) => console.warn(`[createEvent] tx.wait failed (${tx.hash}):`, e.message));
 
-    if (eventId === null) throw new Error("EventCreated log not found in receipt — event may not have been created");
-    return { txHash: receipt.hash, eventId };
+    return { txHash: tx.hash, eventId };
   });
 }
 

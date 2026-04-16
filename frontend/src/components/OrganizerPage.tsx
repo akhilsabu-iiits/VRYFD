@@ -29,12 +29,18 @@ function adminHeaders(extra?: Record<string, string>): Record<string, string> {
 // endTime is 10 years from now so demo events never expire.
 // Upcoming events keep their scheduled date.
 async function fetchBadgeDataURI(eventId: number): Promise<string> {
+  const fallback = `${BACKEND}/api/metadata/badge/${eventId}`;
   try {
-    const res = await fetch(`${BACKEND}/api/metadata/badge/${eventId}/pin`);
-    const data = await res.json();
-    return data.metaURL as string;
+    // 4-second timeout: if the metadata was pre-pinned (background kick-off on register)
+    // this resolves instantly from cache; otherwise fall back to the direct backend URL.
+    const res = await Promise.race([
+      fetch(`${BACKEND}/api/metadata/badge/${eventId}/pin`),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("pin timeout")), 4000)),
+    ]);
+    const data = await (res as Response).json();
+    return (data.metaURL as string) || fallback;
   } catch {
-    return `${BACKEND}/api/metadata/badge/${eventId}`;
+    return fallback;
   }
 }
 

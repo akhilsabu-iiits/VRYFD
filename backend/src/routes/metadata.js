@@ -175,6 +175,11 @@ router.post("/badge/register", (req, res) => {
     accent: safeColor,
     symbol: emoji || "★",
   };
+
+  // Pre-pin in the background so the /pin endpoint returns from cache when Deploy is clicked.
+  // Fire-and-forget — errors are non-fatal, the /pin endpoint will retry on demand.
+  pinBadgeMetadata(customEvents[numId]).catch(() => {});
+
   res.json({ success: true });
 });
 
