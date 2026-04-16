@@ -510,7 +510,7 @@ function buildProviderForUrl(url) {
     return {
       gasPrice: base.gasPrice,
       maxFeePerGas: base.maxFeePerGas ?? ethers.parseUnits("50", "gwei"),
-      maxPriorityFeePerGas: ethers.parseUnits("2", "gwei"), // tip ensures next-block inclusion
+      maxPriorityFeePerGas: ethers.parseUnits("5", "gwei"), // tip ensures next-block inclusion
     };
   };
   return p;
@@ -628,19 +628,20 @@ async function deployContractsAsync() {
   deployState = { status: "deploying", contractAddress: null, vryfTokenAddress: null, error: null };
   try {
     const { attendanceAddress, vryfAddress } = await deployContracts();
-    // Set milestone URIs on the new contract so milestone NFT metadata is ready immediately.
-    // Use RAILWAY_STATIC_URL or BACKEND_URL env vars — falls back silently if unavailable.
-    const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.RAILWAY_STATIC_URL
-      ? `https://${process.env.RAILWAY_STATIC_URL}` : null;
-    if (baseUrl) {
-      try {
-        await setMilestoneURIs(baseUrl);
-        console.log("[deploy] milestone URIs set");
-      } catch (e) {
-        console.warn(`[deploy] setMilestoneURIs failed (non-fatal): ${e.message}`);
-      }
-    }
+
+    // Mark ready immediately — frontend can reload and use the new contracts.
+    // Milestone URIs are set in the background; they're only needed when a user
+    // hits a milestone threshold, which won't happen right after a reset.
     deployState = { status: "ready", contractAddress: attendanceAddress, vryfTokenAddress: vryfAddress, error: null };
+
+    // Set milestone URIs in background (non-blocking)
+    const baseUrl = process.env.BACKEND_URL ||
+      (process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : null);
+    if (baseUrl) {
+      setMilestoneURIs(baseUrl)
+        .then(() => console.log("[deploy] milestone URIs set"))
+        .catch((e) => console.warn(`[deploy] setMilestoneURIs failed (non-fatal): ${e.message}`));
+    }
   } catch (err) {
     deployState = { status: "error", contractAddress: null, vryfTokenAddress: null, error: err.message };
     console.error("[deploy] async deployment failed:", err.message);
