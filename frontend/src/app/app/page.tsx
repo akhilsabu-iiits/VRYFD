@@ -131,19 +131,20 @@ export default function Home() {
         ? (window as any).ethereum
         : (walletClientRef.current as any) ?? null;
 
-    const hexTokenId = tokenId.startsWith("0x")
-      ? tokenId
-      : `0x${BigInt(tokenId).toString(16)}`;
+    // MetaMask expects tokenId as a decimal string, not hex
+    const decimalTokenId = tokenId.startsWith("0x")
+      ? BigInt(tokenId).toString()
+      : tokenId;
 
     const showFallbackToast = () => showToastRef.current(
-      `NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${contractAddr.slice(0, 8)}… Token ID: ${tokenId}`,
+      `NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${contractAddr.slice(0, 8)}… Token ID: ${decimalTokenId}`,
       ""
     );
 
     if (!provider) { showFallbackToast(); return; }
 
     const tryWatch = (type: string): Promise<boolean> =>
-      provider.request({ method: "wallet_watchAsset", params: { type, options: { address: contractAddr, tokenId: hexTokenId } } }) as Promise<boolean>;
+      provider.request({ method: "wallet_watchAsset", params: { type, options: { address: contractAddr, tokenId: decimalTokenId } } }) as Promise<boolean>;
 
     setTimeout(async () => {
       try {
@@ -1026,6 +1027,9 @@ export default function Home() {
         if (nftTokenId) {
           if (capturedBadgeEventId !== null) setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: nftTokenId! }));
           promptAddNft(contractAddress, nftTokenId);
+        } else {
+          // tokenId unavailable — show manual import instructions as fallback
+          showToast(`NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${contractAddress.slice(0, 8)}…`, "");
         }
         refetchVryf().catch(() => {});
       } catch (err: unknown) {
