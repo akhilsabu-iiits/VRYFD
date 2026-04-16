@@ -439,14 +439,6 @@ export default function OrganizerPage({ events, deployedEventIds, onChainDeploye
     }
   }
 
-  // ── Guards ────────────────────────────────────────────────────────────────
-  if (!address) {
-    return (
-      <div className="card fade-up org-guard">
-        <p className="text-muted">Connect your organizer wallet to access this panel.</p>
-      </div>
-    );
-  }
 
   const TABS: { key: Tab; label: string }[] = [
     { key: "create",       label: "✏️ Create Event"    },
