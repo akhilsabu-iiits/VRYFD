@@ -299,6 +299,7 @@ export default function Home() {
           const cached = JSON.parse(raw) as {
             ts: number; checkedInIds: number[]; userBadges: number[];
             userCheckins: number; claimedMilestones: number[];
+            badgeTokenIds?: Record<number, string>;
           };
           if (Date.now() - cached.ts < CACHE_TTL_MS) {
             // Merge — never decrease counts that may have been updated in-session
@@ -311,6 +312,9 @@ export default function Home() {
             setUserCheckins((prev) => Math.max(prev, cached.userCheckins, cached.checkedInIds.length));
             if (cached.claimedMilestones.length > 0) {
               setClaimedMilestones((prev) => { const m = [...new Set([...prev, ...cached.claimedMilestones])]; return m.length === prev.length ? prev : m; });
+            }
+            if (cached.badgeTokenIds && Object.keys(cached.badgeTokenIds).length > 0) {
+              setBadgeTokenIds((prev) => ({ ...prev, ...cached.badgeTokenIds }));
             }
             fireBackgroundFetches(cached.checkedInIds);
             return;
@@ -425,6 +429,7 @@ export default function Home() {
               userBadges: newBadges,
               userCheckins: Math.max(onChainCount, newCheckedIn.length),
               claimedMilestones: claimedList,
+              badgeTokenIds: newBadgeTokenIds,
             }));
           } catch { /* localStorage full — skip cache write */ }
 
