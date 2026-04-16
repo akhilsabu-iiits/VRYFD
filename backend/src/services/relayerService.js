@@ -802,26 +802,41 @@ async function gaslessClaimBadge(attendee, onChainEventId, signature) {
     const tx = await c.claimBadgeGasless(attendee, BigInt(onChainEventId), sig.v, sig.r, sig.s);
     console.log(`[gaslessClaimBadge] tx submitted: ${tx.hash}`);
 
-    // Return immediately — frontend waits for receipt and calls wallet_watchAsset only
-    // after the token is confirmed on-chain (MetaMask rejects watchAsset for unminted tokens).
-    tx.wait(1, 120_000)
-      .then((receipt) => {
-        const iface = new ethers.Interface(VryfdABI.abi);
-        let tokenId = null;
-        for (const log of receipt.logs ?? []) {
-          try {
-            const parsed = iface.parseLog(log);
-            if (parsed?.name === "TransferSingle") {
-              const id = parsed.args.id ?? parsed.args[3];
-              if (id != null && BigInt(id) > 0n) { tokenId = id.toString(); break; }
-            }
-          } catch {}
-        }
-        console.log(`[gaslessClaimBadge] mined: ${receipt.hash}, tokenId=${tokenId}`);
-      })
-      .catch((err) => console.warn(`[gaslessClaimBadge] tx.wait() (background):`, err.message));
+    // Wait for receipt — backend parses tokenId from TransferSingle log so the
+    // frontend can call wallet_watchAsset immediately on a confirmed on-chain token.
+    let receipt = null;
+    try {
+      receipt = await tx.wait(1, 120_000);
+    } catch (waitErr) {
+      console.warn(`[gaslessClaimBadge] tx.wait() failed: ${waitErr.message}`);
+    }
 
-    return { txHash: tx.hash, tokenId: null };
+    let tokenId = null;
+    if (receipt?.logs?.length) {
+      const iface = new ethers.Interface(VryfdABI.abi);
+      for (const log of receipt.logs) {
+        try {
+          const parsed = iface.parseLog(log);
+          if (parsed?.name === "TransferSingle") {
+            const id = parsed.args.id ?? parsed.args[3];
+            if (id != null && BigInt(id) > 0n) { tokenId = id.toString(); break; }
+          }
+        } catch {}
+      }
+      console.log(`[gaslessClaimBadge] logs=${receipt.logs.length} tokenId=${tokenId}`);
+    }
+    // Fallback: read eventBadgeToken mapping
+    if (!tokenId) {
+      try {
+        const tid = await c.eventBadgeToken(BigInt(onChainEventId));
+        if (BigInt(tid) > 0n) tokenId = tid.toString();
+        console.log(`[gaslessClaimBadge] eventBadgeToken fallback tokenId=${tokenId}`);
+      } catch (e) {
+        console.warn(`[gaslessClaimBadge] eventBadgeToken failed: ${e.message}`);
+      }
+    }
+    console.log(`[gaslessClaimBadge] final tokenId=${tokenId} txHash=${receipt?.hash ?? tx.hash}`);
+    return { txHash: receipt?.hash ?? tx.hash, tokenId };
   });
 }
 

@@ -1000,13 +1000,13 @@ export default function Home() {
         }
         showToast("Soulbound POAP Badge minted! It's in your wallet.", "success");
 
-        // Always wait for receipt before calling wallet_watchAsset —
-        // MetaMask validates token existence on-chain and silently rejects for unminted tokens.
-        let nftTokenId: string | null = null;
+        // Backend waits for receipt and returns tokenId — token is confirmed on-chain.
+        // Call promptAddNft directly. If tokenId is missing (rare tx.wait timeout),
+        // poll the receipt ourselves as fallback.
+        let nftTokenId: string | null = (data.tokenId && data.tokenId !== "0") ? String(data.tokenId) : null;
 
-        if (data.txHash && publicClient) {
+        if (!nftTokenId && data.txHash && publicClient) {
           try {
-            showToast("Waiting for badge NFT to mint on-chain...", "");
             const receipt = await publicClient.waitForTransactionReceipt({
               hash: data.txHash as `0x${string}`,
               timeout: 90_000,
@@ -1015,17 +1015,12 @@ export default function Home() {
             const abi = VryfdABI.abi as Parameters<typeof decodeEventLog>[0]["abi"];
             for (const log of receipt.logs) {
               try {
-                const decoded = decodeEventLog({
-                  abi,
-                  data: log.data,
-                  topics: log.topics as Parameters<typeof decodeEventLog>[0]["topics"],
-                  eventName: "TransferSingle",
-                });
+                const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics as Parameters<typeof decodeEventLog>[0]["topics"], eventName: "TransferSingle" });
                 const id = (decoded.args as { id?: bigint }).id;
                 if (id != null && id > 0n) { nftTokenId = id.toString(); break; }
               } catch {}
             }
-          } catch { /* tx not mined within 90s — skip popup */ }
+          } catch {}
         }
 
         if (nftTokenId) {
