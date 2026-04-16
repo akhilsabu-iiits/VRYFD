@@ -5,6 +5,9 @@ const VryfdABI = require("../abis/VryfdAttendance.json");
 const VRYFTokenABI = require("../abis/VRYFToken.json");
 const { getENSOverride } = require("./ensOverrides");
 
+// ─── Sleep helper — used to throttle RPC calls and avoid Alchemy 429s ────────
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 // ─── Atomic JSON write helper ─────────────────────────────────────────────────
 // Writes JSON to a .tmp file then renames it over the target so readers never
 // see a partially-written file (important on Windows where rename is also atomic).
@@ -1066,12 +1069,14 @@ async function issueCertificatesBulk(onChainEventId, baseMetadataURI) {
     }
   }
 
+  // Build set of already-certified attendees — throttled to avoid Alchemy 429.
+  // 150ms between reads keeps us well under the free-tier 330 CU/s limit.
   const alreadyCertified = new Set();
   try {
-    const totalCerts = Number(await c.nextCertificateId());
+    const totalCerts = Number(await withRpcFallback(() => c.nextCertificateId()));
     for (let i = 1; i < totalCerts; i++) {  // start at 1 — slot 0 is unused
       try {
-        const cert = await c.certificates(BigInt(i));
+        const cert = await withRpcFallback(() => c.certificates(BigInt(i)));
         if (Number(cert.timestamp) === 0) continue;  // skip empty slots
         if (Number(cert.eventId) === Number(onChainEventId) && cert.isValid) {
           alreadyCertified.add(cert.attendee.toLowerCase());
@@ -1079,6 +1084,7 @@ async function issueCertificatesBulk(onChainEventId, baseMetadataURI) {
       } catch {
         // single cert read failed — skip and continue
       }
+      await sleep(150);
     }
   } catch (err) {
     // Can't read existing certs — proceed anyway; contract handles duplicates
@@ -1091,10 +1097,9 @@ async function issueCertificatesBulk(onChainEventId, baseMetadataURI) {
       results.push({ attendee, status: "skipped", reason: "already certified" });
       continue;
     }
-    // Validate: attendee must have claimed their POAP badge before certificate can be issued.
-    // This enforces the full workflow: check-in → organizer confirm → badge claim → certificate.
+    // Validate: attendee must have confirmed attendance on-chain before cert can be issued.
     try {
-      const record = await c.getAttendanceRecord(BigInt(onChainEventId), attendee);
+      const record = await withRpcFallback(() => c.getAttendanceRecord(BigInt(onChainEventId), attendee));
       if (Number(record.timestamp) === 0) {
         results.push({ attendee, status: "skipped", reason: "attendance not confirmed on-chain" });
         continue;
@@ -1103,8 +1108,9 @@ async function issueCertificatesBulk(onChainEventId, baseMetadataURI) {
       results.push({ attendee, status: "failed", reason: `Failed to read attendance: ${err.message}` });
       continue;
     }
+    await sleep(150); // throttle before sending tx
     try {
-      const tx = await c.issueCertificate(BigInt(onChainEventId), attendee, certMetaURI);
+      const tx = await withRpcFallback(() => c.issueCertificate(BigInt(onChainEventId), attendee, certMetaURI));
       const receipt = await tx.wait(1, 120_000);
       console.log(`[cert] issued certId for attendee=${attendee} event=${onChainEventId} tx=${receipt.hash}`);
       results.push({ attendee, status: "issued", txHash: receipt.hash });
