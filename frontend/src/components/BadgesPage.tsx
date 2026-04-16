@@ -24,10 +24,6 @@ export default function BadgesPage({
   badgeTokenIds, milestoneNftIds, badgeMmAdded, contractAddress,
   onClaimMilestone, onAddNftToWallet, onAddBadgeToWallet,
 }: BadgesPageProps) {
-  // Which badge / milestone panel is open (null = all closed)
-  const [badgePanelId, setBadgePanelId] = useState<number | null>(null);
-  const [milestonePanelThreshold, setMilestonePanelThreshold] = useState<number | null>(null);
-  // "addr" or "tokenId" — shared since only one panel is open at a time
   const [copiedField, setCopiedField] = useState<"addr" | "tokenId" | null>(null);
 
   const copyText = useCallback((text: string, field: "addr" | "tokenId") => {
@@ -37,28 +33,23 @@ export default function BadgesPage({
     }).catch(() => {});
   }, []);
 
+  // Always-visible import panel shown under every NFT button as a reliable fallback.
+  // The MetaMask popup fires automatically via promptAddNft (wallet_watchAsset).
+  // If the popup doesn't appear (older MetaMask), the user can copy-paste from here.
   const renderImportPanel = (tokenId: string) => (
     <div className="nft-import-panel">
-      <div className="nft-import-title">Import into MetaMask</div>
+      <div className="nft-import-title">Manual import (if popup didn&apos;t appear)</div>
       <div className="nft-import-hint">MetaMask → NFTs tab → Import NFT</div>
       <div className="nft-import-row">
         <span className="nft-import-label">Contract</span>
-        <button
-          type="button"
-          className="nft-import-copy"
-          onClick={() => copyText(contractAddress, "addr")}
-        >
+        <button type="button" className="nft-import-copy" onClick={() => copyText(contractAddress, "addr")}>
           <span>{contractAddress.slice(0, 10)}…{contractAddress.slice(-6)}</span>
           <span className="nft-import-copy-icon">{copiedField === "addr" ? "✓ Copied" : "📋 Copy"}</span>
         </button>
       </div>
       <div className="nft-import-row">
         <span className="nft-import-label">Token ID</span>
-        <button
-          type="button"
-          className="nft-import-copy"
-          onClick={() => copyText(tokenId, "tokenId")}
-        >
+        <button type="button" className="nft-import-copy" onClick={() => copyText(tokenId, "tokenId")}>
           <span>{tokenId}</span>
           <span className="nft-import-copy-icon">{copiedField === "tokenId" ? "✓ Copied" : "📋 Copy"}</span>
         </button>
@@ -88,7 +79,6 @@ export default function BadgesPage({
             if (!ev) return null;
             const tokenId = badgeTokenIds[id];
             const alreadyAdded = !!badgeMmAdded[id];
-            const panelOpen = badgePanelId === id && !alreadyAdded;
             return (
               <div key={id} className="card badge">
                 <div
@@ -101,23 +91,18 @@ export default function BadgesPage({
                 <div className="badge-date">{ev.date}</div>
                 <div className="badge-soulbound">SOULBOUND</div>
                 {tokenId && (
-                  alreadyAdded ? (
-                    <div className="btn-add-metamask btn-add-metamask--added">✓ Added to MetaMask</div>
-                  ) : (
+                  <>
                     <button
                       type="button"
-                      className={`btn-add-metamask${panelOpen ? " btn-add-metamask--active" : ""}`}
-                      onClick={() => {
-                        setBadgePanelId(panelOpen ? null : id);
-                        setMilestonePanelThreshold(null);
-                        onAddBadgeToWallet(id, tokenId);
-                      }}
+                      className={`btn-add-metamask${alreadyAdded ? " btn-add-metamask--added" : ""}`}
+                      onClick={() => onAddBadgeToWallet(id, tokenId)}
+                      disabled={alreadyAdded}
                     >
-                      🦊 {panelOpen ? "Hide Import Details" : "Add to MetaMask"}
+                      {alreadyAdded ? "✓ Added to MetaMask" : "🦊 Add to MetaMask"}
                     </button>
-                  )
+                    {!alreadyAdded && contractAddress && renderImportPanel(tokenId)}
+                  </>
                 )}
-                {panelOpen && tokenId && contractAddress && renderImportPanel(tokenId)}
               </div>
             );
           })
@@ -151,30 +136,17 @@ export default function BadgesPage({
             claimedMilestones.includes(5) ? (
               <div className="milestone-claimed-row">
                 <span className="milestone-claimed-label">✓ NFT Claimed</span>
-                {milestoneNftIds[5] && (
+                {milestoneNftIds[5] && contractAddress && (
                   <>
-                    <button
-                      type="button"
-                      className={`btn-add-metamask${milestonePanelThreshold === 5 ? " btn-add-metamask--active" : ""}`}
-                      onClick={() => {
-                        setMilestonePanelThreshold(milestonePanelThreshold === 5 ? null : 5);
-                        setBadgePanelId(null);
-                        onAddNftToWallet(milestoneNftIds[5]);
-                      }}
-                    >
-                      🦊 {milestonePanelThreshold === 5 ? "Hide Import Details" : "Add to MetaMask"}
+                    <button type="button" className="btn-add-metamask" onClick={() => onAddNftToWallet(milestoneNftIds[5])}>
+                      🦊 Add to MetaMask
                     </button>
-                    {milestonePanelThreshold === 5 && contractAddress && renderImportPanel(milestoneNftIds[5])}
+                    {renderImportPanel(milestoneNftIds[5])}
                   </>
                 )}
               </div>
             ) : userCheckins >= 5 ? (
-              <button
-                type="button"
-                className="btn btn-block btn-claim-milestone"
-                onClick={() => onClaimMilestone(5)}
-                disabled={isMilestoneLoading}
-              >
+              <button type="button" className="btn btn-block btn-claim-milestone" onClick={() => onClaimMilestone(5)} disabled={isMilestoneLoading}>
                 {isMilestoneLoading ? "Claiming..." : "Claim NFT Reward"}
               </button>
             ) : null
@@ -203,30 +175,17 @@ export default function BadgesPage({
             claimedMilestones.includes(10) ? (
               <div className="milestone-claimed-row">
                 <span className="milestone-claimed-label">✓ NFT Claimed</span>
-                {milestoneNftIds[10] && (
+                {milestoneNftIds[10] && contractAddress && (
                   <>
-                    <button
-                      type="button"
-                      className={`btn-add-metamask${milestonePanelThreshold === 10 ? " btn-add-metamask--active" : ""}`}
-                      onClick={() => {
-                        setMilestonePanelThreshold(milestonePanelThreshold === 10 ? null : 10);
-                        setBadgePanelId(null);
-                        onAddNftToWallet(milestoneNftIds[10]);
-                      }}
-                    >
-                      🦊 {milestonePanelThreshold === 10 ? "Hide Import Details" : "Add to MetaMask"}
+                    <button type="button" className="btn-add-metamask" onClick={() => onAddNftToWallet(milestoneNftIds[10])}>
+                      🦊 Add to MetaMask
                     </button>
-                    {milestonePanelThreshold === 10 && contractAddress && renderImportPanel(milestoneNftIds[10])}
+                    {renderImportPanel(milestoneNftIds[10])}
                   </>
                 )}
               </div>
             ) : userCheckins >= 10 ? (
-              <button
-                type="button"
-                className="btn btn-block btn-claim-milestone"
-                onClick={() => onClaimMilestone(10)}
-                disabled={isMilestoneLoading}
-              >
+              <button type="button" className="btn btn-block btn-claim-milestone" onClick={() => onClaimMilestone(10)} disabled={isMilestoneLoading}>
                 {isMilestoneLoading ? "Claiming..." : "Claim NFT Reward"}
               </button>
             ) : null
@@ -255,30 +214,17 @@ export default function BadgesPage({
             claimedMilestones.includes(20) ? (
               <div className="milestone-claimed-row">
                 <span className="milestone-claimed-label">✓ NFT Claimed</span>
-                {milestoneNftIds[20] && (
+                {milestoneNftIds[20] && contractAddress && (
                   <>
-                    <button
-                      type="button"
-                      className={`btn-add-metamask${milestonePanelThreshold === 20 ? " btn-add-metamask--active" : ""}`}
-                      onClick={() => {
-                        setMilestonePanelThreshold(milestonePanelThreshold === 20 ? null : 20);
-                        setBadgePanelId(null);
-                        onAddNftToWallet(milestoneNftIds[20]);
-                      }}
-                    >
-                      🦊 {milestonePanelThreshold === 20 ? "Hide Import Details" : "Add to MetaMask"}
+                    <button type="button" className="btn-add-metamask" onClick={() => onAddNftToWallet(milestoneNftIds[20])}>
+                      🦊 Add to MetaMask
                     </button>
-                    {milestonePanelThreshold === 20 && contractAddress && renderImportPanel(milestoneNftIds[20])}
+                    {renderImportPanel(milestoneNftIds[20])}
                   </>
                 )}
               </div>
             ) : userCheckins >= 20 ? (
-              <button
-                type="button"
-                className="btn btn-block btn-claim-milestone"
-                onClick={() => onClaimMilestone(20)}
-                disabled={isMilestoneLoading}
-              >
+              <button type="button" className="btn btn-block btn-claim-milestone" onClick={() => onClaimMilestone(20)} disabled={isMilestoneLoading}>
                 {isMilestoneLoading ? "Claiming..." : "Claim NFT Reward"}
               </button>
             ) : null

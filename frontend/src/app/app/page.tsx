@@ -123,19 +123,19 @@ export default function Home() {
   // Prompt the connected wallet to display a newly minted ERC-1155 NFT.
   // Strategy: try ERC1155 first (MetaMask v11.7+), fall back to ERC721 (broader support).
   // A 900ms delay lets MetaMask fully process the preceding transaction before handling this request.
-  const promptAddNft = useCallback((contractAddr: string, tokenId: string) => {
-    // Permanent guard: reject missing, zero, or non-positive token IDs before anything else.
-    // This ensures MetaMask is never called with an invalid tokenId regardless of the caller.
+  // promptAddNft: fires wallet_watchAsset after a 900ms delay (lets MetaMask settle post-mint).
+  // The 900ms setTimeout is intentional — this is the mechanism that produces the MetaMask popup.
+  // onSuccess is called when MetaMask confirms the asset was added (wallet_watchAsset returns true).
+  const promptAddNft = useCallback((contractAddr: string, tokenId: string, onSuccess?: () => void) => {
     try {
       if (!tokenId || BigInt(tokenId) <= 0n) return;
-    } catch { return; } // unparseable tokenId — bail silently
+    } catch { return; }
 
     const provider: { request: (a: unknown) => Promise<unknown> } | null =
       (typeof window !== "undefined" && (window as any).ethereum)
         ? (window as any).ethereum
         : (walletClientRef.current as any) ?? null;
 
-    // wallet_watchAsset requires tokenId as a 0x-prefixed hex string for both ERC-1155 and ERC-721
     const hexTokenId = tokenId.startsWith("0x")
       ? tokenId
       : `0x${BigInt(tokenId).toString(16)}`;
@@ -150,21 +150,25 @@ export default function Home() {
     const tryWatch = (type: string): Promise<boolean> =>
       provider.request({ method: "wallet_watchAsset", params: { type, options: { address: contractAddr, tokenId: hexTokenId } } }) as Promise<boolean>;
 
-    // Wait for MetaMask to settle after the minting transaction, then try both NFT types
     setTimeout(async () => {
       try {
-        // Primary: ERC1155 (MetaMask v11.7+)
         const added1155 = await tryWatch("ERC1155");
-        if (added1155) { showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success"); return; }
-      } catch { /* ERC1155 not supported by this wallet/version */ }
+        if (added1155) {
+          showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success");
+          onSuccess?.();
+          return;
+        }
+      } catch { /* ERC1155 not supported */ }
 
       try {
-        // Fallback: ERC721 — MetaMask handles ERC-1155 tokens with this type on older versions
         const added721 = await tryWatch("ERC721");
-        if (added721) { showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success"); return; }
+        if (added721) {
+          showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success");
+          onSuccess?.();
+          return;
+        }
       } catch { /* ERC721 also failed */ }
 
-      // Neither worked — show actionable manual-import instructions
       showFallbackToast();
     }, 900);
   }, []);
@@ -1370,64 +1374,6 @@ export default function Home() {
     }
   }, [chainId, address, signTypedDataAsync, showToast, refetchVryf, userCheckins, claimedMilestones]);
 
-  // ─── Manual "Add to MetaMask" for POAP badge cards ─────────────────────────
-  // Called directly from a button click — no setTimeout so the user gesture context
-  // is preserved and MetaMask can open its confirmation popup.
-  // Only marks the badge as added when wallet_watchAsset actually returns true.
-
-  const handleAddBadgeToWallet = useCallback(async (eventId: number, tokenId: string) => {
-    const contractAddr = CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111];
-
-    try { if (!tokenId || BigInt(tokenId) <= 0n) return; } catch { return; }
-
-    if (!contractAddr || contractAddr === "0x0000000000000000000000000000000000000000") {
-      showToast("Contract address not configured", "error");
-      return;
-    }
-
-    const provider: { request: (a: unknown) => Promise<unknown> } | null =
-      (typeof window !== "undefined" && (window as any).ethereum)
-        ? (window as any).ethereum
-        : (walletClientRef.current as any) ?? null;
-
-    if (!provider) {
-      showToast(`To add manually: MetaMask → NFTs tab → Import NFT → Contract: ${contractAddr.slice(0, 8)}… Token ID: ${tokenId}`, "");
-      return;
-    }
-
-    // Always pass tokenId as decimal string — most compatible across MetaMask versions
-    const decimalTokenId = BigInt(tokenId).toString(10);
-
-    let success = false;
-
-    // Primary: ERC1155 (MetaMask v11.7+)
-    try {
-      const added = await provider.request({
-        method: "wallet_watchAsset",
-        params: { type: "ERC1155", options: { address: contractAddr, tokenId: decimalTokenId } },
-      });
-      if (added) success = true;
-    } catch { /* not supported — fall through */ }
-
-    // Fallback: ERC721 (broader MetaMask support)
-    if (!success) {
-      try {
-        const added = await provider.request({
-          method: "wallet_watchAsset",
-          params: { type: "ERC721", options: { address: contractAddr, tokenId: decimalTokenId } },
-        });
-        if (added) success = true;
-      } catch { /* also failed */ }
-    }
-
-    if (success) {
-      setBadgeMmAdded((prev) => ({ ...prev, [eventId]: true }));
-      showToast("NFT added to MetaMask — check your NFTs tab", "success");
-    } else {
-      showToast(`To add manually: MetaMask → NFTs tab → Import NFT → Contract: ${contractAddr.slice(0, 8)}… Token ID: ${tokenId}`, "");
-    }
-  }, [chainId, showToast]);
-
   // ─── Wallet button ──────────────────────────────────────────────────────────
 
   const handleWalletClick = useCallback(() => {
@@ -1630,7 +1576,10 @@ export default function Home() {
               contractAddress={CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111] ?? ""}
               onClaimMilestone={handleClaimMilestone}
               onAddNftToWallet={(tokenId) => promptAddNft(CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111], tokenId)}
-              onAddBadgeToWallet={handleAddBadgeToWallet}
+              onAddBadgeToWallet={(eventId, tokenId) => {
+                const addr = CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111];
+                promptAddNft(addr, tokenId, () => setBadgeMmAdded((prev) => ({ ...prev, [eventId]: true })));
+              }}
             />
           )}
         </div>
