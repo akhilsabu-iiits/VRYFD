@@ -14,6 +14,16 @@ function atomicWriteJSON(filePath, data) {
   fs.renameSync(tmp, filePath);
 }
 
+// ─── Hardcoded join codes by demoId — survives Railway redeployments ─────────
+// These match INITIAL_EVENTS in the frontend. Used as fallback when the
+// onChainId-based customCodeStore is empty (e.g. after ephemeral filesystem wipe).
+const DEMO_JOIN_CODES = {
+  "1": "HK7P2T",
+  "2": "W5NX4M",
+  "3": "B9ZR6Q",
+  "4": "Y3VJ8F",
+};
+
 // ─── Join code store: codes set at event creation, persisted to disk ─────────
 const customCodeStore = new Map(); // onChainEventId (string) → code (uppercase)
 
@@ -94,9 +104,18 @@ function getPendingEntry(onChainEventId, attendee) {
 }
 
 // Join code → pending registration (organizer confirms later via checkInFor — no sig needed on-chain)
-async function joinCodeCheckin(onChainEventId, attendee, code, signature, ens = null) {
-  // 1. Verify code (custom if set, otherwise HMAC fallback)
-  const expected = getJoinCode(onChainEventId);
+async function joinCodeCheckin(onChainEventId, attendee, code, signature, ens = null, demoId = null) {
+  // 1. Verify code — use customCodeStore if available, else fall back to DEMO_JOIN_CODES by demoId
+  let expected;
+  const stored = customCodeStore.get(String(onChainEventId));
+  if (stored) {
+    expected = stored;
+  } else if (demoId && DEMO_JOIN_CODES[String(demoId)]) {
+    expected = DEMO_JOIN_CODES[String(demoId)];
+    console.log(`[joinCodeCheckin] using DEMO_JOIN_CODES fallback for demoId=${demoId}`);
+  } else {
+    throw new Error("No join code registered for this event");
+  }
   if (code.toUpperCase().trim() !== expected) throw new Error("Incorrect join code");
 
   // 2. Verify personal_sign signature — proves the request came from the attendee's wallet.

@@ -133,7 +133,7 @@ router.get("/join-code/:onChainEventId", (req, res) => {
  */
 router.post("/joinCheckin", async (req, res) => {
   try {
-    const { onChainEventId, attendee, code, signature, ens } = req.body;
+    const { onChainEventId, attendee, code, signature, ens, demoId } = req.body;
     if (onChainEventId === undefined || !attendee || !code) {
       return res.status(400).json({ error: "Missing required fields: onChainEventId, attendee, code" });
     }
@@ -151,7 +151,7 @@ router.post("/joinCheckin", async (req, res) => {
       }
       safeEns = ens;
     }
-    const result = await joinCodeCheckin(onChainEventId, attendee, code, signature, safeEns);
+    const result = await joinCodeCheckin(onChainEventId, attendee, code, signature, safeEns, demoId ?? null);
     res.json({ success: true, ...result });
   } catch (error) {
     const msg = error.message || "";

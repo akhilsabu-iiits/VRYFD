@@ -1150,6 +1150,7 @@ export default function Home() {
         body: JSON.stringify({
           onChainEventId, attendee: address, code: joinCode.trim(), signature,
           ens: effectiveENS || null,
+          demoId: currentEventId,
         }),
       });
       const data = await res.json();
