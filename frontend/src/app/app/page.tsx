@@ -121,7 +121,7 @@ export default function Home() {
   // Fires wallet_watchAsset to prompt MetaMask to add an NFT.
   // delay: 900ms after auto-mint (lets MetaMask settle post-tx), 0ms for manual button clicks.
   // onSuccess: called only when wallet_watchAsset returns true (MetaMask confirmed).
-  const promptAddNft = useCallback((contractAddr: string, tokenId: string, onSuccess?: () => void, delay = 900) => {
+  const promptAddNft = useCallback((contractAddr: string, tokenId: string, onSuccess?: () => void, delay = 0) => {
     try {
       if (!tokenId || BigInt(tokenId) <= 0n) return;
     } catch { return; }
