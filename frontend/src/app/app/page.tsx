@@ -1347,7 +1347,7 @@ export default function Home() {
 
       if (milestoneTokenIds.length === 0 && data.txHash && publicClient) {
         try {
-          const receipt = await publicClient.getTransactionReceipt({ hash: data.txHash as `0x${string}` });
+          const receipt = await publicClient.waitForTransactionReceipt({ hash: data.txHash as `0x${string}`, timeout: 90_000, pollingInterval: 4_000 });
           const abi = VryfdABI.abi as Parameters<typeof decodeEventLog>[0]["abi"];
           for (const log of receipt.logs) {
             try {

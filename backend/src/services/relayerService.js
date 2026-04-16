@@ -849,15 +849,13 @@ async function gaslessClaimBadge(attendee, onChainEventId, signature) {
 async function gaslessMilestoneReward(attendee, signature) {
   const c = getContract();
 
-  // Read on-chain state before spending the nonce — the contract has no require(count > 0)
-  // so a tx with no eligible milestones would succeed but mint nothing, wasting the nonce.
-  const [attended, highest, thresholds] = await Promise.all([
+  // Single batch: fetch all needed state in parallel (was 2 sequential batches of 3 each).
+  const [attended, highest, nextId] = await Promise.all([
     withRpcFallback(() => c.totalAttendance(attendee)),
     withRpcFallback(() => c.highestMilestoneClaimed(attendee)),
-    withRpcFallback(() => c.milestoneThresholds(0).catch(() => null)),
+    withRpcFallback(() => c.nextMilestoneTokenId()),
   ]);
 
-  // milestoneThresholds is a dynamic array — enumerate the known tiers [5, 10, 20]
   const KNOWN_THRESHOLDS = [5n, 10n, 20n];
   const attendedN = BigInt(attended);
   const highestN  = BigInt(highest);
@@ -870,56 +868,38 @@ async function gaslessMilestoneReward(attendee, signature) {
     );
   }
 
+  // Predict which token IDs will be minted (sequential from nextMilestoneTokenId).
+  let id = BigInt(nextId);
+  const tokenIds = [];
+  for (const t of KNOWN_THRESHOLDS) {
+    if (attendedN >= t && highestN < t) { tokenIds.push(id.toString()); id++; }
+  }
+
   const sig = ethers.Signature.from(signature);
-  return withRpcFallback(async () => {
-    const c = getContract();
-    // Pre-read nextMilestoneTokenId and eligible tier count so we can predict which token IDs
-    // will be minted — needed for wallet_watchAsset even when tx.wait() times out.
-    let tokenIds = [];
-    try {
-      const [attended, highest, nextId] = await Promise.all([
-        c.totalAttendance(attendee),
-        c.highestMilestoneClaimed(attendee),
-        c.nextMilestoneTokenId(),
-      ]);
-      const KNOWN_THRESHOLDS = [5n, 10n, 20n];
-      const attendedN = BigInt(attended);
-      const highestN  = BigInt(highest);
-      let id = BigInt(nextId);
-      for (const t of KNOWN_THRESHOLDS) {
-        if (attendedN >= t && highestN < t) {
-          tokenIds.push(id.toString());
-          id++;
-        }
-      }
-    } catch {}
-    const tx = await c.milestoneRewardGasless(attendee, sig.v, sig.r, sig.s);
-    console.log(`[gaslessMilestoneReward] tx submitted: ${tx.hash}, predicted tokenIds: ${JSON.stringify(tokenIds)}`);
+  const tx = await withRpcFallback(() => {
+    const c2 = getContract();
+    return c2.milestoneRewardGasless(attendee, sig.v, sig.r, sig.s);
+  });
+  console.log(`[gaslessMilestoneReward] tx submitted: ${tx.hash}, predicted tokenIds: ${JSON.stringify(tokenIds)}`);
 
-    let receipt = null;
-    try {
-      receipt = await tx.wait(1, 120_000);
-    } catch (waitErr) {
-      console.warn(`[gaslessMilestoneReward] tx.wait() failed: ${waitErr.message} — using predicted tokenIds`);
-    }
-
-    // If receipt has logs, prefer the actual emitted IDs (handles any edge cases)
-    if (receipt?.logs?.length) {
+  // Return immediately with predicted tokenIds — don't block on tx.wait().
+  // Frontend uses waitForTransactionReceipt for the MetaMask popup if needed.
+  // Fire-and-forget wait just for server-side logging.
+  tx.wait(1, 120_000)
+    .then((receipt) => {
       const iface = new ethers.Interface(VryfdABI.abi);
       const fromLogs = [];
-      for (const log of receipt.logs) {
+      for (const log of receipt.logs ?? []) {
         try {
           const parsed = iface.parseLog(log);
           if (parsed?.name === "MilestoneReached") fromLogs.push(parsed.args.tokenId.toString());
         } catch {}
       }
-      if (fromLogs.length > 0) tokenIds = fromLogs;
-      console.log(`[gaslessMilestoneReward] tokenIds from logs: ${JSON.stringify(tokenIds)}`);
-    } else {
-      console.log(`[gaslessMilestoneReward] no receipt logs — returning predicted tokenIds: ${JSON.stringify(tokenIds)}`);
-    }
-    return { txHash: receipt?.hash ?? tx.hash, tokenIds };
-  });
+      console.log(`[gaslessMilestoneReward] mined: ${receipt.hash}, tokenIds from logs: ${JSON.stringify(fromLogs.length ? fromLogs : tokenIds)}`);
+    })
+    .catch((err) => console.warn(`[gaslessMilestoneReward] tx.wait() (background):`, err.message));
+
+  return { txHash: tx.hash, tokenIds };
 }
 
 // Resolved at runtime — set to (currentBlock - LOG_SCAN_BLOCKS) on startup.
