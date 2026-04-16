@@ -55,13 +55,12 @@ function loadWalletData(addr: string): {
   vryfHistory: VRYFEntry[];
   badgeTokenIds: Record<number, string>;
   milestoneNftIds: Record<number, string>;
-  badgeMmAdded: Record<number, boolean>;
 } {
   try {
     const raw = localStorage.getItem(`vryfd_wallet_${addr}`);
-    if (raw) return { vryfBalance: 0, claimedMilestones: [], checkedInIds: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, milestoneNftIds: {}, badgeMmAdded: {}, ...JSON.parse(raw) };
+    if (raw) return { vryfBalance: 0, claimedMilestones: [], checkedInIds: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, milestoneNftIds: {}, ...JSON.parse(raw) };
   } catch {}
-  return { checkins: 0, badges: [], checkedInIds: [], vryfBalance: 0, claimedMilestones: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, milestoneNftIds: {}, badgeMmAdded: {} };
+  return { checkins: 0, badges: [], checkedInIds: [], vryfBalance: 0, claimedMilestones: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, milestoneNftIds: {} };
 }
 
 function saveWalletData(
@@ -69,9 +68,8 @@ function saveWalletData(
   claimedMilestones: number[], badgeBlockNums: Record<number, number>, badgeMintTimes: Record<number, string>,
   pendingIds: number[], vryfHistory: VRYFEntry[],
   badgeTokenIds: Record<number, string>, milestoneNftIds: Record<number, string>,
-  badgeMmAdded: Record<number, boolean>,
 ) {
-  localStorage.setItem(`vryfd_wallet_${addr}`, JSON.stringify({ checkins, badges, checkedInIds, vryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingIds, vryfHistory, badgeTokenIds, milestoneNftIds, badgeMmAdded }));
+  localStorage.setItem(`vryfd_wallet_${addr}`, JSON.stringify({ checkins, badges, checkedInIds, vryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingIds, vryfHistory, badgeTokenIds, milestoneNftIds }));
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -211,8 +209,6 @@ export default function Home() {
   const [badgeTokenIds, setBadgeTokenIds] = useState<Record<number, string>>({});
   // Maps milestone threshold (5/10/20) → on-chain ERC-1155 tokenId
   const [milestoneNftIds, setMilestoneNftIds] = useState<Record<number, string>>({});
-  // Tracks which POAP badge eventIds have been added to MetaMask (persisted per wallet)
-  const [badgeMmAdded, setBadgeMmAdded] = useState<Record<number, boolean>>({});
 
   // Use a ref to hold current address for the save effect (avoids stale closure)
   const addressRef = useRef<string | undefined>(undefined);
@@ -584,7 +580,6 @@ export default function Home() {
       setBadgeMintTimes(data.badgeMintTimes);
       setBadgeTokenIds(data.badgeTokenIds ?? {});
       setMilestoneNftIds(data.milestoneNftIds ?? {});
-      setBadgeMmAdded(data.badgeMmAdded ?? {});
       if (data.pendingIds.length > 0) setPendingRegistrationIds(data.pendingIds);
       setVryfHistory(data.vryfHistory ?? []);
       setCheckinStep(0);
@@ -602,7 +597,6 @@ export default function Home() {
       setBadgeBlockNums({});
       setVryfHistory([]);
       setBadgeMintTimes({});
-      setBadgeMmAdded({});
       setUserCertificates([]);
       setCheckedInIds([]);
       setPendingRegistrationIds([]);
@@ -624,8 +618,8 @@ export default function Home() {
       return;
     }
     if (!addressRef.current) return;
-    saveWalletData(addressRef.current, userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, milestoneNftIds, badgeMmAdded);
-  }, [userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, milestoneNftIds, badgeMmAdded]);
+    saveWalletData(addressRef.current, userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, milestoneNftIds);
+  }, [userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, milestoneNftIds]);
 
   // Persist full VEvent array to localStorage and backend on every change.
   // Skip the very first render — hydration's setEvents hasn't run yet, so events
@@ -985,26 +979,32 @@ export default function Home() {
 
         // Prompt wallet to add the newly minted NFT.
         // Primary: use tokenId returned by backend (parsed from TransferSingle receipt log).
-        // Fallback: if backend didn't return it (tx.wait timeout), fetch the receipt directly
-        // from the chain using viem and decode TransferSingle ourselves — fully reliable.
+        // Fallback: if backend's tx.wait() timed out and returned no tokenId, fetch the
+        // receipt directly from chain — retry up to 3 times with 8s between attempts so
+        // the popup fires reliably even when the tx is still in the mempool.
         let nftTokenId: string | null = (data.tokenId && data.tokenId !== "0") ? String(data.tokenId) : null;
 
         if (!nftTokenId && data.txHash && publicClient) {
-          try {
-            const receipt = await publicClient.getTransactionReceipt({ hash: data.txHash as `0x${string}` });
-            for (const log of receipt.logs) {
-              try {
-                const decoded = decodeEventLog({
-                  abi: VryfdABI.abi as Parameters<typeof decodeEventLog>[0]["abi"],
-                  data: log.data,
-                  topics: log.topics as Parameters<typeof decodeEventLog>[0]["topics"],
-                  eventName: "TransferSingle",
-                });
-                const id = (decoded.args as { id?: bigint }).id;
-                if (id != null && id > 0n) { nftTokenId = id.toString(); break; }
-              } catch {}
-            }
-          } catch {}
+          const abi = VryfdABI.abi as Parameters<typeof decodeEventLog>[0]["abi"];
+          for (let attempt = 0; attempt < 3 && !nftTokenId; attempt++) {
+            if (attempt > 0) await new Promise((r) => setTimeout(r, 8000));
+            try {
+              const receipt = await publicClient.getTransactionReceipt({ hash: data.txHash as `0x${string}` });
+              if (!receipt) continue;
+              for (const log of receipt.logs) {
+                try {
+                  const decoded = decodeEventLog({
+                    abi,
+                    data: log.data,
+                    topics: log.topics as Parameters<typeof decodeEventLog>[0]["topics"],
+                    eventName: "TransferSingle",
+                  });
+                  const id = (decoded.args as { id?: bigint }).id;
+                  if (id != null && id > 0n) { nftTokenId = id.toString(); break; }
+                } catch {}
+              }
+            } catch {}
+          }
         }
 
         if (nftTokenId) {
@@ -1559,16 +1559,7 @@ export default function Home() {
               isConnected={isConnected}
               claimedMilestones={claimedMilestones}
               isMilestoneLoading={isMilestoneLoading}
-              badgeTokenIds={badgeTokenIds}
-              milestoneNftIds={milestoneNftIds}
-              badgeMmAdded={badgeMmAdded}
-              contractAddress={CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111] ?? ""}
               onClaimMilestone={handleClaimMilestone}
-              onAddNftToWallet={(tokenId) => promptAddNft(CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111], tokenId, undefined, 0)}
-              onAddBadgeToWallet={(eventId, tokenId) => {
-                const addr = CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111];
-                promptAddNft(addr, tokenId, () => setBadgeMmAdded((prev) => ({ ...prev, [eventId]: true })), 0);
-              }}
             />
           )}
         </div>
