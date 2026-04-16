@@ -10,6 +10,7 @@ import BadgesPage from "../../components/BadgesPage";
 import LeaderboardPage from "../../components/LeaderboardPage";
 import CertificatePage from "../../components/CertificatePage";
 import OrganizerPage from "../../components/OrganizerPage";
+import OrganizerLogin from "../../components/OrganizerLogin";
 import VRYFPage from "../../components/VRYFPage";
 import { type VEvent, type LBEntry, type ToastState, INITIAL_EVENTS, LEADERBOARD_DATA } from "../../lib/vryfd";
 import { decodeEventLog } from "viem";
@@ -101,6 +102,9 @@ export default function Home() {
 
   const [currentPage, setCurrentPage] = useState<string>("dashboard");
   const [mountedPages, setMountedPages] = useState<Set<string>>(() => new Set(["dashboard"]));
+  const [isOrganizerAuthed, setIsOrganizerAuthed] = useState<boolean>(
+    () => typeof window !== "undefined" && sessionStorage.getItem("vryfd_org_authed") === "1"
+  );
   const [currentEventId, setCurrentEventId] = useState<number | null>(null);
   const [checkinStep, setCheckinStep] = useState(0);
   const [isMinting, setIsMinting] = useState(false);
@@ -1628,19 +1632,27 @@ export default function Home() {
 
         <div className={`page${currentPage === "organizer" ? " active" : ""}`}>
           {mountedPages.has("organizer") && (
-            <OrganizerPage
-              events={displayEvents}
-              deployedEventIds={deployedEventIds}
-              onChainDeployedIds={onChainDeployedIds}
-              onChainEventIds={onChainEventIds}
-              onEventDeployed={handleEventDeployed}
-              onEventCreated={handleEventCreated}
-              onEventUpdated={handleEventUpdated}
-              onEventEnded={handleEventEnded}
-              onEventResumed={handleEventResumed}
-              onEventDeleted={handleEventDeleted}
-              onToast={showToast}
-            />
+            isOrganizerAuthed ? (
+              <OrganizerPage
+                events={displayEvents}
+                deployedEventIds={deployedEventIds}
+                onChainDeployedIds={onChainDeployedIds}
+                onChainEventIds={onChainEventIds}
+                onEventDeployed={handleEventDeployed}
+                onEventCreated={handleEventCreated}
+                onEventUpdated={handleEventUpdated}
+                onEventEnded={handleEventEnded}
+                onEventResumed={handleEventResumed}
+                onEventDeleted={handleEventDeleted}
+                onToast={showToast}
+                onLock={() => {
+                  sessionStorage.removeItem("vryfd_org_authed");
+                  setIsOrganizerAuthed(false);
+                }}
+              />
+            ) : (
+              <OrganizerLogin onSuccess={() => setIsOrganizerAuthed(true)} />
+            )
           )}
         </div>
       </div>

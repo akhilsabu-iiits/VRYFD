@@ -17,6 +17,7 @@ interface OrganizerPageProps {
   onEventResumed: (id: number) => void;
   onEventDeleted: (id: number) => void;
   onToast: (msg: string, type: "success" | "error" | "") => void;
+  onLock?: () => void;
 }
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
@@ -71,7 +72,7 @@ type Tab = "create" | "deploy" | "manage" | "attendance" | "certificates";
 
 const EMPTY_CREATE = { name: "", emoji: "🎯", color: "#7c6cf0", startDate: "", endDate: "" };
 
-export default function OrganizerPage({ events, deployedEventIds, onChainDeployedIds, onChainEventIds, onEventDeployed, onEventCreated, onEventUpdated, onEventEnded, onEventDeleted, onToast }: OrganizerPageProps) {
+export default function OrganizerPage({ events, deployedEventIds, onChainDeployedIds, onChainEventIds, onEventDeployed, onEventCreated, onEventUpdated, onEventEnded, onEventDeleted, onToast, onLock }: OrganizerPageProps) {
   const { address } = useAccount();
 
   const [activeTab, setActiveTab] = useState<Tab>("create");
@@ -462,7 +463,14 @@ export default function OrganizerPage({ events, deployedEventIds, onChainDeploye
   return (
     <>
       <div className="section-header fade-up">
-        <span className="section-title">Organizer Dashboard</span>
+        <div className="org-header-row">
+          <span className="section-title">Organizer Dashboard</span>
+          {onLock && (
+            <button type="button" className="btn btn-outline btn-sm" onClick={onLock} title="Lock organizer dashboard">
+              🔒 Lock
+            </button>
+          )}
+        </div>
         <span className="section-sub">Next Event ID: #{nextEventId} · {deployedEvents.length} deployed</span>
       </div>
 
