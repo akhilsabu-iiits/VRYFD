@@ -272,19 +272,71 @@ async function confirmAttendee(onChainEventId, attendee) {
   });
 }
 
-// Organizer confirms all pending attendees for an event at once
+// Organizer confirms all pending attendees for an event at once.
+// Submits all checkInFor txs with sequential explicit nonces so they land in the
+// mempool without waiting for each block. Same nonce-management pattern as issueCertificatesBulk.
 async function confirmAllAttendees(onChainEventId) {
   const pending = getPendingAttendees(onChainEventId); // returns { attendee, ens }[]
   if (pending.length === 0) return [];
+
   const results = [];
+
+  // Get starting nonce once before the loop — never inside a retry lambda
+  let nonce;
+  try {
+    nonce = await provider.getTransactionCount(relayerWallet.address, "pending");
+  } catch (err) {
+    console.warn("[confirmAllAttendees] could not get nonce, falling back to sequential:", err.message);
+    for (const { attendee } of pending) {
+      try {
+        const result = await confirmAttendee(onChainEventId, attendee);
+        results.push({ attendee, status: result.alreadyConfirmed ? "already_confirmed" : "confirmed", txHash: result.txHash });
+      } catch (e) {
+        results.push({ attendee, status: "failed", reason: e.message });
+      }
+    }
+    return results;
+  }
+
   for (const { attendee } of pending) {
+    const txNonce = nonce;
     try {
-      const result = await confirmAttendee(onChainEventId, attendee);
-      results.push({ attendee, status: result.alreadyConfirmed ? "already_confirmed" : "confirmed", txHash: result.txHash });
+      const c = getContract();
+      let tx;
+      try {
+        tx = await withRpcFallback(() => c.checkInFor(attendee, BigInt(onChainEventId), { nonce: txNonce }));
+      } catch (err) {
+        const msg = (err.message || "").toLowerCase();
+        if (msg.includes("already") || msg.includes("checked in") || msg.includes("confirmed")) {
+          removePending(onChainEventId, attendee);
+          results.push({ attendee, status: "already_confirmed", txHash: null });
+          continue; // tx was rejected — nonce was NOT consumed, don't increment
+        }
+        throw err;
+      }
+
+      nonce++; // increment only after successful submission
+      const txHash = tx.hash;
+      console.log(`[confirmAllAttendees] submitted tx=${txHash} nonce=${txNonce} attendee=${attendee}`);
+
+      removePending(onChainEventId, attendee);
+      const timestamp = Math.floor(Date.now() / 1000);
+      addConfirmedAttendeeDetail(onChainEventId, attendee, timestamp, txHash);
+      incrementConfirmedCount(onChainEventId, attendee);
+
+      // Wait for receipt in background — don't block the submission loop
+      tx.wait(1, 120_000).catch((e) => {
+        console.warn(`[confirmAllAttendees] tx ${txHash} wait failed:`, e.message);
+      });
+
+      results.push({ attendee, status: "confirmed", txHash });
     } catch (err) {
+      console.error(`[confirmAllAttendees] submit failed attendee=${attendee} nonce=${txNonce}:`, err.message);
       results.push({ attendee, status: "failed", reason: err.message });
+      // tx was NOT submitted — nonce unchanged, no increment
     }
   }
+
   return results;
 }
 
@@ -446,7 +498,22 @@ const SEPOLIA_NETWORK = ethers.Network.from({ name: "sepolia", chainId: 11155111
 function buildProviderForUrl(url) {
   // staticNetwork: true tells ethers not to call eth_chainId on every request.
   // Hard-coding Sepolia avoids ~2 extra RPC round-trips per call on Alchemy free tier.
-  return new ethers.JsonRpcProvider(url, SEPOLIA_NETWORK, { staticNetwork: true });
+  const p = new ethers.JsonRpcProvider(url, SEPOLIA_NETWORK, { staticNetwork: true });
+  // Poll every 1s instead of the 4s default — detects block confirmations up to 3s sooner.
+  // 1 eth_blockNumber call/s = 10 CU/s, well within Alchemy free tier (330 CU/s).
+  p.pollingInterval = 1_000;
+  // Override fee data: higher priority tip = validators include the tx in the next block.
+  // maxFeePerGas caps total spend; maxPriorityFeePerGas is the validator tip.
+  const _getFeeData = p.getFeeData.bind(p);
+  p.getFeeData = async () => {
+    const base = await _getFeeData();
+    return {
+      gasPrice: base.gasPrice,
+      maxFeePerGas: base.maxFeePerGas ?? ethers.parseUnits("50", "gwei"),
+      maxPriorityFeePerGas: ethers.parseUnits("2", "gwei"), // tip ensures next-block inclusion
+    };
+  };
+  return p;
 }
 
 async function getChainId() {
