@@ -440,7 +440,7 @@ export default function Home() {
   useEffect(() => {
     if (!isDeployingContracts) return;
     let attempts = 0;
-    const MAX_ATTEMPTS = 40; // 40 × 3s = 2 min timeout
+    const MAX_ATTEMPTS = 100; // 100 × 3s = 5 min timeout
     const id = setInterval(async () => {
       attempts++;
       try {

@@ -315,6 +315,7 @@ function clearAllDeployedEvents() {
   // Fully wipe all deployed event state — used after new contract deployment
   // so stale join codes / on-chain IDs from the old contract don't bleed through.
   fs.writeFileSync(STORE_PATH, JSON.stringify({}, null, 2));
+  try { fs.unlinkSync(path.join(__dirname, "../../data/contractState.json")); } catch {}
   customCodeStore.clear();
   pendingStore.clear();
   savePendingStore();
@@ -507,6 +508,15 @@ async function deployContracts() {
   // Rewire the relayer to point at new contracts
   contract = new ethers.Contract(attendanceAddress, VryfdABI.abi, relayerWallet);
 
+  // Persist new addresses to disk so Railway process restarts don't revert to stale env vars
+  try {
+    const contractStatePath = path.join(__dirname, "../../data/contractState.json");
+    atomicWriteJSON(contractStatePath, { contractAddress: attendanceAddress, vryfTokenAddress: vryfAddress, deployedAt: Date.now() });
+    console.log(`[deploy] addresses saved to contractState.json`);
+  } catch (e) {
+    console.warn(`[deploy] could not save contractState.json: ${e.message}`);
+  }
+
   return { attendanceAddress, vryfAddress };
 }
 
@@ -523,6 +533,18 @@ async function deployContractsAsync() {
   deployState = { status: "deploying", contractAddress: null, vryfTokenAddress: null, error: null };
   try {
     const { attendanceAddress, vryfAddress } = await deployContracts();
+    // Set milestone URIs on the new contract so milestone NFT metadata is ready immediately.
+    // Use RAILWAY_STATIC_URL or BACKEND_URL env vars — falls back silently if unavailable.
+    const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.RAILWAY_STATIC_URL
+      ? `https://${process.env.RAILWAY_STATIC_URL}` : null;
+    if (baseUrl) {
+      try {
+        await setMilestoneURIs(baseUrl);
+        console.log("[deploy] milestone URIs set");
+      } catch (e) {
+        console.warn(`[deploy] setMilestoneURIs failed (non-fatal): ${e.message}`);
+      }
+    }
     deployState = { status: "ready", contractAddress: attendanceAddress, vryfTokenAddress: vryfAddress, error: null };
   } catch (err) {
     deployState = { status: "error", contractAddress: null, vryfTokenAddress: null, error: err.message };
@@ -535,7 +557,19 @@ async function deployContractsAsync() {
  */
 function initRelayer() {
   const privateKey = process.env.PRIVATE_KEY;
-  const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
+
+  // Prefer persisted address from last deployment over stale env var.
+  // contractState.json is written by deployContracts() after every reset,
+  // so Railway process restarts always use the most recently deployed contract.
+  let contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
+  try {
+    const contractStatePath = path.join(__dirname, "../../data/contractState.json");
+    const saved = JSON.parse(fs.readFileSync(contractStatePath, "utf8"));
+    if (saved.contractAddress && saved.contractAddress.startsWith("0x")) {
+      contractAddress = saved.contractAddress;
+      console.log(`[relayer] using persisted contract address from contractState.json: ${contractAddress}`);
+    }
+  } catch { /* file doesn't exist yet — use env var */ }
 
   if (!privateKey) {
     console.error("[relayer] FATAL: PRIVATE_KEY env var is not set — relayer cannot start");
