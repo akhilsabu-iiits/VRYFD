@@ -126,13 +126,13 @@ export default function Home() {
 
   // Called from BadgesPage "Add to Wallet" buttons — re-fires the MetaMask popup for an
   // already-minted NFT so the user can add it even if they missed the automatic prompt.
-  const handleAddToWallet = useCallback((tokenId: string) => {
+  const handleAddToWallet = useCallback((tokenId: string, onSuccess: () => void) => {
     const addr = CONTRACT_ADDRESSES[11155111];
     if (!addr || addr === "0x0000000000000000000000000000000000000000") {
       showToastRef.current("Contract address not available — try again after the page syncs", "error");
       return;
     }
-    promptAddNft(addr, tokenId, undefined, 0);
+    promptAddNft(addr, tokenId, onSuccess, 0);
   }, [promptAddNft]);
   const [isMilestoneLoading, setIsMilestoneLoading] = useState(false);
   const [joinCode, setJoinCode] = useState("");
