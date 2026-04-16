@@ -965,9 +965,17 @@ async function gaslessMilestoneReward(attendee, signature) {
   const eligible  = KNOWN_THRESHOLDS.filter((t) => attendedN >= t && highestN < t);
 
   if (eligible.length === 0) {
+    const maxThreshold = KNOWN_THRESHOLDS[KNOWN_THRESHOLDS.length - 1];
+    if (highestN >= maxThreshold) {
+      throw new Error(
+        `All milestones already claimed! You have earned Bronze (5), Silver (10), and Gold (20). ` +
+        `On-chain attendance: ${attendedN}.`
+      );
+    }
+    const nextThreshold = KNOWN_THRESHOLDS.find((t) => highestN < t) ?? KNOWN_THRESHOLDS[0];
     throw new Error(
-      `No unclaimed milestones reached on-chain. On-chain attendance: ${attendedN}, ` +
-      `highest claimed: ${highestN}. You need at least 5 confirmed events for Bronze.`
+      `No unclaimed milestones reached yet. On-chain attendance: ${attendedN}, ` +
+      `highest claimed: ${highestN}. You need at least ${nextThreshold} confirmed events for the next milestone.`
     );
   }
 

@@ -4,6 +4,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import { useAccount, useDisconnect, useChainId, useEnsName, useWriteContract, usePublicClient, useReadContract, useSignTypedData, useSignMessage, useWalletClient } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { CONTRACT_ADDRESSES, VRYF_TOKEN_ADDRESS } from "../../utils/wagmiConfig";
+import { promptAddNft as _promptAddNft } from "../../utils/promptAddNft";
 import Dashboard from "../../components/Dashboard";
 import EventsPage from "../../components/EventsPage";
 import BadgesPage from "../../components/BadgesPage";
@@ -118,36 +119,9 @@ export default function Home() {
     setVryfHistory((prev) => [entry, ...prev].slice(0, 100));
   }, []);
 
-  // Fires wallet_watchAsset to add an NFT to the connected wallet's NFT section.
-  // Uses wagmi walletClient.watchAsset() as primary (routes through the correct connected
-  // wallet), falls back to raw window.ethereum for any wallets not exposed via wagmi.
-  const promptAddNft = useCallback((contractAddr: string, tokenId: string, onSuccess?: () => void, delay = 0) => {
-    try {
-      if (!tokenId || BigInt(tokenId) <= 0n) return;
-    } catch { return; }
-
-    const decimalTokenId = tokenId.startsWith("0x") ? BigInt(tokenId).toString() : tokenId;
-
-    const showFallbackToast = () => showToastRef.current(
-      `NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${contractAddr.slice(0, 8)}… Token ID: ${decimalTokenId}`,
-      ""
-    );
-
-    setTimeout(async () => {
-      // wallet_watchAsset for ERC721/ERC1155 must go through window.ethereum directly —
-      // wagmi's walletClient.watchAsset() only supports ERC20 in its type definitions.
-      const provider = typeof window !== "undefined" ? (window as any).ethereum : null;
-      if (provider) {
-        for (const type of ["ERC1155", "ERC721"]) {
-          try {
-            const added = await provider.request({ method: "wallet_watchAsset", params: { type, options: { address: contractAddr, tokenId: decimalTokenId } } }) as boolean;
-            if (added) { showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success"); onSuccess?.(); return; }
-          } catch { /* try next type */ }
-        }
-      }
-
-      showFallbackToast();
-    }, delay);
+  // Thin wrapper — all logic lives in src/utils/promptAddNft.ts where it is unit-tested.
+  const promptAddNft = useCallback((contractAddr: string, tokenId: string, onSuccess?: () => void, delay = 900) => {
+    _promptAddNft({ contractAddr, tokenId, onSuccess, delay, onToast: showToastRef.current });
   }, []);
   const [isMilestoneLoading, setIsMilestoneLoading] = useState(false);
   const [joinCode, setJoinCode] = useState("");
@@ -335,7 +309,19 @@ export default function Home() {
 
       const deployedEntries = Object.entries(chainEventIds) as [string, number][];
       if (deployedEntries.length > 0 && publicClient) {
-        const contractAddress = CONTRACT_ADDRESSES[11155111];
+        // Always fetch the live contract address from the backend so a post-Reset sync
+        // reads from the new contract, not a stale localStorage/env value.
+        let contractAddress = CONTRACT_ADDRESSES[11155111];
+        try {
+          const caRes = await fetch(`${BACKEND}/api/relay/contract-address`);
+          if (caRes.ok) {
+            const caData = await caRes.json();
+            if (caData.contractAddress && caData.contractAddress.startsWith("0x")) {
+              contractAddress = caData.contractAddress as `0x${string}`;
+              CONTRACT_ADDRESSES[11155111] = contractAddress;
+            }
+          }
+        } catch { /* backend unreachable — fall back to in-memory value */ }
         if (contractAddress && contractAddress !== "0x0000000000000000000000000000000000000000") {
           const newCheckedIn: number[] = [];
           const newBadges: number[] = [];
@@ -1024,10 +1010,13 @@ export default function Home() {
         }
 
         if (nftTokenId) {
+          // Store tokenId so Badges page shows persistent "Add to Wallet" button
           if (capturedBadgeEventId !== null) setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: nftTokenId! }));
-          promptAddNft(contractAddress, nftTokenId);
+          // Use signingContractAddress (from backend nonce response) — always the live
+          // post-reset contract, never a stale env var. Badge was minted there, popup must match.
+          promptAddNft(signingContractAddress, nftTokenId);
         } else {
-          showToast(`NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${contractAddress.slice(0, 8)}…`, "");
+          showToast(`NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${signingContractAddress.slice(0, 8)}…`, "");
         }
         refetchVryf().catch(() => {});
       } catch (err: unknown) {
@@ -1287,6 +1276,14 @@ export default function Home() {
     if (!contractAddress) { showToast("Contract not configured", "error"); return; }
     if (!publicClient || !address) { showToast("Wallet not ready", "error"); return; }
 
+    // Frontend pre-check: if all milestones already claimed locally, skip the backend round-trip
+    const allThresholds = MILESTONES.map((m) => m.threshold);
+    const allClaimed = allThresholds.every((t) => claimedMilestones.includes(t));
+    if (allClaimed) {
+      showToast("You've already claimed all milestone NFTs — Bronze, Silver, and Gold! 👑", "");
+      return;
+    }
+
     setIsMilestoneLoading(true);
     try {
       // Step 1: fetch nonce + live contract address from backend
@@ -1370,13 +1367,18 @@ export default function Home() {
           eligible.forEach((m, i) => { if (milestoneTokenIds[i] != null) next[m.threshold] = milestoneTokenIds[i]; });
           return next;
         });
-        for (const tid of milestoneTokenIds) promptAddNft(contractAddress, tid);
+        // Use signingContractAddress (from backend nonce) — always the live post-reset contract
+        for (const tid of milestoneTokenIds) promptAddNft(signingContractAddress, tid);
       }
       refetchVryf().catch(() => {});
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       if (msg.includes("User rejected") || msg.includes("denied")) {
         showToast("Milestone claim cancelled", "error");
+      } else if (msg.includes("All milestones already claimed") || msg.includes("No unclaimed milestones reached") && msg.includes("highest claimed: 20")) {
+        // On-chain confirms all claimed — sync frontend state so buttons flip to "✓ NFT Claimed"
+        setClaimedMilestones(MILESTONES.map((m) => m.threshold));
+        showToast("You've already claimed all milestone NFTs — Bronze, Silver, and Gold! 👑", "");
       } else {
         showToast(`Claim failed: ${msg}`, "error");
       }
