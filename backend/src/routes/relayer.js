@@ -1,4 +1,5 @@
 const express = require("express");
+const adminAuth = require("../middleware/adminAuth");
 const { getENSOverride, getAddressOverride } = require("../services/ensOverrides");
 const {
   createEvent,
@@ -45,7 +46,7 @@ const router = express.Router();
  * Organizer creates event — backend pays gas (has ORGANIZER_ROLE)
  * Body: { name, metadataURI, startTime, endTime }
  */
-router.post("/createEvent", async (req, res) => {
+router.post("/createEvent", adminAuth, async (req, res) => {
   try {
     const { name, metadataURI, startTime, endTime, demoId, joinCode } = req.body;
     if (!name || !startTime || !endTime) {
@@ -228,7 +229,7 @@ router.get("/attendees/:onChainEventId", async (req, res) => {
  * Issue certificates to all confirmed attendees who don't have one yet
  * Body: { onChainEventId, metadataURI? }
  */
-router.post("/issueCertificatesBulk", async (req, res) => {
+router.post("/issueCertificatesBulk", adminAuth, async (req, res) => {
   try {
     const { onChainEventId, metadataURI } = req.body;
     if (onChainEventId === undefined) {
@@ -250,7 +251,7 @@ router.post("/issueCertificatesBulk", async (req, res) => {
  * Organizer confirms physical presence for an attendee — backend pays gas (ORGANIZER_ROLE)
  * Body: { eventId, attendee }
  */
-router.post("/markAttendance", async (req, res) => {
+router.post("/markAttendance", adminAuth, async (req, res) => {
   try {
     const { eventId, attendee } = req.body;
     if (eventId === undefined || !attendee) {
@@ -317,7 +318,7 @@ router.post("/checkin", async (req, res) => {
  * Issue certificate — backend pays gas (has ORGANIZER_ROLE)
  * Body: { eventId, attendee, metadataURI }
  */
-router.post("/issueCertificate", async (req, res) => {
+router.post("/issueCertificate", adminAuth, async (req, res) => {
   try {
     const { eventId, attendee, metadataURI } = req.body;
     if (eventId === undefined || !attendee) {
@@ -336,7 +337,7 @@ router.post("/issueCertificate", async (req, res) => {
  * Revoke certificate — backend pays gas (has ORGANIZER_ROLE)
  * Body: { certificateId }
  */
-router.post("/revokeCertificate", async (req, res) => {
+router.post("/revokeCertificate", adminAuth, async (req, res) => {
   try {
     const { certificateId } = req.body;
     if (certificateId === undefined) {
@@ -423,7 +424,7 @@ router.get("/pending-attendees/:onChainEventId", (req, res) => {
  * Organizer confirms a single pending attendee — writes to chain (ORGANIZER_ROLE, backend pays gas)
  * Body: { onChainEventId, attendee }
  */
-router.post("/confirmAttendee", async (req, res) => {
+router.post("/confirmAttendee", adminAuth, async (req, res) => {
   try {
     const { onChainEventId, attendee } = req.body;
     if (onChainEventId === undefined || !attendee) {
@@ -445,7 +446,7 @@ router.post("/confirmAttendee", async (req, res) => {
  * Organizer confirms all pending attendees for an event at once
  * Body: { onChainEventId }
  */
-router.post("/confirmAllAttendees", async (req, res) => {
+router.post("/confirmAllAttendees", adminAuth, async (req, res) => {
   try {
     const { onChainEventId } = req.body;
     if (onChainEventId === undefined) {
@@ -468,7 +469,7 @@ router.post("/confirmAllAttendees", async (req, res) => {
  * Requires the contract to have been redeployed with the setTokenURI admin function.
  * Body: { onChainEventId, metaURI }
  */
-router.post("/fixBadgeURI", async (req, res) => {
+router.post("/fixBadgeURI", adminAuth, async (req, res) => {
   try {
     const { onChainEventId, metaURI } = req.body;
     if (onChainEventId === undefined || !metaURI) {
@@ -487,7 +488,7 @@ router.post("/fixBadgeURI", async (req, res) => {
  * Set on-chain metadata URIs for milestone NFT tiers (requires relayer ETH)
  * Body: { baseURL } — e.g. "http://localhost:3001"
  */
-router.post("/setMilestoneURIs", async (req, res) => {
+router.post("/setMilestoneURIs", adminAuth, async (req, res) => {
   try {
     const baseURL = req.body.baseURL || "http://localhost:3001";
     const results = await setMilestoneURIs(baseURL);
@@ -576,7 +577,7 @@ router.get("/events", (req, res) => {
  * Persists the full event list from the frontend so it survives localStorage wipes
  * Body: { events: VEvent[] }
  */
-router.post("/events", (req, res) => {
+router.post("/events", adminAuth, (req, res) => {
   try {
     const { events } = req.body;
     if (!Array.isArray(events)) return res.status(400).json({ error: "events must be an array" });
@@ -592,7 +593,7 @@ router.post("/events", (req, res) => {
  * Fires contract deployment in the background and returns immediately.
  * The frontend reloads at once and polls /api/relay/deploy-status for completion.
  */
-router.post("/reset", (req, res) => {
+router.post("/reset", adminAuth, (req, res) => {
   try {
     // Clear all event state right away — safe to do before deploy finishes
     // because the old contract is no longer valid the moment reset is called.

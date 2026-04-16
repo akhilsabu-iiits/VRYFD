@@ -1,4 +1,5 @@
 const express = require("express");
+const adminAuth = require("../middleware/adminAuth");
 const router = express.Router();
 
 // XML-safe symbols and names — no raw <, >, & in SVG text
@@ -145,7 +146,7 @@ async function pinMilestoneMetadata(m) {
 }
 
 // POST /api/metadata/badge/register  → register a custom event for badge generation
-router.post("/badge/register", (req, res) => {
+router.post("/badge/register", adminAuth, (req, res) => {
   const { id, name, date, color, emoji } = req.body;
 
   if (id === undefined || !name) return res.status(400).json({ error: "Missing id or name" });
@@ -183,6 +184,7 @@ router.get("/badge/:eventId", (req, res) => {
   const ev = EVENTS.find((e) => e.id === Number(req.params.eventId))
           || customEvents[Number(req.params.eventId)];
   if (!ev) return res.status(404).json({ error: "Event not found" });
+  res.setHeader("Cache-Control", "public, max-age=86400");
   const meta = buildMetadata(
     `${ev.shortName} — POAP Badge`,
     `Soulbound Proof of Attendance badge for ${ev.shortName} on ${ev.date}. Issued by VRYFD on Sepolia.`,
@@ -214,6 +216,7 @@ router.get("/badge/:eventId/pin", async (req, res) => {
 router.get("/milestone/:threshold", (req, res) => {
   const m = MILESTONES.find((x) => x.threshold === Number(req.params.threshold));
   if (!m) return res.status(404).json({ error: "Milestone not found" });
+  res.setHeader("Cache-Control", "public, max-age=86400");
   const meta = buildMetadata(
     `VRYFD ${m.tier}`,
     `Milestone reward for completing ${m.threshold} events, verified on-chain via VRYFD.`,

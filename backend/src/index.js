@@ -2,6 +2,8 @@
 require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
+const compression = require("compression");
 const morgan = require("morgan");
 const mongoose = require("mongoose");
 const rateLimit = require("express-rate-limit");
@@ -11,7 +13,7 @@ const relayerRoutes = require("./routes/relayer");
 const certificateRoutes = require("./routes/certificates");
 const verifyRoutes = require("./routes/verify");
 const metadataRoutes = require("./routes/metadata");
-const { initRelayer, setMilestoneURIs } = require("./services/relayerService");
+const { initRelayer, setMilestoneURIs, getContract } = require("./services/relayerService");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -22,6 +24,17 @@ if (!isProd) {
   console.log(`[startup] PRIVATE_KEY set=${!!process.env.PRIVATE_KEY} CONTRACT=${process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "MISSING"}`);
   console.log(`[startup] MONGODB_URI set=${!!process.env.MONGODB_URI}`);
 }
+
+// Security headers — applied before everything else.
+// contentSecurityPolicy disabled: API server returns JSON, no HTML.
+// crossOriginEmbedderPolicy disabled: needed for cross-origin asset loading.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+
+// Gzip / Brotli compression — reduces payload size for JSON responses.
+app.use(compression());
 
 // Middleware
 const allowedOrigins = [
@@ -74,9 +87,18 @@ app.use("/api/certificates", certificateRoutes);
 app.use("/api/verify", verifyRoutes);
 app.use("/api/metadata", metadataRoutes);
 
-// Health check
+// Health check — reports relayer + MongoDB state so load balancers can detect degraded service
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+  let relayerStatus = "ok";
+  try { getContract(); } catch { relayerStatus = "not_initialized"; }
+  const mongoState = mongoose.connection.readyState; // 0=disconnected 1=connected 2=connecting
+  const mongoStatus = mongoState === 1 ? "ok" : mongoState === 2 ? "connecting" : "disconnected";
+  const healthy = relayerStatus === "ok";
+  res.status(healthy ? 200 : 503).json({
+    status: healthy ? "ok" : "degraded",
+    timestamp: new Date().toISOString(),
+    services: { relayer: relayerStatus, mongo: mongoStatus },
+  });
 });
 
 // Connect to MongoDB & start server

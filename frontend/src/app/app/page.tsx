@@ -1408,7 +1408,11 @@ export default function Home() {
 
     // Fire the backend reset without awaiting — deployment runs async on the server.
     // The page reloads immediately; a polling effect picks up the new addresses when ready.
-    fetch(`${BACKEND}/api/relay/reset`, { method: "POST" }).catch(() => {});
+    const adminSecret = process.env.NEXT_PUBLIC_ADMIN_SECRET;
+    fetch(`${BACKEND}/api/relay/reset`, {
+      method: "POST",
+      headers: { ...(adminSecret ? { "x-admin-secret": adminSecret } : {}) },
+    }).catch(() => {});
 
     // Clear all vryfd localStorage keys then restore version tag + reset timestamp.
     // vryfd_reset_at is used to filter out pre-reset certificates so they don't

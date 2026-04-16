@@ -20,6 +20,9 @@ const supertest = require("supertest");
 const express = require("express");
 const { ethers } = require("ethers");
 
+// Must be set before routes are required so adminAuth middleware can read it
+process.env.ADMIN_SECRET = "test-secret";
+
 const { setCustomCode, setEventMeta } = require("../src/services/relayerService");
 const relayerRoutes = require("../src/routes/relayer");
 
@@ -63,19 +66,27 @@ describe("GET /api/relay/deployedEvents", () => {
 
 describe("POST /api/relay/events — validation", () => {
   test("400 when events is missing", async () => {
-    const res = await api.post("/api/relay/events").send({});
+    const res = await api.post("/api/relay/events")
+      .set("x-admin-secret", "test-secret").send({});
     assert.equal(res.status, 400);
   });
 
   test("400 when events is a string, not an array", async () => {
-    const res = await api.post("/api/relay/events").send({ events: "bad" });
+    const res = await api.post("/api/relay/events")
+      .set("x-admin-secret", "test-secret").send({ events: "bad" });
     assert.equal(res.status, 400);
     assert.match(res.body.error, /must be an array/);
   });
 
   test("400 when events is an object, not an array", async () => {
-    const res = await api.post("/api/relay/events").send({ events: { id: 1 } });
+    const res = await api.post("/api/relay/events")
+      .set("x-admin-secret", "test-secret").send({ events: { id: 1 } });
     assert.equal(res.status, 400);
+  });
+
+  test("401 without admin secret", async () => {
+    const res = await api.post("/api/relay/events").send({ events: [] });
+    assert.equal(res.status, 401);
   });
 });
 
@@ -83,7 +94,8 @@ describe("POST + GET /api/relay/events — roundtrip", () => {
   const SAMPLE = [{ id: 99, name: "Test Event", status: "upcoming" }];
 
   test("saves events and retrieves them", async () => {
-    const postRes = await api.post("/api/relay/events").send({ events: SAMPLE });
+    const postRes = await api.post("/api/relay/events")
+      .set("x-admin-secret", "test-secret").send({ events: SAMPLE });
     assert.equal(postRes.status, 200);
     assert.equal(postRes.body.success, true);
 
@@ -305,8 +317,14 @@ describe("POST /api/relay/joinCheckin — logic", () => {
 // ── confirmAllAttendees ───────────────────────────────────────────────────────
 
 describe("POST /api/relay/confirmAllAttendees", () => {
+  test("401 without admin secret", async () => {
+    const res = await api.post("/api/relay/confirmAllAttendees").send({ onChainEventId: 1 });
+    assert.equal(res.status, 401);
+  });
+
   test("400 when onChainEventId is missing", async () => {
-    const res = await api.post("/api/relay/confirmAllAttendees").send({});
+    const res = await api.post("/api/relay/confirmAllAttendees")
+      .set("x-admin-secret", "test-secret").send({});
     assert.equal(res.status, 400);
     assert.match(res.body.error, /Missing onChainEventId/);
   });
@@ -314,7 +332,7 @@ describe("POST /api/relay/confirmAllAttendees", () => {
   test("200 + empty results when no pending attendees (no blockchain needed)", async () => {
     // Event 77770 has zero pending attendees → confirmAllAttendees returns [] immediately
     const res = await api.post("/api/relay/confirmAllAttendees")
-      .send({ onChainEventId: 77770 });
+      .set("x-admin-secret", "test-secret").send({ onChainEventId: 77770 });
     assert.equal(res.status, 200);
     assert.equal(res.body.confirmed, 0);
     assert.equal(res.body.failed, 0);
@@ -325,8 +343,14 @@ describe("POST /api/relay/confirmAllAttendees", () => {
 // ── issueCertificatesBulk ─────────────────────────────────────────────────────
 
 describe("POST /api/relay/issueCertificatesBulk", () => {
+  test("401 without admin secret", async () => {
+    const res = await api.post("/api/relay/issueCertificatesBulk").send({ onChainEventId: 1 });
+    assert.equal(res.status, 401);
+  });
+
   test("400 when onChainEventId is missing", async () => {
-    const res = await api.post("/api/relay/issueCertificatesBulk").send({});
+    const res = await api.post("/api/relay/issueCertificatesBulk")
+      .set("x-admin-secret", "test-secret").send({});
     assert.equal(res.status, 400);
     assert.match(res.body.error, /Missing onChainEventId/);
   });
@@ -373,14 +397,22 @@ describe("POST /api/relay/gaslessMilestoneReward", () => {
 // ── markAttendance validation ─────────────────────────────────────────────────
 
 describe("POST /api/relay/markAttendance", () => {
+  test("401 without admin secret", async () => {
+    const res = await api.post("/api/relay/markAttendance")
+      .send({ eventId: 1, attendee: "0x1234567890123456789012345678901234567890" });
+    assert.equal(res.status, 401);
+  });
+
   test("400 when eventId is missing", async () => {
     const res = await api.post("/api/relay/markAttendance")
+      .set("x-admin-secret", "test-secret")
       .send({ attendee: "0x1234567890123456789012345678901234567890" });
     assert.equal(res.status, 400);
   });
 
   test("400 when attendee is missing", async () => {
     const res = await api.post("/api/relay/markAttendance")
+      .set("x-admin-secret", "test-secret")
       .send({ eventId: 1 });
     assert.equal(res.status, 400);
   });
@@ -389,14 +421,22 @@ describe("POST /api/relay/markAttendance", () => {
 // ── confirmAttendee validation ────────────────────────────────────────────────
 
 describe("POST /api/relay/confirmAttendee", () => {
+  test("401 without admin secret", async () => {
+    const res = await api.post("/api/relay/confirmAttendee")
+      .send({ onChainEventId: 1, attendee: "0x1234567890123456789012345678901234567890" });
+    assert.equal(res.status, 401);
+  });
+
   test("400 when onChainEventId is missing", async () => {
     const res = await api.post("/api/relay/confirmAttendee")
+      .set("x-admin-secret", "test-secret")
       .send({ attendee: "0x1234567890123456789012345678901234567890" });
     assert.equal(res.status, 400);
   });
 
   test("400 when attendee is missing", async () => {
     const res = await api.post("/api/relay/confirmAttendee")
+      .set("x-admin-secret", "test-secret")
       .send({ onChainEventId: 1 });
     assert.equal(res.status, 400);
   });
