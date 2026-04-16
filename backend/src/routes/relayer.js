@@ -593,7 +593,7 @@ router.post("/events", adminAuth, (req, res) => {
  * Fires contract deployment in the background and returns immediately.
  * The frontend reloads at once and polls /api/relay/deploy-status for completion.
  */
-router.post("/reset", adminAuth, (req, res) => {
+router.post("/reset", (req, res) => {
   try {
     // Clear all event state right away — safe to do before deploy finishes
     // because the old contract is no longer valid the moment reset is called.

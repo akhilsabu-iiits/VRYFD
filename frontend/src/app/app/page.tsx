@@ -1403,16 +1403,16 @@ export default function Home() {
 
   // ─── Reset everything ────────────────────────────────────────────────────────
 
-  const handleReset = useCallback(() => {
+  const handleReset = useCallback(async () => {
     if (!window.confirm("Deploy new contracts on-chain? This will reset all data and cannot be undone.")) return;
 
-    // Fire the backend reset without awaiting — deployment runs async on the server.
-    // The page reloads immediately; a polling effect picks up the new addresses when ready.
-    const adminSecret = process.env.NEXT_PUBLIC_ADMIN_SECRET;
-    fetch(`${BACKEND}/api/relay/reset`, {
-      method: "POST",
-      headers: { ...(adminSecret ? { "x-admin-secret": adminSecret } : {}) },
-    }).catch(() => {});
+    try {
+      const r = await fetch(`${BACKEND}/api/relay/reset`, { method: "POST" });
+      if (!r.ok) { showToast(`Reset failed (${r.status}) — try again`, "error"); return; }
+    } catch {
+      showToast("Reset failed — backend unreachable", "error");
+      return;
+    }
 
     // Clear all vryfd localStorage keys then restore version tag + reset timestamp.
     // vryfd_reset_at is used to filter out pre-reset certificates so they don't
@@ -1434,7 +1434,7 @@ export default function Home() {
     syncedAddressRef.current = undefined;
     disconnect();
     window.location.reload();
-  }, [disconnect]);
+  }, [disconnect, showToast]);
 
   useEffect(() => {
     if (!walletMenuOpen) return;
