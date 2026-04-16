@@ -129,30 +129,25 @@ async function joinCodeCheckin(onChainEventId, attendee, code, signature, ens = 
       throw new Error(`Signature does not match: expected ${attendee} got ${recovered}`);
   }
 
-  // 2. Already confirmed on-chain? Skip pending queue entirely.
-  try {
-    const c = getContract();
-    const record = await c.getAttendanceRecord(BigInt(onChainEventId), attendee);
-    if (Number(record.timestamp) > 0) {
-      throw new Error("Already confirmed on-chain");
-    }
-  } catch (err) {
-    if (err.message === "Already confirmed on-chain") throw err;
-    // RPC failure — fall through to pending flow
+  // 2 & 3. Run on-chain checks in parallel to cut RPC round-trip time in half.
+  const c = getContract();
+  const [recordResult, eventResult] = await Promise.allSettled([
+    c.getAttendanceRecord(BigInt(onChainEventId), attendee),
+    c.events(BigInt(onChainEventId)),
+  ]);
+
+  if (recordResult.status === "fulfilled" && Number(recordResult.value.timestamp) > 0) {
+    throw new Error("Already confirmed on-chain");
   }
 
-  // 3. Check event is active and within time window
-  try {
-    const c = getContract();
-    const ev = await c.events(BigInt(onChainEventId));
+  if (eventResult.status === "fulfilled") {
+    const ev = eventResult.value;
     const now = Math.floor(Date.now() / 1000);
     if (!ev.active) throw new Error("Event is not active");
     if (now < Number(ev.startTime)) throw new Error("Event has not started yet");
     if (now > Number(ev.endTime)) throw new Error("Event has ended");
-  } catch (err) {
-    if (["Event is not active", "Event has not started yet", "Event has ended"].includes(err.message)) throw err;
-    // RPC failure — fall through
   }
+  // RPC failures on either check — fall through to pending flow
 
   // 4. Already in pending queue?
   if (isPending(onChainEventId, attendee)) {
