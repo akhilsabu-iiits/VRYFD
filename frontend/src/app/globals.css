@@ -508,6 +508,19 @@ body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%
 .btn-add-metamask:hover{background:rgba(255,149,0,0.18);border-color:rgba(255,149,0,0.6)}
 .btn-add-metamask:active{transform:scale(0.97)}
 .btn-add-metamask--added{opacity:0.45;cursor:default;pointer-events:none}
+.btn-add-metamask--active{background:rgba(255,149,0,0.18);border-color:rgba(255,149,0,0.6)}
+
+/* NFT manual import panel (shown under each badge card) */
+.nft-import-panel{width:100%;margin-top:10px;padding:10px 12px;background:var(--bg3);border:1px solid rgba(255,149,0,0.25);border-radius:10px;display:flex;flex-direction:column;gap:7px}
+.nft-import-title{font-size:11px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:0.5px}
+.nft-import-hint{font-size:10px;color:var(--text3);margin-top:-4px}
+.nft-import-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.nft-import-label{font-size:10px;color:var(--text3);white-space:nowrap;flex-shrink:0}
+.nft-import-copy{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:10px;color:var(--text2);cursor:pointer;transition:background 0.15s;max-width:100%;overflow:hidden}
+.nft-import-copy:hover{background:var(--bg3);border-color:var(--amber)}
+.nft-import-copy span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nft-import-copy-icon{flex-shrink:0;font-size:10px;color:var(--amber)}
+
 .btn-claim-milestone{margin-top:10px;font-size:12px;padding:6px 0}
 .milestone-claimed-row{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:8px;width:100%}
 .milestone-claimed-label{font-size:12px;color:var(--green);font-weight:600}

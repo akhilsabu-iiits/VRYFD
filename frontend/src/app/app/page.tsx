@@ -1627,6 +1627,7 @@ export default function Home() {
               badgeTokenIds={badgeTokenIds}
               milestoneNftIds={milestoneNftIds}
               badgeMmAdded={badgeMmAdded}
+              contractAddress={CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111] ?? ""}
               onClaimMilestone={handleClaimMilestone}
               onAddNftToWallet={(tokenId) => promptAddNft(CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111], tokenId)}
               onAddBadgeToWallet={handleAddBadgeToWallet}
