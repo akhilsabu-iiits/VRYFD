@@ -123,6 +123,17 @@ export default function Home() {
   const promptAddNft = useCallback((contractAddr: string, tokenId: string, onSuccess?: () => void, delay = 900) => {
     _promptAddNft({ contractAddr, tokenId, onSuccess, delay, onToast: showToastRef.current });
   }, []);
+
+  // Called from BadgesPage "Add to Wallet" buttons — re-fires the MetaMask popup for an
+  // already-minted NFT so the user can add it even if they missed the automatic prompt.
+  const handleAddToWallet = useCallback((tokenId: string) => {
+    const addr = CONTRACT_ADDRESSES[11155111];
+    if (!addr || addr === "0x0000000000000000000000000000000000000000") {
+      showToastRef.current("Contract address not available — try again after the page syncs", "error");
+      return;
+    }
+    promptAddNft(addr, tokenId, undefined, 0);
+  }, [promptAddNft]);
   const [isMilestoneLoading, setIsMilestoneLoading] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [isJoinCodeLoading, setIsJoinCodeLoading] = useState(false);
@@ -1588,6 +1599,9 @@ export default function Home() {
               claimedMilestones={claimedMilestones}
               isMilestoneLoading={isMilestoneLoading}
               onClaimMilestone={handleClaimMilestone}
+              badgeTokenIds={badgeTokenIds}
+              milestoneNftIds={milestoneNftIds}
+              onAddToWallet={handleAddToWallet}
             />
           )}
         </div>

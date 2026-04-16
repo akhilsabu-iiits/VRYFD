@@ -11,11 +11,14 @@ interface BadgesPageProps {
   claimedMilestones: number[];
   isMilestoneLoading: boolean;
   onClaimMilestone: (threshold: number) => void;
+  badgeTokenIds?: Record<number, string>;
+  milestoneNftIds?: Record<number, string>;
+  onAddToWallet?: (tokenId: string) => void;
 }
 
 export default function BadgesPage({
   events, userCheckins, userBadges, isConnected, claimedMilestones, isMilestoneLoading,
-  onClaimMilestone,
+  onClaimMilestone, badgeTokenIds = {}, milestoneNftIds = {}, onAddToWallet,
 }: BadgesPageProps) {
   return (
     <>
@@ -37,6 +40,7 @@ export default function BadgesPage({
           userBadges.map((id) => {
             const ev = events.find((e) => e.id === id);
             if (!ev) return null;
+            const tid = badgeTokenIds[id];
             return (
               <div key={id} className="card badge">
                 <div
@@ -48,6 +52,16 @@ export default function BadgesPage({
                 <div className="badge-name">{ev.name}</div>
                 <div className="badge-date">{ev.date}</div>
                 <div className="badge-soulbound">SOULBOUND</div>
+                {tid && onAddToWallet && (
+                  <button
+                    type="button"
+                    className="btn btn-block"
+                    style={{ marginTop: "8px", fontSize: "12px", padding: "6px 12px" }}
+                    onClick={() => onAddToWallet(tid)}
+                  >
+                    + Add to MetaMask
+                  </button>
+                )}
               </div>
             );
           })
@@ -81,6 +95,9 @@ export default function BadgesPage({
             claimedMilestones.includes(5) ? (
               <div className="milestone-claimed-row">
                 <span className="milestone-claimed-label">✓ NFT Claimed</span>
+                {milestoneNftIds[5] && onAddToWallet && (
+                  <button type="button" className="btn" style={{ fontSize: "11px", padding: "4px 10px", marginLeft: "8px" }} onClick={() => onAddToWallet(milestoneNftIds[5])}>+ MetaMask</button>
+                )}
               </div>
             ) : userCheckins >= 5 ? (
               <button type="button" className="btn btn-block btn-claim-milestone" onClick={() => onClaimMilestone(5)} disabled={isMilestoneLoading}>
@@ -112,6 +129,9 @@ export default function BadgesPage({
             claimedMilestones.includes(10) ? (
               <div className="milestone-claimed-row">
                 <span className="milestone-claimed-label">✓ NFT Claimed</span>
+                {milestoneNftIds[10] && onAddToWallet && (
+                  <button type="button" className="btn" style={{ fontSize: "11px", padding: "4px 10px", marginLeft: "8px" }} onClick={() => onAddToWallet(milestoneNftIds[10])}>+ MetaMask</button>
+                )}
               </div>
             ) : userCheckins >= 10 ? (
               <button type="button" className="btn btn-block btn-claim-milestone" onClick={() => onClaimMilestone(10)} disabled={isMilestoneLoading}>
@@ -143,6 +163,9 @@ export default function BadgesPage({
             claimedMilestones.includes(20) ? (
               <div className="milestone-claimed-row">
                 <span className="milestone-claimed-label">✓ NFT Claimed</span>
+                {milestoneNftIds[20] && onAddToWallet && (
+                  <button type="button" className="btn" style={{ fontSize: "11px", padding: "4px 10px", marginLeft: "8px" }} onClick={() => onAddToWallet(milestoneNftIds[20])}>+ MetaMask</button>
+                )}
               </div>
             ) : userCheckins >= 20 ? (
               <button type="button" className="btn btn-block btn-claim-milestone" onClick={() => onClaimMilestone(20)} disabled={isMilestoneLoading}>
