@@ -9,6 +9,7 @@ import EventsPage from "../../components/EventsPage";
 import BadgesPage from "../../components/BadgesPage";
 import LeaderboardPage from "../../components/LeaderboardPage";
 import CertificatePage from "../../components/CertificatePage";
+import OrganizerPage from "../../components/OrganizerPage";
 import VRYFPage from "../../components/VRYFPage";
 import { type VEvent, type LBEntry, type ToastState, INITIAL_EVENTS, LEADERBOARD_DATA } from "../../lib/vryfd";
 import { decodeEventLog } from "viem";
@@ -1407,7 +1408,7 @@ export default function Home() {
 
     // Fire the backend reset without awaiting — deployment runs async on the server.
     // The page reloads immediately; a polling effect picks up the new addresses when ready.
-    const adminSecret = sessionStorage.getItem("vryfd_org_secret") ?? undefined;
+    const adminSecret = process.env.NEXT_PUBLIC_ADMIN_SECRET;
     fetch(`${BACKEND}/api/relay/reset`, {
       method: "POST",
       headers: { ...(adminSecret ? { "x-admin-secret": adminSecret } : {}) },
@@ -1444,10 +1445,10 @@ export default function Home() {
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
-  const pages = ["dashboard", "events", "badges", "vryf", "leaderboard", "certificate"];
-  const pageLabels = ["Dashboard", "Events", "Badges", "VRYF Token", "Leaderboard", "Certificates"];
-  const mobileNavIcons = ["🏠", "📅", "🎖️", "🪙", "🏆", "📜"];
-  const mobileNavLabels = ["Home", "Events", "Badges", "VRYF", "Board", "Certs"];
+  const pages = ["dashboard", "events", "badges", "vryf", "leaderboard", "certificate", "organizer"];
+  const pageLabels = ["Dashboard", "Events", "Badges", "VRYF Token", "Leaderboard", "Certificates", "⚙ Organizer"];
+  const mobileNavIcons = ["🏠", "📅", "🎖️", "🪙", "🏆", "📜", "⚙️"];
+  const mobileNavLabels = ["Home", "Events", "Badges", "VRYF", "Board", "Certs", "Org"];
 
   if (isDeployingContracts) {
     return (
@@ -1625,6 +1626,23 @@ export default function Home() {
           )}
         </div>
 
+        <div className={`page${currentPage === "organizer" ? " active" : ""}`}>
+          {mountedPages.has("organizer") && (
+            <OrganizerPage
+              events={displayEvents}
+              deployedEventIds={deployedEventIds}
+              onChainDeployedIds={onChainDeployedIds}
+              onChainEventIds={onChainEventIds}
+              onEventDeployed={handleEventDeployed}
+              onEventCreated={handleEventCreated}
+              onEventUpdated={handleEventUpdated}
+              onEventEnded={handleEventEnded}
+              onEventResumed={handleEventResumed}
+              onEventDeleted={handleEventDeleted}
+              onToast={showToast}
+            />
+          )}
+        </div>
       </div>
 
       {/* Mobile bottom navigation */}

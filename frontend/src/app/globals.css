@@ -666,19 +666,3 @@ body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%
 .wallet-gate-hint{margin-top:1.5rem;font-size:12px;color:var(--text3)}
 .wallet-gate-back{margin-top:2.5rem;font-size:13px;color:var(--text3);text-decoration:none}
 .wallet-gate-back:hover{color:var(--text2)}
-
-/* ── Organizer Login Gate ── */
-.org-login{display:flex;align-items:center;justify-content:center;min-height:60vh;padding:2rem}
-.org-login-card{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:2.5rem;width:100%;max-width:380px;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,0.35)}
-.org-login-icon{font-size:36px;margin-bottom:1rem;opacity:0.9}
-.org-login-title{font-family:var(--font-space-mono),'Space Mono',monospace;font-size:1.25rem;font-weight:700;margin-bottom:0.5rem;background:linear-gradient(135deg,var(--accent2),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.org-login-sub{font-size:13px;color:var(--text2);margin-bottom:1.5rem;line-height:1.55}
-.org-login-form{display:flex;flex-direction:column;gap:12px}
-.org-login-error{font-size:12px;color:var(--coral);text-align:left;margin-top:-4px}
-@keyframes org-shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
-.org-login-shake{animation:org-shake 0.35s ease}
-.org-header-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.org-console-brand{text-decoration:none}
-.org-console-right{display:flex;align-items:center;gap:12px}
-.org-console-label{font-size:12px;color:var(--text3);font-family:var(--font-space-mono),'Space Mono',monospace;letter-spacing:1px}
-.wallet-gate-back:hover{color:var(--text2)}
