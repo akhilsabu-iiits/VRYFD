@@ -1370,6 +1370,64 @@ export default function Home() {
     }
   }, [chainId, address, signTypedDataAsync, showToast, refetchVryf, userCheckins, claimedMilestones]);
 
+  // ─── Manual "Add to MetaMask" for POAP badge cards ─────────────────────────
+  // Called directly from a button click — no setTimeout so the user gesture context
+  // is preserved and MetaMask can open its confirmation popup.
+  // Only marks the badge as added when wallet_watchAsset actually returns true.
+
+  const handleAddBadgeToWallet = useCallback(async (eventId: number, tokenId: string) => {
+    const contractAddr = CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111];
+
+    try { if (!tokenId || BigInt(tokenId) <= 0n) return; } catch { return; }
+
+    if (!contractAddr || contractAddr === "0x0000000000000000000000000000000000000000") {
+      showToast("Contract address not configured", "error");
+      return;
+    }
+
+    const provider: { request: (a: unknown) => Promise<unknown> } | null =
+      (typeof window !== "undefined" && (window as any).ethereum)
+        ? (window as any).ethereum
+        : (walletClientRef.current as any) ?? null;
+
+    if (!provider) {
+      showToast(`To add manually: MetaMask → NFTs tab → Import NFT → Contract: ${contractAddr.slice(0, 8)}… Token ID: ${tokenId}`, "");
+      return;
+    }
+
+    // Always pass tokenId as decimal string — most compatible across MetaMask versions
+    const decimalTokenId = BigInt(tokenId).toString(10);
+
+    let success = false;
+
+    // Primary: ERC1155 (MetaMask v11.7+)
+    try {
+      const added = await provider.request({
+        method: "wallet_watchAsset",
+        params: { type: "ERC1155", options: { address: contractAddr, tokenId: decimalTokenId } },
+      });
+      if (added) success = true;
+    } catch { /* not supported — fall through */ }
+
+    // Fallback: ERC721 (broader MetaMask support)
+    if (!success) {
+      try {
+        const added = await provider.request({
+          method: "wallet_watchAsset",
+          params: { type: "ERC721", options: { address: contractAddr, tokenId: decimalTokenId } },
+        });
+        if (added) success = true;
+      } catch { /* also failed */ }
+    }
+
+    if (success) {
+      setBadgeMmAdded((prev) => ({ ...prev, [eventId]: true }));
+      showToast("NFT added to MetaMask — check your NFTs tab", "success");
+    } else {
+      showToast(`To add manually: MetaMask → NFTs tab → Import NFT → Contract: ${contractAddr.slice(0, 8)}… Token ID: ${tokenId}`, "");
+    }
+  }, [chainId, showToast]);
+
   // ─── Wallet button ──────────────────────────────────────────────────────────
 
   const handleWalletClick = useCallback(() => {
@@ -1571,10 +1629,7 @@ export default function Home() {
               badgeMmAdded={badgeMmAdded}
               onClaimMilestone={handleClaimMilestone}
               onAddNftToWallet={(tokenId) => promptAddNft(CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111], tokenId)}
-              onAddBadgeToWallet={(eventId, tokenId) => {
-                setBadgeMmAdded((prev) => ({ ...prev, [eventId]: true }));
-                promptAddNft(CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111], tokenId);
-              }}
+              onAddBadgeToWallet={handleAddBadgeToWallet}
             />
           )}
         </div>
