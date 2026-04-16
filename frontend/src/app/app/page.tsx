@@ -1407,7 +1407,7 @@ export default function Home() {
 
     // Fire the backend reset without awaiting — deployment runs async on the server.
     // The page reloads immediately; a polling effect picks up the new addresses when ready.
-    const adminSecret = process.env.NEXT_PUBLIC_ADMIN_SECRET;
+    const adminSecret = sessionStorage.getItem("vryfd_org_secret") ?? undefined;
     fetch(`${BACKEND}/api/relay/reset`, {
       method: "POST",
       headers: { ...(adminSecret ? { "x-admin-secret": adminSecret } : {}) },

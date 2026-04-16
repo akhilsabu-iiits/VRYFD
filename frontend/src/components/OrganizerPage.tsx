@@ -23,7 +23,9 @@ interface OrganizerPageProps {
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
 
 function adminHeaders(extra?: Record<string, string>): Record<string, string> {
-  const secret = process.env.NEXT_PUBLIC_ADMIN_SECRET;
+  const secret = typeof window !== "undefined"
+    ? sessionStorage.getItem("vryfd_org_secret") ?? undefined
+    : undefined;
   return {
     "Content-Type": "application/json",
     ...(secret ? { "x-admin-secret": secret } : {}),

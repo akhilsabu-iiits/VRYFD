@@ -50,7 +50,7 @@ export default function OrganizerDashboard() {
   useEffect(() => {
     if (!persistEventsRef.current) { persistEventsRef.current = true; return; }
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(events)); } catch { /* ignore */ }
-    const secret = process.env.NEXT_PUBLIC_ADMIN_SECRET;
+    const secret = sessionStorage.getItem("vryfd_org_secret");
     fetch(`${BACKEND}/api/relay/events`, {
       method: "POST",
       headers: {
@@ -130,6 +130,7 @@ export default function OrganizerDashboard() {
 
   const handleLock = useCallback(() => {
     sessionStorage.removeItem("vryfd_org_authed");
+    sessionStorage.removeItem("vryfd_org_secret");
     setIsAuthed(false);
   }, []);
 
