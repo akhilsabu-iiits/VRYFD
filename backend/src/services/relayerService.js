@@ -580,30 +580,48 @@ async function withRpcFallback(fn) {
 async function deployContracts() {
   if (!relayerWallet) throw new Error("Relayer not initialized — cannot deploy");
 
-  console.log("[deploy] Deploying fresh VRYFToken...");
-  const vryfFactory = new ethers.ContractFactory(VRYFTokenABI.abi, VRYFTokenABI.bytecode, relayerWallet);
-  const vryfToken = await vryfFactory.deploy();
-  await vryfToken.waitForDeployment();
-  const vryfAddress = await vryfToken.getAddress();
-  console.log(`[deploy] VRYFToken deployed: ${vryfAddress}`);
+  // Get nonce once — all 3 txs are submitted with explicit sequential nonces so
+  // they land in the same block instead of 3 separate blocks (~12s vs ~45s).
+  const nonce = await provider.getTransactionCount(relayerWallet.address, "pending");
 
-  console.log("[deploy] Deploying fresh VryfdAttendance...");
+  // Pre-compute both contract addresses deterministically (deployer + nonce)
+  // so VryfdAttendance and grantRole can be submitted without waiting for prior txs.
+  const vryfAddress       = ethers.getCreateAddress({ from: relayerWallet.address, nonce });
+  const attendanceAddress = ethers.getCreateAddress({ from: relayerWallet.address, nonce: nonce + 1 });
+  // MINTER_ROLE = keccak256("MINTER_ROLE") — hardcoded to avoid an extra RPC call
+  const MINTER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("MINTER_ROLE"));
+
+  console.log(`[deploy] Submitting all 3 txs in parallel (nonces ${nonce}-${nonce + 2})...`);
+
+  const vryfFactory       = new ethers.ContractFactory(VRYFTokenABI.abi, VRYFTokenABI.bytecode, relayerWallet);
   const attendanceFactory = new ethers.ContractFactory(VryfdABI.abi, VryfdABI.bytecode, relayerWallet);
-  const attendance = await attendanceFactory.deploy("ipfs://", vryfAddress);
-  await attendance.waitForDeployment();
-  const attendanceAddress = await attendance.getAddress();
-  console.log(`[deploy] VryfdAttendance deployed: ${attendanceAddress}`);
 
-  console.log("[deploy] Granting MINTER_ROLE to attendance contract...");
-  const MINTER_ROLE = await vryfToken.MINTER_ROLE();
-  const tx = await vryfToken.grantRole(MINTER_ROLE, attendanceAddress);
-  await tx.wait();
-  console.log("[deploy] MINTER_ROLE granted");
+  // Submit all 3 transactions simultaneously
+  const [vryfToken, attendance, grantTx] = await Promise.all([
+    vryfFactory.deploy({ nonce }),
+    attendanceFactory.deploy("ipfs://", vryfAddress, { nonce: nonce + 1 }),
+    relayerWallet.sendTransaction({
+      to: vryfAddress,
+      data: new ethers.Interface(VRYFTokenABI.abi).encodeFunctionData("grantRole", [MINTER_ROLE, attendanceAddress]),
+      nonce: nonce + 2,
+    }),
+  ]);
+
+  // Wait for all 3 confirmations in parallel — same block, so this resolves together
+  await Promise.all([
+    vryfToken.waitForDeployment(),
+    attendance.waitForDeployment(),
+    grantTx.wait(1, 120_000),
+  ]);
+
+  console.log(`[deploy] VRYFToken: ${vryfAddress}`);
+  console.log(`[deploy] VryfdAttendance: ${attendanceAddress}`);
+  console.log("[deploy] MINTER_ROLE granted — all done in one block");
 
   // Rewire the relayer to point at new contracts
   contract = new ethers.Contract(attendanceAddress, VryfdABI.abi, relayerWallet);
 
-  // Persist new addresses to disk so Railway process restarts don't revert to stale env vars
+  // Persist new addresses to disk
   try {
     const contractStatePath = path.join(__dirname, "../../data/contractState.json");
     atomicWriteJSON(contractStatePath, { contractAddress: attendanceAddress, vryfTokenAddress: vryfAddress, deployedAt: Date.now() });
