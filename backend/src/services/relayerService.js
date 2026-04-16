@@ -1060,57 +1060,76 @@ async function issueCertificatesBulk(onChainEventId, baseMetadataURI) {
     }
   }
 
-  // Build set of already-certified attendees — throttled to avoid Alchemy 429.
-  // 150ms between reads keeps us well under the free-tier 330 CU/s limit.
-  const alreadyCertified = new Set();
-  try {
-    const totalCerts = Number(await withRpcFallback(() => c.nextCertificateId()));
-    for (let i = 1; i < totalCerts; i++) {  // start at 1 — slot 0 is unused
-      try {
-        const cert = await withRpcFallback(() => c.certificates(BigInt(i)));
-        if (Number(cert.timestamp) === 0) continue;  // skip empty slots
-        if (Number(cert.eventId) === Number(onChainEventId) && cert.isValid) {
-          alreadyCertified.add(cert.attendee.toLowerCase());
-        }
-      } catch {
-        // single cert read failed — skip and continue
-      }
-      await sleep(150);
-    }
-  } catch (err) {
-    // Can't read existing certs — proceed anyway; contract handles duplicates
-    console.warn(`[cert] could not check existing certs for event ${onChainEventId}:`, err.message);
+  // Check attendance records in parallel — one RPC call per attendee simultaneously.
+  const attendanceResults = await Promise.allSettled(
+    attendeeAddresses.map((attendee) =>
+      withRpcFallback(() => c.getAttendanceRecord(BigInt(onChainEventId), attendee))
+    )
+  );
+
+  // Filter to attendees with confirmed on-chain attendance.
+  const eligible = attendeeAddresses.filter((_, i) => {
+    const r = attendanceResults[i];
+    return r.status === "fulfilled" && Number(r.value.timestamp) > 0;
+  });
+  const skippedNotConfirmed = attendeeAddresses.filter((_, i) => {
+    const r = attendanceResults[i];
+    return r.status === "fulfilled" && Number(r.value.timestamp) === 0;
+  });
+  const skippedRpcError = attendeeAddresses.filter((_, i) => attendanceResults[i].status === "rejected");
+
+  if (eligible.length === 0) {
+    return [
+      ...skippedNotConfirmed.map((a) => ({ attendee: a, status: "skipped", reason: "attendance not confirmed on-chain" })),
+      ...skippedRpcError.map((a) => ({ attendee: a, status: "failed", reason: "RPC error reading attendance" })),
+    ];
   }
 
-  const results = [];
-  for (const attendee of attendeeAddresses) {
-    if (alreadyCertified.has(attendee.toLowerCase())) {
-      results.push({ attendee, status: "skipped", reason: "already certified" });
-      continue;
-    }
-    // Validate: attendee must have confirmed attendance on-chain before cert can be issued.
+  // Submit all certificate txs with sequential nonces — avoids waiting for each block
+  // before submitting the next tx. All txs land in the same mempool batch.
+  const results = [
+    ...skippedNotConfirmed.map((a) => ({ attendee: a, status: "skipped", reason: "attendance not confirmed on-chain" })),
+    ...skippedRpcError.map((a) => ({ attendee: a, status: "failed", reason: "RPC error reading attendance" })),
+  ];
+
+  let nonce = await provider.getTransactionCount(relayerWallet.address, "pending");
+  const pendingTxs = [];
+
+  for (const attendee of eligible) {
     try {
-      const record = await withRpcFallback(() => c.getAttendanceRecord(BigInt(onChainEventId), attendee));
-      if (Number(record.timestamp) === 0) {
-        results.push({ attendee, status: "skipped", reason: "attendance not confirmed on-chain" });
-        continue;
-      }
-    } catch (err) {
-      results.push({ attendee, status: "failed", reason: `Failed to read attendance: ${err.message}` });
-      continue;
-    }
-    await sleep(150); // throttle before sending tx
-    try {
-      const tx = await withRpcFallback(() => c.issueCertificate(BigInt(onChainEventId), attendee, certMetaURI));
-      const receipt = await tx.wait(1, 120_000);
-      console.log(`[cert] issued certId for attendee=${attendee} event=${onChainEventId} tx=${receipt.hash}`);
-      results.push({ attendee, status: "issued", txHash: receipt.hash });
+      const tx = await withRpcFallback(() =>
+        c.issueCertificate(BigInt(onChainEventId), attendee, certMetaURI, { nonce: nonce++ })
+      );
+      console.log(`[cert] submitted issueCertificate attendee=${attendee} nonce=${nonce - 1} tx=${tx.hash}`);
+      pendingTxs.push({ attendee, tx });
     } catch (err) {
       const reason = err?.reason || err?.revert?.args?.[0] || err?.shortMessage || err?.message || "Unknown";
-      console.error(`[cert] issueCertificate failed attendee=${attendee} event=${onChainEventId}:`, reason);
+      // "already certified" reverts are expected — treat as skipped
+      const status = reason.toLowerCase().includes("already") ? "skipped" : "failed";
+      console.log(`[cert] issueCertificate submit ${status} attendee=${attendee}: ${reason}`);
+      results.push({ attendee, status, reason });
+      if (status === "failed") nonce++; // keep nonce in sync even on revert
+    }
+  }
+
+  // Wait for all submitted txs in parallel — all mine in the same Sepolia block window.
+  const receiptResults = await Promise.allSettled(
+    pendingTxs.map(({ tx }) => tx.wait(1, 120_000))
+  );
+
+  for (let i = 0; i < pendingTxs.length; i++) {
+    const { attendee } = pendingTxs[i];
+    const r = receiptResults[i];
+    if (r.status === "fulfilled") {
+      console.log(`[cert] issued certId for attendee=${attendee} event=${onChainEventId} tx=${r.value.hash}`);
+      results.push({ attendee, status: "issued", txHash: r.value.hash });
+    } else {
+      const reason = r.reason?.message || "tx.wait failed";
+      console.error(`[cert] receipt failed attendee=${attendee}:`, reason);
       results.push({ attendee, status: "failed", reason });
     }
   }
+
   return results;
 }
 
