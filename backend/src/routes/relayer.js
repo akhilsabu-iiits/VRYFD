@@ -28,9 +28,12 @@ const {
   fixBadgeTokenURI,
   getEventCertificates,
   getCheckinNonce,
+  getContract,
   gaslessClaimBadge,
   gaslessMilestoneReward,
   deployContracts,
+  deployContractsAsync,
+  getDeployState,
   clearAllDeployedEvents,
 } = require("../services/relayerService");
 
@@ -76,7 +79,10 @@ router.get("/deployedEvents", (req, res) => {
 
 /**
  * GET /api/relay/checkin-nonce/:attendee
- * Returns the current EIP-712 nonce for an attendee — frontend uses this to sign CheckIn message
+ * Returns the current EIP-712 nonce + the live contract address for an attendee.
+ * The frontend MUST use the returned contractAddress in the EIP-712 domain so that
+ * the signing address always matches the backend's live contract (avoids mismatch
+ * after a reset or when env vars on Railway/Vercel differ).
  */
 router.get("/checkin-nonce/:attendee", async (req, res) => {
   try {
@@ -84,7 +90,8 @@ router.get("/checkin-nonce/:attendee", async (req, res) => {
       return res.status(400).json({ error: "Invalid wallet address" });
     }
     const nonce = await getCheckinNonce(req.params.attendee);
-    res.json({ success: true, nonce: nonce.toString() });
+    const contractAddress = getContract().target;
+    res.json({ success: true, nonce: nonce.toString(), contractAddress });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -561,20 +568,30 @@ router.post("/events", (req, res) => {
 
 /**
  * POST /api/relay/reset
- * Resets deployedEvents.json to the default state (events 1 & 2 only)
- * and clears in-memory pending registrations and custom codes.
+ * Fires contract deployment in the background and returns immediately.
+ * The frontend reloads at once and polls /api/relay/deploy-status for completion.
  */
-router.post("/reset", async (req, res) => {
+router.post("/reset", (req, res) => {
   try {
-    const { attendanceAddress, vryfAddress } = await deployContracts();
-    // Clear ALL event state AFTER new contracts are deployed so stale
-    // join codes / on-chain IDs from the old contract don't persist.
+    // Clear all event state right away — safe to do before deploy finishes
+    // because the old contract is no longer valid the moment reset is called.
     clearAllDeployedEvents();
-    res.json({ success: true, contractAddress: attendanceAddress, vryfTokenAddress: vryfAddress });
+    // Start async deployment — do NOT await so the response returns in ms
+    deployContractsAsync();
+    res.json({ success: true, status: "deploying" });
   } catch (error) {
     console.error("reset error:", error.message);
     res.status(500).json({ error: error.message });
   }
+});
+
+/**
+ * GET /api/relay/deploy-status
+ * Returns the current async deployment state so the frontend can poll after reset.
+ * { status: 'idle' | 'deploying' | 'ready' | 'error', contractAddress, vryfTokenAddress, error }
+ */
+router.get("/deploy-status", (req, res) => {
+  res.json(getDeployState());
 });
 
 /**

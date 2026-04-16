@@ -99,17 +99,15 @@ async function joinCodeCheckin(onChainEventId, attendee, code, signature, ens = 
   const expected = getJoinCode(onChainEventId);
   if (code.toUpperCase().trim() !== expected) throw new Error("Incorrect join code");
 
-  // 2. Verify EIP-712 signature — ensures the request came from the attendee's wallet.
-  //    Chain ID is cached after first call to avoid an extra RPC round-trip per check-in.
-  //    Wrapped in withRpcFallback so a 429 from Alchemy auto-retries on a public RPC.
+  // 2. Verify personal_sign signature — proves the request came from the attendee's wallet.
+  //    Uses eth_sign / personal_sign (not EIP-712) to avoid domain-separator mismatches
+  //    caused by contract address drift after resets. Anti-replay is handled by the
+  //    pending-queue dedup below (isPending) and the on-chain confirmed check above.
   {
-    const chainId = await getChainId();
-    const nonce = await getCheckinNonce(attendee);
-    const domain = { name: "VryfdAttendance", version: "1", chainId, verifyingContract: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS };
-    const types = { CheckIn: [{ name: "attendee", type: "address" }, { name: "eventId", type: "uint256" }, { name: "nonce", type: "uint256" }] };
-    const value = { attendee, eventId: BigInt(onChainEventId), nonce };
-    const recovered = ethers.verifyTypedData(domain, types, value, signature);
-    if (recovered.toLowerCase() !== attendee.toLowerCase()) throw new Error("Signature does not match attendee address");
+    const message = `VRYFD check-in\nEvent: ${onChainEventId}\nAttendee: ${attendee}`;
+    const recovered = ethers.verifyMessage(message, signature);
+    if (recovered.toLowerCase() !== attendee.toLowerCase())
+      throw new Error(`Signature does not match: expected ${attendee} got ${recovered}`);
   }
 
   // 2. Already confirmed on-chain? Skip pending queue entirely.
@@ -441,7 +439,9 @@ function switchToFallbackRpc(reason) {
   console.warn(`[RPC] ${reason} — switching to RPC #${rpcIndex}: ${nextUrl}`);
   provider = buildProviderForUrl(nextUrl);
   relayerWallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
-  contract = new ethers.Contract(process.env.NEXT_PUBLIC_CONTRACT_ADDRESS, VryfdABI.abi, relayerWallet);
+  // Use current contract address (not env var) so RPC failover after a reset stays on the new contract
+  const currentContractAddress = contract ? contract.target : process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
+  contract = new ethers.Contract(currentContractAddress, VryfdABI.abi, relayerWallet);
   return true;
 }
 
@@ -508,6 +508,26 @@ async function deployContracts() {
   contract = new ethers.Contract(attendanceAddress, VryfdABI.abi, relayerWallet);
 
   return { attendanceAddress, vryfAddress };
+}
+
+// ── Async deploy state ───────────────────────────────────────────────────────
+// Tracks background contract deployment so the frontend can poll for completion
+// instead of blocking on the ~45s deployment before reloading.
+let deployState = { status: "idle", contractAddress: null, vryfTokenAddress: null, error: null };
+
+function getDeployState() {
+  return deployState;
+}
+
+async function deployContractsAsync() {
+  deployState = { status: "deploying", contractAddress: null, vryfTokenAddress: null, error: null };
+  try {
+    const { attendanceAddress, vryfAddress } = await deployContracts();
+    deployState = { status: "ready", contractAddress: attendanceAddress, vryfTokenAddress: vryfAddress, error: null };
+  } catch (err) {
+    deployState = { status: "error", contractAddress: null, vryfTokenAddress: null, error: err.message };
+    console.error("[deploy] async deployment failed:", err.message);
+  }
 }
 
 /**
@@ -1218,5 +1238,8 @@ module.exports = {
   gaslessClaimBadge,
   gaslessMilestoneReward,
   deployContracts,
+  deployContractsAsync,
+  getDeployState,
   clearAllDeployedEvents,
+  getContract,
 };

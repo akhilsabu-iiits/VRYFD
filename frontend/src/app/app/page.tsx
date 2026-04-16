@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { useAccount, useDisconnect, useChainId, useEnsName, useWriteContract, usePublicClient, useReadContract, useSignTypedData, useWalletClient } from "wagmi";
+import { useAccount, useDisconnect, useChainId, useEnsName, useWriteContract, usePublicClient, useReadContract, useSignTypedData, useSignMessage, useWalletClient } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { CONTRACT_ADDRESSES, VRYF_TOKEN_ADDRESS } from "../../utils/wagmiConfig";
 import Dashboard from "../../components/Dashboard";
@@ -81,8 +81,10 @@ export default function Home() {
   const { data: ensName } = useEnsName({ address, chainId: 1 });
   // For on-chain badge minting — user's wallet signs and pays gas
   const { writeContractAsync } = useWriteContract();
-  // For gasless check-in — EIP-712 signature only, no gas
+  // For gasless badge/milestone claim — EIP-712 typed data, verified on-chain
   const { signTypedDataAsync } = useSignTypedData();
+  // For join-code check-in — simple personal_sign, verified off-chain by backend
+  const { signMessageAsync } = useSignMessage();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
   // Refs so callbacks always see the latest values without needing them in every dep array
@@ -93,6 +95,9 @@ export default function Home() {
   const { openConnectModal } = useConnectModal();
   const { disconnect } = useDisconnect();
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
+  const [isDeployingContracts, setIsDeployingContracts] = useState(
+    () => typeof window !== "undefined" && localStorage.getItem("vryfd_deploying") === "1"
+  );
 
   const [currentPage, setCurrentPage] = useState<string>("dashboard");
   const [mountedPages, setMountedPages] = useState<Set<string>>(() => new Set(["dashboard"]));
@@ -259,7 +264,92 @@ export default function Home() {
     //   - claimedMilestones (derived from highestMilestoneClaimed on-chain)
     // This does NOT run the check-in flow — it only reconciles persistent on-chain state.
     postResetRef.current = false; // allow future in-flight abort checks to work correctly
+
+    const SYNC_CACHE_KEY = `vryfd_sync_cache_${addr.toLowerCase()}`;
+    const CACHE_TTL_MS = 5 * 60 * 1000; // 5 min — always wiped by handleReset (removes all vryfd_* keys)
+
+    // Fire vryfHistory backfill + certificate fetch without blocking the sync return.
+    // These are purely informational and do not affect check-in / badge correctness.
+    const fireBackgroundFetches = (checkedIn: number[]) => {
+      if (checkedIn.length > 0) {
+        const historicEntries: VRYFEntry[] = [];
+        Promise.all(checkedIn.map(async (demoId) => {
+          const onChainId = chainEventIds[demoId];
+          if (onChainId === undefined) return;
+          const ev = eventsArr.find((e) => e.id === demoId);
+          const label = `Check-in: ${ev ? ev.name : `Event #${demoId}`}`;
+          try {
+            const res = await fetch(`${BACKEND}/api/relay/attendees/${onChainId}`);
+            if (!res.ok) return;
+            const data = await res.json();
+            const attendees: { attendee: string; timestamp: number; txHash?: string }[] = data.attendees ?? [];
+            const mine = attendees.find((a) => a.attendee.toLowerCase() === addr.toLowerCase());
+            if (!mine) return;
+            historicEntries.push({ type: "checkin", amount: 10, label, timestamp: mine.timestamp, txHash: mine.txHash });
+          } catch { /* skip — backend unreachable or event not found */ }
+        })).then(() => {
+          if (historicEntries.length > 0 && !postResetRef.current) {
+            setVryfHistory((prev) => {
+              // Pass 1: backfill txHash on existing checkin entries that are missing it
+              let anyUpdated = false;
+              const patched = prev.map((existing) => {
+                if (existing.type !== "checkin" || existing.txHash) return existing;
+                const match = historicEntries.find((h) => h.label === existing.label && h.txHash);
+                if (!match) return existing;
+                anyUpdated = true;
+                return { ...existing, txHash: match.txHash, timestamp: match.timestamp };
+              });
+              // Pass 2: add entries that don't exist at all yet
+              const existingLabels = new Set(patched.filter((e) => e.type === "checkin").map((e) => e.label));
+              const novel = historicEntries.filter((e) => !existingLabels.has(e.label));
+              if (!anyUpdated && novel.length === 0) return prev;
+              return [...patched, ...novel].sort((a, b) => b.timestamp - a.timestamp).slice(0, 100);
+            });
+          }
+        }).catch(() => {});
+      }
+      // Fetch real on-chain certificates issued to this wallet.
+      // Filter by vryfd_reset_at so pre-reset certs don't reappear after a reset.
+      fetch(`${BACKEND}/api/certificates/mine/${addr}`)
+        .then(async (res) => {
+          if (res.ok && !postResetRef.current) {
+            const data = await res.json();
+            const resetAt = parseInt(localStorage.getItem("vryfd_reset_at") || "0", 10);
+            const certs = (data.certificates ?? []).filter((c: { timestamp: number }) => c.timestamp > resetAt);
+            setUserCertificates(certs);
+          }
+        })
+        .catch(() => {});
+    };
+
     try {
+      // Fast path: skip all RPC calls if a fresh sync cache exists (e.g. page refresh).
+      // Cache is always wiped by handleReset which removes all vryfd_* localStorage keys.
+      try {
+        const raw = localStorage.getItem(SYNC_CACHE_KEY);
+        if (raw) {
+          const cached = JSON.parse(raw) as {
+            ts: number; checkedInIds: number[]; userBadges: number[];
+            userCheckins: number; claimedMilestones: number[];
+          };
+          if (Date.now() - cached.ts < CACHE_TTL_MS) {
+            // Merge — never decrease counts that may have been updated in-session
+            if (cached.checkedInIds.length > 0) {
+              setCheckedInIds((prev) => { const m = [...new Set([...prev, ...cached.checkedInIds])]; return m.length === prev.length ? prev : m; });
+            }
+            if (cached.userBadges.length > 0) {
+              setUserBadges((prev) => { const m = [...new Set([...prev, ...cached.userBadges])]; return m.length === prev.length ? prev : m; });
+            }
+            setUserCheckins((prev) => Math.max(prev, cached.userCheckins, cached.checkedInIds.length));
+            if (cached.claimedMilestones.length > 0) {
+              setClaimedMilestones((prev) => { const m = [...new Set([...prev, ...cached.claimedMilestones])]; return m.length === prev.length ? prev : m; });
+            }
+            fireBackgroundFetches(cached.checkedInIds);
+            return;
+          }
+        }
+      } catch { /* malformed cache — fall through to full sync */ }
+
       const deployedEntries = Object.entries(chainEventIds) as [string, number][];
       if (deployedEntries.length > 0 && publicClient) {
         const contractAddress = CONTRACT_ADDRESSES[11155111];
@@ -315,75 +405,84 @@ export default function Home() {
           }
           // Sync on-chain total attendance — on-chain is authoritative.
           // Use exact on-chain value (not Math.max) so a redeployed contract resets the counter.
+          let onChainCount = 0;
           if (totalAttendanceRaw !== null && totalAttendanceRaw !== undefined) {
-            const onChainCount = Number(totalAttendanceRaw as bigint);
+            onChainCount = Number(totalAttendanceRaw as bigint);
             setUserCheckins(Math.max(onChainCount, newCheckedIn.length));
           }
           // Derive claimed milestones from highestMilestoneClaimed — on-chain is authoritative.
           // If on-chain highest is 0 (e.g. after contract redeployment), clear local claimed list.
+          let claimedList: number[] = [];
           if (highestMilestoneRaw !== null && highestMilestoneRaw !== undefined) {
             const highest = Number(highestMilestoneRaw as bigint);
-            const claimed = MILESTONES.filter((m) => m.threshold <= highest).map((m) => m.threshold);
-            setClaimedMilestones(claimed);
+            claimedList = MILESTONES.filter((m) => m.threshold <= highest).map((m) => m.threshold);
+            setClaimedMilestones(claimedList);
           }
 
-          // Populate vryfHistory with historical check-in tx data for all confirmed events.
-          // Fetch attendee records from backend so we get the real txHash for each check-in.
-          // Uses functional setVryfHistory update so deduplication sees latest stored history.
-          if (newCheckedIn.length > 0 && !postResetRef.current) {
-            const historicEntries: VRYFEntry[] = [];
-            await Promise.all(newCheckedIn.map(async (demoId) => {
-              const onChainId = chainEventIds[demoId];
-              if (onChainId === undefined) return;
-              const ev = eventsArr.find((e) => e.id === demoId);
-              const label = `Check-in: ${ev ? ev.name : `Event #${demoId}`}`;
-              try {
-                const res = await fetch(`${BACKEND}/api/relay/attendees/${onChainId}`);
-                if (!res.ok) return;
-                const data = await res.json();
-                const attendees: { attendee: string; timestamp: number; txHash?: string }[] = data.attendees ?? [];
-                const mine = attendees.find((a) => a.attendee.toLowerCase() === addr.toLowerCase());
-                if (!mine) return;
-                historicEntries.push({ type: "checkin", amount: 10, label, timestamp: mine.timestamp, txHash: mine.txHash });
-              } catch { /* skip — backend unreachable or event not found */ }
+          // Write sync cache so reconnects within TTL skip RPC calls entirely.
+          // Reset wipes this via handleReset which removes all vryfd_* localStorage keys.
+          try {
+            localStorage.setItem(SYNC_CACHE_KEY, JSON.stringify({
+              ts: Date.now(),
+              checkedInIds: newCheckedIn,
+              userBadges: newBadges,
+              userCheckins: Math.max(onChainCount, newCheckedIn.length),
+              claimedMilestones: claimedList,
             }));
+          } catch { /* localStorage full — skip cache write */ }
 
-            if (historicEntries.length > 0 && !postResetRef.current) {
-              setVryfHistory((prev) => {
-                // Pass 1: backfill txHash on existing checkin entries that are missing it
-                let anyUpdated = false;
-                const patched = prev.map((existing) => {
-                  if (existing.type !== "checkin" || existing.txHash) return existing;
-                  const match = historicEntries.find((h) => h.label === existing.label && h.txHash);
-                  if (!match) return existing;
-                  anyUpdated = true;
-                  return { ...existing, txHash: match.txHash, timestamp: match.timestamp };
-                });
-                // Pass 2: add entries that don't exist at all yet
-                const existingLabels = new Set(patched.filter((e) => e.type === "checkin").map((e) => e.label));
-                const novel = historicEntries.filter((e) => !existingLabels.has(e.label));
-                if (!anyUpdated && novel.length === 0) return prev;
-                return [...patched, ...novel].sort((a, b) => b.timestamp - a.timestamp).slice(0, 100);
-              });
-            }
-          }
+          // Fire vryfHistory + certificate fetches in the background — don't block sync return
+          fireBackgroundFetches(newCheckedIn);
+          return;
         }
       }
     } catch { /* chain read failed — keep existing state */ }
 
-    // Fetch real on-chain certificates issued to this wallet.
-    // Filter by vryfd_reset_at so pre-reset certs don't reappear after a reset.
-    try {
-      if (postResetRef.current) return; // skip if reset happened while awaiting
-      const res = await fetch(`${BACKEND}/api/certificates/mine/${addr}`);
-      if (res.ok && !postResetRef.current) {
-        const data = await res.json();
-        const resetAt = parseInt(localStorage.getItem("vryfd_reset_at") || "0", 10);
-        const certs = (data.certificates ?? []).filter((c: { timestamp: number }) => c.timestamp > resetAt);
-        setUserCertificates(certs);
-      }
-    } catch { /* backend unreachable — keep existing state */ }
+    // Fallback: no deployed events or no publicClient — still fire background certificate fetch
+    fireBackgroundFetches([]);
   }, [publicClient]);
+
+  // Poll for async contract deployment after reset — fires only when vryfd_deploying flag is set.
+  // On completion, stores new addresses in localStorage and reloads so wagmiConfig picks them up.
+  useEffect(() => {
+    if (!isDeployingContracts) return;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 40; // 40 × 3s = 2 min timeout
+    const id = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await fetch(`${BACKEND}/api/relay/deploy-status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.status === "ready") {
+          clearInterval(id);
+          localStorage.removeItem("vryfd_deploying");
+          if (data.contractAddress) localStorage.setItem("vryfd_contract_address", data.contractAddress);
+          if (data.vryfTokenAddress) localStorage.setItem("vryfd_vryf_token_address", data.vryfTokenAddress);
+          // Prompt MetaMask to watch the new VRYF token before reloading
+          if (data.vryfTokenAddress && typeof window !== "undefined" && (window as any).ethereum) {
+            (window as any).ethereum.request({
+              method: "wallet_watchAsset",
+              params: { type: "ERC20", options: { address: data.vryfTokenAddress, symbol: "VRYF", decimals: 18 } },
+            }).catch(() => {});
+          }
+          window.location.reload();
+        } else if (data.status === "error") {
+          clearInterval(id);
+          localStorage.removeItem("vryfd_deploying");
+          setIsDeployingContracts(false);
+          showToast(`Deploy failed: ${data.error ?? "unknown error"}`, "error");
+        } else if (attempts >= MAX_ATTEMPTS) {
+          clearInterval(id);
+          localStorage.removeItem("vryfd_deploying");
+          setIsDeployingContracts(false);
+          showToast("Deploy timed out — please try reset again", "error");
+        }
+      } catch { /* backend unreachable — keep polling */ }
+    }, 3000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDeployingContracts]);
 
   // Trigger chain sync (badge/attendance reconciliation + certificates) once per wallet per session
   useEffect(() => {
@@ -1001,43 +1100,16 @@ export default function Home() {
     const onChainEventId = onChainEventIds[currentEventId ?? -1];
     if (onChainEventId === undefined) { showToast("Event not deployed on-chain yet", "error"); return; }
 
-    const contractAddress = CONTRACT_ADDRESSES[chainId] as `0x${string}`;
-    if (!contractAddress) { showToast("Switch your wallet to Sepolia", "error"); return; }
-
     setIsJoinCodeLoading(true);
-    // Step 1: Get nonce from backend (avoids frontend chain read)
-    let nonce: bigint;
-    try {
-      const nonceRes = await fetch(`${BACKEND}/api/relay/checkin-nonce/${address}`);
-      const nonceData = await nonceRes.json();
-      if (!nonceRes.ok) throw new Error(nonceData.error || "Could not fetch nonce");
-      nonce = BigInt(nonceData.nonce);
-    } catch {
-      showToast("Could not reach backend — is the server running?", "error");
-      setIsJoinCodeLoading(false);
-      return;
-    }
 
-    // Step 2: Sign EIP-712 CheckIn — free, no gas (just a MetaMask signature)
+    // Step 1: Sign a plain message — personal_sign (no EIP-712 domain complexity).
+    // The message binds the attendee address + event ID so the backend can verify
+    // wallet ownership without needing nonces, domain separators, or contract addresses.
     let signature: string;
     try {
       showToast("Sign in MetaMask to register (no gas)...", "");
-      signature = await signTypedDataAsync({
-        domain: {
-          name: "VryfdAttendance",
-          version: "1",
-          chainId: 11155111,
-          verifyingContract: contractAddress,
-        },
-        types: {
-          CheckIn: [
-            { name: "attendee", type: "address" },
-            { name: "eventId", type: "uint256" },
-            { name: "nonce", type: "uint256" },
-          ],
-        },
-        primaryType: "CheckIn",
-        message: { attendee: address, eventId: BigInt(onChainEventId), nonce },
+      signature = await signMessageAsync({
+        message: `VRYFD check-in\nEvent: ${onChainEventId}\nAttendee: ${address}`,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "";
@@ -1050,7 +1122,7 @@ export default function Home() {
       return;
     }
 
-    // Step 3: Submit join code + signature to backend
+    // Step 2: Submit join code + signature to backend
     showToast("Verifying join code...", "");
     try {
       const res = await fetch(`${BACKEND}/api/relay/joinCheckin`, {
@@ -1146,7 +1218,7 @@ export default function Home() {
   }, [
     isConnected, openConnectModal, address, joinCode, currentEventId,
     onChainEventIds, userCheckins, effectiveENS, userAddress,
-    showToast, refetchVryf, chainId, signTypedDataAsync,
+    showToast, refetchVryf, signMessageAsync,
   ]);
 
   // ─── Check if organizer has confirmed a pending registration ──────────────
@@ -1310,20 +1382,12 @@ export default function Home() {
 
   // ─── Reset everything ────────────────────────────────────────────────────────
 
-  const handleReset = useCallback(async () => {
+  const handleReset = useCallback(() => {
     if (!window.confirm("Deploy new contracts on-chain? This will reset all data and cannot be undone.")) return;
 
-    showToast("Deploying fresh contracts on-chain… please wait", "");
-
-    // Deploy new contracts via backend, get new addresses
-    let newContractAddress: string | null = null;
-    let newVryfAddress: string | null = null;
-    try {
-      const res = await fetch(`${BACKEND}/api/relay/reset`, { method: "POST" });
-      const data = await res.json();
-      if (data.contractAddress) newContractAddress = data.contractAddress;
-      if (data.vryfTokenAddress) newVryfAddress = data.vryfTokenAddress;
-    } catch { /* backend unreachable — proceed with local reset only */ }
+    // Fire the backend reset without awaiting — deployment runs async on the server.
+    // The page reloads immediately; a polling effect picks up the new addresses when ready.
+    fetch(`${BACKEND}/api/relay/reset`, { method: "POST" }).catch(() => {});
 
     // Clear all vryfd localStorage keys then restore version tag + reset timestamp.
     // vryfd_reset_at is used to filter out pre-reset certificates so they don't
@@ -1333,57 +1397,19 @@ export default function Home() {
     });
     localStorage.setItem("vryfd_data_version", DATA_VERSION);
     localStorage.setItem("vryfd_reset_at", Math.floor(Date.now() / 1000).toString());
-    // Store new contract addresses so wagmiConfig picks them up on reload
-    if (newContractAddress) localStorage.setItem("vryfd_contract_address", newContractAddress);
-    if (newVryfAddress) localStorage.setItem("vryfd_vryf_token_address", newVryfAddress);
-    // Prompt MetaMask to add the new VRYF ERC-20 token — fire-and-forget so it never
-    // blocks disconnect() or window.location.reload() below.
-    if (newVryfAddress && typeof window !== "undefined" && (window as any).ethereum) {
-      (window as any).ethereum.request({
-        method: "wallet_watchAsset",
-        params: { type: "ERC20", options: { address: newVryfAddress, symbol: "VRYF", decimals: 18 } },
-      }).catch(() => {});
-    }
+    // Signal the reloaded page to poll for new contract addresses
+    localStorage.setItem("vryfd_deploying", "1");
     // Strip deployment info so all events appear undeployed/upcoming after reset.
-    // onChainId/deployTxHash are omitted (undefined → stripped by JSON.stringify).
     const freshEvents: VEvent[] = INITIAL_EVENTS.map((ev) => ({
       ...ev, onChainId: undefined, deployTxHash: undefined, status: "upcoming" as const,
     }));
     localStorage.setItem("vryfd_all_events", JSON.stringify(freshEvents));
 
-    hydratedRef.current = false;
-    skipNextSaveRef.current = false;
-    setUserCheckins(0);
-    setUserBadges([]);
-    setUserVryfBalance(0);
-    setClaimedMilestones([]);
-    setVryfHistory([]);
-    setBadgeBlockNums({});
-    setBadgeMintTimes({});
-    setBadgeTokenIds({});
-    setMilestoneNftIds({});
-    setCheckinStep(0);
-    setIsMinting(false);
-    setLastCheckinTxHash(undefined);
-    setCurrentEventId(null);
-    setEvents(freshEvents);
-    setLeaderboard(LEADERBOARD_DATA);
-    setUserCertificates([]);
-    setCheckedInIds([]);
-    setPendingRegistrationIds([]);
-    setManualEns("");
-    setManualEnsStatus("idle");
-    if (manualEnsKey) localStorage.removeItem(manualEnsKey);
-    if (ensKey) localStorage.removeItem(ensKey);
-    setEnsUnlinked(false);
-    // Clear syncedAddressRef so syncChainData re-runs on next render (re-syncs chain state after reset).
-    // postResetRef suppresses any in-flight refreshCertificates calls.
     postResetRef.current = true;
     syncedAddressRef.current = undefined;
     disconnect();
-    // Reload so wagmiConfig picks up new contract addresses from localStorage
     window.location.reload();
-  }, [showToast, disconnect]);
+  }, [disconnect]);
 
   useEffect(() => {
     if (!walletMenuOpen) return;
@@ -1398,6 +1424,17 @@ export default function Home() {
   const pageLabels = ["Dashboard", "Events", "Badges", "VRYF Token", "Leaderboard", "Certificates", "⚙ Organizer"];
   const mobileNavIcons = ["🏠", "📅", "🎖️", "🪙", "🏆", "📜", "⚙️"];
   const mobileNavLabels = ["Home", "Events", "Badges", "VRYF", "Board", "Certs", "Org"];
+
+  if (isDeployingContracts) {
+    return (
+      <div className="wallet-gate">
+        <div className="wallet-gate-icon wallet-gate-icon--spinning">⬡</div>
+        <h1 className="wallet-gate-title">Deploying Contracts</h1>
+        <p className="wallet-gate-sub">New contracts are being deployed on Sepolia. This takes about 30–60 seconds. The page will reload automatically when ready.</p>
+        <div className="wallet-gate-hint">Do not close this tab</div>
+      </div>
+    );
+  }
 
   if (!isConnected) {
     return (

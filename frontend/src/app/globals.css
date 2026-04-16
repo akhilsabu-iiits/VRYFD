@@ -644,6 +644,7 @@ body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%
 /* ── Wallet Gate ── */
 .wallet-gate{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);padding:2rem;text-align:center}
 .wallet-gate-icon{width:64px;height:64px;border-radius:18px;background:rgba(124,108,240,0.12);border:1px solid rgba(124,108,240,0.25);display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 1.5rem}
+.wallet-gate-icon--spinning{animation:spin 2s linear infinite}
 .wallet-gate-title{font-family:var(--font-space-mono),'Space Mono',monospace;font-size:clamp(1.4rem,4vw,2rem);font-weight:700;margin-bottom:0.75rem;background:linear-gradient(135deg,var(--accent2),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .wallet-gate-sub{color:var(--text2);font-size:15px;max-width:400px;margin-bottom:2rem;line-height:1.6}
 .wallet-gate-btn{display:inline-flex;align-items:center;gap:10px;padding:14px 32px;border-radius:50px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:15px;font-weight:600;border:none;cursor:pointer;box-shadow:0 4px 24px rgba(124,108,240,0.35);transition:all 0.2s}
