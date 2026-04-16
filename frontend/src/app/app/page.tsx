@@ -118,44 +118,44 @@ export default function Home() {
     setVryfHistory((prev) => [entry, ...prev].slice(0, 100));
   }, []);
 
-  // Fires wallet_watchAsset to prompt MetaMask to add an NFT.
-  // delay: 900ms after auto-mint (lets MetaMask settle post-tx), 0ms for manual button clicks.
-  // onSuccess: called only when wallet_watchAsset returns true (MetaMask confirmed).
+  // Fires wallet_watchAsset to add an NFT to the connected wallet's NFT section.
+  // Uses wagmi walletClient.watchAsset() as primary (routes through the correct connected
+  // wallet), falls back to raw window.ethereum for any wallets not exposed via wagmi.
   const promptAddNft = useCallback((contractAddr: string, tokenId: string, onSuccess?: () => void, delay = 0) => {
     try {
       if (!tokenId || BigInt(tokenId) <= 0n) return;
     } catch { return; }
 
-    const provider: { request: (a: unknown) => Promise<unknown> } | null =
-      (typeof window !== "undefined" && (window as any).ethereum)
-        ? (window as any).ethereum
-        : (walletClientRef.current as any) ?? null;
-
-    // MetaMask expects tokenId as a decimal string, not hex
-    const decimalTokenId = tokenId.startsWith("0x")
-      ? BigInt(tokenId).toString()
-      : tokenId;
+    const decimalTokenId = tokenId.startsWith("0x") ? BigInt(tokenId).toString() : tokenId;
+    const tokenIdBigInt = BigInt(decimalTokenId);
 
     const showFallbackToast = () => showToastRef.current(
       `NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${contractAddr.slice(0, 8)}… Token ID: ${decimalTokenId}`,
       ""
     );
 
-    if (!provider) { showFallbackToast(); return; }
-
-    const tryWatch = (type: string): Promise<boolean> =>
-      provider.request({ method: "wallet_watchAsset", params: { type, options: { address: contractAddr, tokenId: decimalTokenId } } }) as Promise<boolean>;
-
     setTimeout(async () => {
-      try {
-        const added1155 = await tryWatch("ERC1155");
-        if (added1155) { showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success"); onSuccess?.(); return; }
-      } catch { /* ERC1155 not supported */ }
+      // Primary: wagmi walletClient.watchAsset() — always uses the correct connected wallet
+      const wc = walletClientRef.current;
+      if (wc) {
+        for (const type of ["ERC1155", "ERC721"] as const) {
+          try {
+            const added = await wc.watchAsset({ type, options: { address: contractAddr as `0x${string}`, tokenId: tokenIdBigInt } });
+            if (added) { showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success"); onSuccess?.(); return; }
+          } catch { /* try next type */ }
+        }
+      }
 
-      try {
-        const added721 = await tryWatch("ERC721");
-        if (added721) { showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success"); onSuccess?.(); return; }
-      } catch { /* ERC721 also failed */ }
+      // Fallback: raw window.ethereum (wallets not exposed through wagmi)
+      const provider = typeof window !== "undefined" ? (window as any).ethereum : null;
+      if (provider) {
+        for (const type of ["ERC1155", "ERC721"]) {
+          try {
+            const added = await provider.request({ method: "wallet_watchAsset", params: { type, options: { address: contractAddr, tokenId: decimalTokenId } } }) as boolean;
+            if (added) { showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success"); onSuccess?.(); return; }
+          } catch { /* try next type */ }
+        }
+      }
 
       showFallbackToast();
     }, delay);
