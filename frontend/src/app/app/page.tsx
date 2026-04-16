@@ -938,16 +938,19 @@ export default function Home() {
       }
       setIsMinting(true);
       try {
-        // Step 1: fetch current nonce
+        // Step 1: fetch current nonce + live contract address from backend
+        // Using the address returned here (not env var) guarantees the EIP-712 domain
+        // matches the actual deployed contract even after resets or env drift.
         const nonceRes = await fetch(`${BACKEND}/api/relay/checkin-nonce/${address}`);
         const nonceData = await nonceRes.json();
         if (!nonceRes.ok) throw new Error(nonceData.error || "Could not fetch nonce");
         const nonce = BigInt(nonceData.nonce);
+        const signingContractAddress = (nonceData.contractAddress || contractAddress) as `0x${string}`;
 
         // Step 2: sign EIP-712 ClaimBadge — MetaMask sign prompt, zero gas
         showToast("Sign in MetaMask to claim badge (no gas)...", "");
         const signature = await signTypedDataAsync({
-          domain: { name: "VryfdAttendance", version: "1", chainId: 11155111, verifyingContract: contractAddress as `0x${string}` },
+          domain: { name: "VryfdAttendance", version: "1", chainId: 11155111, verifyingContract: signingContractAddress },
           types: { ClaimBadge: [{ name: "attendee", type: "address" }, { name: "eventId", type: "uint256" }, { name: "nonce", type: "uint256" }] },
           primaryType: "ClaimBadge",
           message: { attendee: address, eventId: BigInt(onChainEventId), nonce },
@@ -1270,16 +1273,17 @@ export default function Home() {
 
     setIsMilestoneLoading(true);
     try {
-      // Step 1: fetch nonce
+      // Step 1: fetch nonce + live contract address from backend
       const nonceRes = await fetch(`${BACKEND}/api/relay/checkin-nonce/${address}`);
       const nonceData = await nonceRes.json();
       if (!nonceRes.ok) throw new Error(nonceData.error || "Could not fetch nonce");
       const nonce = BigInt(nonceData.nonce);
+      const signingContractAddress = (nonceData.contractAddress || contractAddress) as `0x${string}`;
 
       // Step 2: sign EIP-712 ClaimMilestone — MetaMask sign prompt, zero gas
       showToast("Sign in MetaMask to claim milestone NFT (no gas)...", "");
       const signature = await signTypedDataAsync({
-        domain: { name: "VryfdAttendance", version: "1", chainId: 11155111, verifyingContract: contractAddress as `0x${string}` },
+        domain: { name: "VryfdAttendance", version: "1", chainId: 11155111, verifyingContract: signingContractAddress },
         types: { ClaimMilestone: [{ name: "attendee", type: "address" }, { name: "nonce", type: "uint256" }] },
         primaryType: "ClaimMilestone",
         message: { attendee: address, nonce },
