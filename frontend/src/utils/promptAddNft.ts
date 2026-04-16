@@ -43,11 +43,11 @@ export function promptAddNft({
   // Validate and normalise tokenId to decimal string
   let decimalTokenId: string;
   try {
-    const n = tokenId.startsWith("0x") ? BigInt(tokenId) : BigInt(tokenId);
-    if (n <= 0n) return; // tokenId 0 means unminted — do nothing
+    const n = BigInt(tokenId);
+    if (n <= 0n) return; // tokenId 0 means unminted — caller handles this via toast
     decimalTokenId = n.toString();
   } catch {
-    return; // non-parseable tokenId — do nothing
+    return; // non-parseable tokenId — caller handles this via toast
   }
 
   // Resolve provider: window.ethereum is required. wagmi walletClient must NOT be used here

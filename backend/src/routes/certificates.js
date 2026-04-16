@@ -1,7 +1,7 @@
 const express = require("express");
 const { ethers } = require("ethers");
 const { createFullCertificate } = require("../services/certificateService");
-const { getContract } = require("../services/relayerService");
+const { getContract, getProvider } = require("../services/relayerService");
 
 const router = express.Router();
 
@@ -44,13 +44,17 @@ router.get("/mine/:address", async (req, res) => {
       return res.status(400).json({ error: "Invalid wallet address" });
     }
 
-    const rpcUrl = process.env.SEPOLIA_RPC || "https://rpc.sepolia.org";
     const contractAddress = liveContractAddress();
     if (!contractAddress) return res.status(500).json({ error: "Contract not configured" });
 
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    // Prefer the relayer's already-warmed provider (same Alchemy key, no extra RPC setup).
+    // Fall back to a fresh provider only if the relayer hasn't initialised yet.
+    let readProvider;
+    try { readProvider = getProvider(); } catch {
+      readProvider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC || "https://rpc.sepolia.org");
+    }
     const VryfdABI = require("../abis/VryfdAttendance.json");
-    const contract = new ethers.Contract(contractAddress, VryfdABI.abi, provider);
+    const contract = new ethers.Contract(contractAddress, VryfdABI.abi, readProvider);
 
     const total = Number(await contract.nextCertificateId());
     const certificates = [];
@@ -109,13 +113,15 @@ router.post("/generate", certGenRateLimit, async (req, res) => {
     }
 
     // Verify on-chain: certificate must exist and belong to this attendee
-    const rpcUrl = process.env.SEPOLIA_RPC || "https://rpc.sepolia.org";
     const contractAddress = liveContractAddress();
     if (!contractAddress) return res.status(500).json({ error: "Contract not configured" });
 
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    let readProvider;
+    try { readProvider = getProvider(); } catch {
+      readProvider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC || "https://rpc.sepolia.org");
+    }
     const VryfdABI = require("../abis/VryfdAttendance.json");
-    const contract = new ethers.Contract(contractAddress, VryfdABI.abi, provider);
+    const contract = new ethers.Contract(contractAddress, VryfdABI.abi, readProvider);
 
     const cert = await contract.certificates(BigInt(certificateId));
     if (Number(cert.timestamp) === 0) {

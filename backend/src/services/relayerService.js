@@ -764,6 +764,11 @@ function getContract() {
   return contract;
 }
 
+function getProvider() {
+  if (!provider) throw new Error("Relayer not initialized");
+  return provider;
+}
+
 // ─── Organizer Actions (relayer pays gas) ─────────────────────────────────
 
 /**
@@ -1471,4 +1476,5 @@ module.exports = {
   getDeployState,
   clearAllDeployedEvents,
   getContract,
+  getProvider,
 };

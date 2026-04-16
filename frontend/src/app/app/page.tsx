@@ -47,6 +47,8 @@ export interface VRYFEntry {
   txHash?: string;
 }
 
+type OnChainCert = { certId: number; eventId: number; eventName: string; timestamp: number; metadataURI: string; isValid: boolean };
+
 function loadWalletData(addr: string): {
   checkins: number; badges: number[]; checkedInIds: number[]; vryfBalance: number;
   claimedMilestones: number[];
@@ -55,22 +57,25 @@ function loadWalletData(addr: string): {
   pendingIds: number[];
   vryfHistory: VRYFEntry[];
   badgeTokenIds: Record<number, string>;
+  badgeContractAddrs: Record<number, string>;
   milestoneNftIds: Record<number, string>;
+  certificates: OnChainCert[];
 } {
   try {
     const raw = localStorage.getItem(`vryfd_wallet_${addr}`);
-    if (raw) return { vryfBalance: 0, claimedMilestones: [], checkedInIds: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, milestoneNftIds: {}, ...JSON.parse(raw) };
+    if (raw) return { vryfBalance: 0, claimedMilestones: [], checkedInIds: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, badgeContractAddrs: {}, milestoneNftIds: {}, certificates: [], ...JSON.parse(raw) };
   } catch {}
-  return { checkins: 0, badges: [], checkedInIds: [], vryfBalance: 0, claimedMilestones: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, milestoneNftIds: {} };
+  return { checkins: 0, badges: [], checkedInIds: [], vryfBalance: 0, claimedMilestones: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, badgeContractAddrs: {}, milestoneNftIds: {}, certificates: [] };
 }
 
 function saveWalletData(
   addr: string, checkins: number, badges: number[], checkedInIds: number[], vryfBalance: number,
   claimedMilestones: number[], badgeBlockNums: Record<number, number>, badgeMintTimes: Record<number, string>,
   pendingIds: number[], vryfHistory: VRYFEntry[],
-  badgeTokenIds: Record<number, string>, milestoneNftIds: Record<number, string>,
+  badgeTokenIds: Record<number, string>, badgeContractAddrs: Record<number, string>,
+  milestoneNftIds: Record<number, string>, certificates: OnChainCert[],
 ) {
-  localStorage.setItem(`vryfd_wallet_${addr}`, JSON.stringify({ checkins, badges, checkedInIds, vryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingIds, vryfHistory, badgeTokenIds, milestoneNftIds }));
+  localStorage.setItem(`vryfd_wallet_${addr}`, JSON.stringify({ checkins, badges, checkedInIds, vryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingIds, vryfHistory, badgeTokenIds, badgeContractAddrs, milestoneNftIds, certificates }));
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -124,16 +129,6 @@ export default function Home() {
     _promptAddNft({ contractAddr, tokenId, onSuccess, delay, onToast: showToastRef.current });
   }, []);
 
-  // Called from BadgesPage "Add to Wallet" buttons — re-fires the MetaMask popup for an
-  // already-minted NFT so the user can add it even if they missed the automatic prompt.
-  const handleAddToWallet = useCallback((tokenId: string, onSuccess: () => void) => {
-    const addr = CONTRACT_ADDRESSES[11155111];
-    if (!addr || addr === "0x0000000000000000000000000000000000000000") {
-      showToastRef.current("Contract address not available — try again after the page syncs", "error");
-      return;
-    }
-    promptAddNft(addr, tokenId, onSuccess, 0);
-  }, [promptAddNft]);
   const [isMilestoneLoading, setIsMilestoneLoading] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [isJoinCodeLoading, setIsJoinCodeLoading] = useState(false);
@@ -150,10 +145,7 @@ export default function Home() {
   const manualEnsKey = address ? `vryfd_manual_ens_${address.toLowerCase()}` : null;
 
   // Real on-chain certificates for the connected wallet (fetched from chain on connect)
-  const [userCertificates, setUserCertificates] = useState<{
-    certId: number; eventId: number; eventName: string;
-    timestamp: number; metadataURI: string; isValid: boolean;
-  }[]>([]);
+  const [userCertificates, setUserCertificates] = useState<OnChainCert[]>([]);
   // demoEventIds where user has confirmed attendance on-chain (may be wider than userBadges)
   const [checkedInIds, setCheckedInIds] = useState<number[]>([]);
 
@@ -182,6 +174,8 @@ export default function Home() {
   const [badgeMintTimes, setBadgeMintTimes] = useState<Record<number, string>>({});
   // Maps demoEventId → on-chain ERC-1155 tokenId (stored at claim time for "Add to MetaMask" button)
   const [badgeTokenIds, setBadgeTokenIds] = useState<Record<number, string>>({});
+  // Maps demoEventId → contract address used when badge was minted (post-Reset address, not env var)
+  const [badgeContractAddrs, setBadgeContractAddrs] = useState<Record<number, string>>({});
   // Maps milestone threshold (5/10/20) → on-chain ERC-1155 tokenId
   const [milestoneNftIds, setMilestoneNftIds] = useState<Record<number, string>>({});
 
@@ -219,6 +213,62 @@ export default function Home() {
   const onChainDeployedIds = useMemo(() =>
     new Set(events.filter((e) => e.onChainId !== undefined).map((e) => e.id)),
   [events]);
+
+  // Called from BadgesPage "Add to Wallet" buttons — re-fires the MetaMask popup for an
+  // already-minted NFT so the user can add it even if they missed the automatic prompt.
+  // If tokenId is not yet known (receipt hasn't confirmed), we fetch it on-demand from chain.
+  // contractAddr is the address stored at claim time (signingContractAddress), so post-Reset
+  // badges always use the new contract — never the stale env-var address.
+  const handleAddToWallet = useCallback(async (eventId: number, tokenId: string, contractAddr: string, onSuccess: () => void) => {
+    // Resolve contract address — prefer stored claim-time address, then live backend, then env fallback
+    let addr = (contractAddr && contractAddr.startsWith("0x")) ? contractAddr : CONTRACT_ADDRESSES[11155111];
+    if (!addr || addr === "0x0000000000000000000000000000000000000000") {
+      // No cached address — fetch live from backend (handles post-Reset state)
+      try {
+        const caRes = await fetch(`${BACKEND}/api/relay/contract-address`);
+        if (caRes.ok) {
+          const caData = await caRes.json();
+          if (caData.contractAddress?.startsWith("0x")) {
+            addr = caData.contractAddress as `0x${string}`;
+            CONTRACT_ADDRESSES[11155111] = addr as `0x${string}`;
+          }
+        }
+      } catch {}
+    }
+    if (!addr || addr === "0x0000000000000000000000000000000000000000") {
+      showToastRef.current("Contract address not available — try again after the page syncs", "error");
+      return;
+    }
+    let resolvedTokenId = tokenId;
+    // Fetch on-demand when tokenId is missing, empty, or "0" (contract mapping not yet read / fresh contract)
+    const needsFetch = !resolvedTokenId || resolvedTokenId === "0";
+    if (needsFetch && publicClient) {
+      const onChainId = onChainEventIds[eventId];
+      if (onChainId !== undefined) {
+        try {
+          const tid = await publicClient.readContract({
+            address: addr as `0x${string}`,
+            abi: VryfdABI.abi,
+            functionName: "eventBadgeToken",
+            args: [BigInt(onChainId)],
+          }) as bigint;
+          resolvedTokenId = tid.toString();
+          if (tid > 0n) {
+            setBadgeTokenIds((prev) => ({ ...prev, [eventId]: resolvedTokenId }));
+            setBadgeContractAddrs((prev) => ({ ...prev, [eventId]: addr }));
+          }
+        } catch {
+          showToastRef.current("Could not fetch NFT token ID — try again shortly", "error");
+          return;
+        }
+      }
+    }
+    if (!resolvedTokenId || resolvedTokenId === "0") {
+      showToastRef.current(`NFT minted ✓  To add manually: MetaMask → NFTs → Import NFT → Contract: ${addr.slice(0, 10)}…`, "");
+      return;
+    }
+    promptAddNft(addr, resolvedTokenId, onSuccess, 900);
+  }, [promptAddNft, publicClient, onChainEventIds]);
 
   // No loadBackendDeployedEvents needed — onChainId/deployTxHash live on the VEvent itself.
 
@@ -278,13 +328,15 @@ export default function Home() {
       }
       // Fetch real on-chain certificates issued to this wallet.
       // Filter by vryfd_reset_at so pre-reset certs don't reappear after a reset.
+      // Only overwrite state/cache when the backend returns ≥1 cert — an empty result
+      // could be a transient RPC failure and must not wipe a valid cached set.
       fetch(`${BACKEND}/api/certificates/mine/${addr}`)
         .then(async (res) => {
           if (res.ok && !postResetRef.current) {
             const data = await res.json();
             const resetAt = parseInt(localStorage.getItem("vryfd_reset_at") || "0", 10);
             const certs = (data.certificates ?? []).filter((c: { timestamp: number }) => c.timestamp > resetAt);
-            setUserCertificates(certs);
+            if (certs.length > 0) setUserCertificates(certs);
           }
         })
         .catch(() => {});
@@ -341,6 +393,7 @@ export default function Home() {
           const newCheckedIn: number[] = [];
           const newBadges: number[] = [];
           const newBadgeTokenIds: Record<number, string> = {};
+          const newBadgeContractAddrs: Record<number, string> = {};
 
           // Read per-event records + wallet-level counters in parallel
           const [, , totalAttendanceRaw, highestMilestoneRaw] = await Promise.all([
@@ -366,7 +419,7 @@ export default function Home() {
                         functionName: "eventBadgeToken",
                         args: [BigInt(onChainId)],
                       }) as bigint;
-                      if (tid > 0n) newBadgeTokenIds[demoId] = tid.toString();
+                      if (tid > 0n) { newBadgeTokenIds[demoId] = tid.toString(); newBadgeContractAddrs[demoId] = contractAddress; }
                     } catch { /* token lookup failed — button hidden until next claim */ }
                   }
                 } catch { /* single event read failed — skip */ }
@@ -403,6 +456,7 @@ export default function Home() {
           }
           if (Object.keys(newBadgeTokenIds).length > 0) {
             setBadgeTokenIds((prev) => ({ ...prev, ...newBadgeTokenIds }));
+            setBadgeContractAddrs((prev) => ({ ...prev, ...newBadgeContractAddrs }));
           }
           // Sync on-chain total attendance — on-chain is authoritative.
           // Use exact on-chain value (not Math.max) so a redeployed contract resets the counter.
@@ -606,7 +660,9 @@ export default function Home() {
       setBadgeBlockNums(data.badgeBlockNums);
       setBadgeMintTimes(data.badgeMintTimes);
       setBadgeTokenIds(data.badgeTokenIds ?? {});
+      setBadgeContractAddrs(data.badgeContractAddrs ?? {});
       setMilestoneNftIds(data.milestoneNftIds ?? {});
+      if (Array.isArray(data.certificates) && data.certificates.length > 0) setUserCertificates(data.certificates);
       if (data.pendingIds.length > 0) setPendingRegistrationIds(data.pendingIds);
       setVryfHistory(data.vryfHistory ?? []);
       setCheckinStep(0);
@@ -645,8 +701,8 @@ export default function Home() {
       return;
     }
     if (!addressRef.current) return;
-    saveWalletData(addressRef.current, userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, milestoneNftIds);
-  }, [userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, milestoneNftIds]);
+    saveWalletData(addressRef.current, userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, badgeContractAddrs, milestoneNftIds, userCertificates);
+  }, [userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, badgeContractAddrs, milestoneNftIds, userCertificates]);
 
   // Persist full VEvent array to localStorage and backend on every change.
   // Skip the very first render — hydration's setEvents hasn't run yet, so events
@@ -759,7 +815,9 @@ export default function Home() {
         const data = await res.json();
         const resetAt = parseInt(localStorage.getItem("vryfd_reset_at") || "0", 10);
         const certs = (data.certificates ?? []).filter((c: { timestamp: number }) => c.timestamp > resetAt);
-        setUserCertificates(certs);
+        // Only overwrite when backend returns ≥1 cert — empty could be a transient RPC
+        // failure that must not wipe a persisted set.
+        if (certs.length > 0) setUserCertificates(certs);
       }
     } catch { /* backend unreachable */ }
   }, [address]);
@@ -1021,7 +1079,7 @@ export default function Home() {
             hash: data.txHash as `0x${string}`,
             timeout: 90_000,
             pollingInterval: 1_000,
-          }).then((receipt) => {
+          }).then(async (receipt) => {
             const abi = VryfdABI.abi as Parameters<typeof decodeEventLog>[0]["abi"];
             let nftTokenId: string | null = predictedTokenId;
             // Primary: BadgeMinted(eventId, attendee, tokenId)
@@ -1042,8 +1100,27 @@ export default function Home() {
                 } catch {}
               }
             }
-            if (nftTokenId) {
-              if (capturedBadgeEventId !== null) setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: nftTokenId! }));
+            // Authoritative fallback: read eventBadgeToken(onChainEventId) directly from chain.
+            // This always works — covers fresh contracts where nextBadgeTokenId() returned 0
+            // and log decoding failed. The badge IS minted (receipt confirmed), so the contract
+            // mapping is populated. We accept any value the contract returns (including 0).
+            if (publicClient) {
+              try {
+                const tid = await publicClient.readContract({
+                  address: signingContractAddress,
+                  abi: VryfdABI.abi,
+                  functionName: "eventBadgeToken",
+                  args: [BigInt(onChainEventId)],
+                }) as bigint;
+                // Only override if chain returned a real token ID (> 0)
+                if (tid > 0n) nftTokenId = tid.toString();
+              } catch { /* keep whatever log parsing found */ }
+            }
+            if (nftTokenId !== null && nftTokenId !== "" && nftTokenId !== "0") {
+              if (capturedBadgeEventId !== null) {
+                setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: nftTokenId! }));
+                setBadgeContractAddrs((prev) => ({ ...prev, [capturedBadgeEventId]: signingContractAddress }));
+              }
               promptAddNft(signingContractAddress, nftTokenId, undefined, 0);
             } else {
               showToastRef.current(`NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${signingContractAddress.slice(0, 8)}…`, "");
@@ -1051,14 +1128,20 @@ export default function Home() {
           }).catch(() => {
             // Receipt timed out — use predicted tokenId if available, else fallback toast
             if (predictedTokenId) {
-              if (capturedBadgeEventId !== null) setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: predictedTokenId }));
+              if (capturedBadgeEventId !== null) {
+                setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: predictedTokenId }));
+                setBadgeContractAddrs((prev) => ({ ...prev, [capturedBadgeEventId]: signingContractAddress }));
+              }
               promptAddNft(signingContractAddress, predictedTokenId, undefined, 0);
             } else {
               showToastRef.current(`NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${signingContractAddress.slice(0, 8)}…`, "");
             }
           });
         } else if (predictedTokenId) {
-          if (capturedBadgeEventId !== null) setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: predictedTokenId }));
+          if (capturedBadgeEventId !== null) {
+            setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: predictedTokenId }));
+            setBadgeContractAddrs((prev) => ({ ...prev, [capturedBadgeEventId]: signingContractAddress }));
+          }
           promptAddNft(signingContractAddress, predictedTokenId);
         } else {
           showToastRef.current(`NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${signingContractAddress.slice(0, 8)}…`, "");
@@ -1633,6 +1716,7 @@ export default function Home() {
               isMilestoneLoading={isMilestoneLoading}
               onClaimMilestone={handleClaimMilestone}
               badgeTokenIds={badgeTokenIds}
+              badgeContractAddrs={badgeContractAddrs}
               milestoneNftIds={milestoneNftIds}
               onAddToWallet={handleAddToWallet}
             />
