@@ -603,16 +603,15 @@ export default function Home() {
         loadedFromSource = true;
       }
 
-      // deployedEvents overlay — keeps onChainId/txHash current after redeployments.
-      // Rule: only UPDATE events that already have an onChainId; never add a new one.
-      // This ensures a reset (which strips onChainId) is never overridden on reload.
+      // deployedEvents overlay — always apply onChainId/txHash from backend.
+      // Safe after Reset because clearAllDeployedEvents() wipes deployedEvents.json to {}
+      // before the frontend reloads, so info is always null for undeployed events.
       try {
         const r = await fetch(`${BACKEND}/api/relay/deployedEvents`);
         const d = await r.json() as Record<string, { txHash: string; onChainId: string; confirmedCount?: number }>;
         setEvents((prev) => prev.map((ev) => {
           const info = d[String(ev.id)];
           if (!info) return ev;
-          if (loadedFromSource && ev.onChainId === undefined) return ev;
           return {
             ...ev,
             onChainId: Number(info.onChainId),
