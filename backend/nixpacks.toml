@@ -1,6 +1,3 @@
-[phases.setup]
-aptPkgs = ["libvips-dev", "python3", "make", "g++"]
-
 [phases.install]
 cmds = ["npm install"]
 
