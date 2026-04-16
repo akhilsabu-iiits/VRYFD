@@ -1002,12 +1002,23 @@ export default function Home() {
               pollingInterval: 4_000,
             });
             const abi = VryfdABI.abi as Parameters<typeof decodeEventLog>[0]["abi"];
+            // Primary: BadgeMinted(eventId, attendee, tokenId) — contract's own event
             for (const log of receipt.logs) {
               try {
-                const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics as Parameters<typeof decodeEventLog>[0]["topics"], eventName: "TransferSingle" });
-                const id = (decoded.args as { id?: bigint }).id;
+                const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics as Parameters<typeof decodeEventLog>[0]["topics"], eventName: "BadgeMinted" });
+                const id = (decoded.args as { tokenId?: bigint }).tokenId;
                 if (id != null && id > 0n) { nftTokenId = id.toString(); break; }
               } catch {}
+            }
+            // Fallback: TransferSingle (ERC1155 standard)
+            if (!nftTokenId) {
+              for (const log of receipt.logs) {
+                try {
+                  const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics as Parameters<typeof decodeEventLog>[0]["topics"], eventName: "TransferSingle" });
+                  const id = (decoded.args as { id?: bigint }).id;
+                  if (id != null && id > 0n) { nftTokenId = id.toString(); break; }
+                } catch {}
+              }
             }
           } catch {}
         }

@@ -817,11 +817,24 @@ async function gaslessClaimBadge(attendee, onChainEventId, signature) {
       for (const log of receipt.logs) {
         try {
           const parsed = iface.parseLog(log);
-          if (parsed?.name === "TransferSingle") {
-            const id = parsed.args.id ?? parsed.args[3];
+          // BadgeMinted(eventId, attendee, tokenId) — contract's own event, most reliable
+          if (parsed?.name === "BadgeMinted") {
+            const id = parsed.args.tokenId;
             if (id != null && BigInt(id) > 0n) { tokenId = id.toString(); break; }
           }
         } catch {}
+      }
+      // Fallback: TransferSingle (ERC1155 standard mint event)
+      if (!tokenId) {
+        for (const log of receipt.logs) {
+          try {
+            const parsed = iface.parseLog(log);
+            if (parsed?.name === "TransferSingle") {
+              const id = parsed.args.id ?? parsed.args[3];
+              if (id != null && BigInt(id) > 0n) { tokenId = id.toString(); break; }
+            }
+          } catch {}
+        }
       }
       console.log(`[gaslessClaimBadge] logs=${receipt.logs.length} tokenId=${tokenId}`);
     }
