@@ -995,33 +995,32 @@ export default function Home() {
         showToast("Soulbound POAP Badge minted! It's in your wallet.", "success");
 
         // Prompt wallet to add the newly minted NFT.
-        // Primary: use tokenId returned by backend (parsed from TransferSingle receipt log).
-        // Fallback: if backend's tx.wait() timed out and returned no tokenId, fetch the
-        // receipt directly from chain — retry up to 3 times with 8s between attempts so
-        // the popup fires reliably even when the tx is still in the mempool.
+        // Primary: tokenId returned by backend (from TransferSingle log in receipt).
+        // Fallback: if backend tx.wait() timed out, wait for receipt ourselves using
+        // waitForTransactionReceipt which polls until mined (up to 90s on Sepolia).
         let nftTokenId: string | null = (data.tokenId && data.tokenId !== "0") ? String(data.tokenId) : null;
 
         if (!nftTokenId && data.txHash && publicClient) {
-          const abi = VryfdABI.abi as Parameters<typeof decodeEventLog>[0]["abi"];
-          for (let attempt = 0; attempt < 3 && !nftTokenId; attempt++) {
-            if (attempt > 0) await new Promise((r) => setTimeout(r, 8000));
-            try {
-              const receipt = await publicClient.getTransactionReceipt({ hash: data.txHash as `0x${string}` });
-              if (!receipt) continue;
-              for (const log of receipt.logs) {
-                try {
-                  const decoded = decodeEventLog({
-                    abi,
-                    data: log.data,
-                    topics: log.topics as Parameters<typeof decodeEventLog>[0]["topics"],
-                    eventName: "TransferSingle",
-                  });
-                  const id = (decoded.args as { id?: bigint }).id;
-                  if (id != null && id > 0n) { nftTokenId = id.toString(); break; }
-                } catch {}
-              }
-            } catch {}
-          }
+          try {
+            const receipt = await publicClient.waitForTransactionReceipt({
+              hash: data.txHash as `0x${string}`,
+              timeout: 90_000,
+              pollingInterval: 4_000,
+            });
+            const abi = VryfdABI.abi as Parameters<typeof decodeEventLog>[0]["abi"];
+            for (const log of receipt.logs) {
+              try {
+                const decoded = decodeEventLog({
+                  abi,
+                  data: log.data,
+                  topics: log.topics as Parameters<typeof decodeEventLog>[0]["topics"],
+                  eventName: "TransferSingle",
+                });
+                const id = (decoded.args as { id?: bigint }).id;
+                if (id != null && id > 0n) { nftTokenId = id.toString(); break; }
+              } catch {}
+            }
+          } catch { /* tx not mined within 90s — skip popup */ }
         }
 
         if (nftTokenId) {
