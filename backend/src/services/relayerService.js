@@ -1060,62 +1060,55 @@ async function issueCertificatesBulk(onChainEventId, baseMetadataURI) {
     }
   }
 
-  // Check attendance records in parallel — one RPC call per attendee simultaneously.
-  const attendanceResults = await Promise.allSettled(
-    attendeeAddresses.map((attendee) =>
-      withRpcFallback(() => c.getAttendanceRecord(BigInt(onChainEventId), attendee))
-    )
-  );
-
-  // Filter to attendees with confirmed on-chain attendance.
-  const eligible = attendeeAddresses.filter((_, i) => {
-    const r = attendanceResults[i];
-    return r.status === "fulfilled" && Number(r.value.timestamp) > 0;
-  });
-  const skippedNotConfirmed = attendeeAddresses.filter((_, i) => {
-    const r = attendanceResults[i];
-    return r.status === "fulfilled" && Number(r.value.timestamp) === 0;
-  });
-  const skippedRpcError = attendeeAddresses.filter((_, i) => attendanceResults[i].status === "rejected");
-
-  if (eligible.length === 0) {
-    return [
-      ...skippedNotConfirmed.map((a) => ({ attendee: a, status: "skipped", reason: "attendance not confirmed on-chain" })),
-      ...skippedRpcError.map((a) => ({ attendee: a, status: "failed", reason: "RPC error reading attendance" })),
-    ];
+  // Check attendance records sequentially with throttle — avoids 429 from burst of eth_calls.
+  const results = [];
+  const eligible = [];
+  for (const attendee of attendeeAddresses) {
+    try {
+      const record = await withRpcFallback(() => c.getAttendanceRecord(BigInt(onChainEventId), attendee));
+      if (Number(record.timestamp) > 0) {
+        eligible.push(attendee);
+      } else {
+        results.push({ attendee, status: "skipped", reason: "attendance not confirmed on-chain" });
+      }
+    } catch (err) {
+      results.push({ attendee, status: "failed", reason: `RPC error reading attendance: ${err.message}` });
+    }
+    await sleep(200);
   }
 
-  // Submit all certificate txs with sequential nonces — avoids waiting for each block
-  // before submitting the next tx. All txs land in the same mempool batch.
-  const results = [
-    ...skippedNotConfirmed.map((a) => ({ attendee: a, status: "skipped", reason: "attendance not confirmed on-chain" })),
-    ...skippedRpcError.map((a) => ({ attendee: a, status: "failed", reason: "RPC error reading attendance" })),
-  ];
+  if (eligible.length === 0) return results;
 
+  // Submit txs with explicit sequential nonces so all land in the mempool without
+  // waiting for each block. Nonce is captured BEFORE each call — never inside a
+  // retry lambda — so withRpcFallback retries always use the correct nonce value.
   let nonce = await provider.getTransactionCount(relayerWallet.address, "pending");
   const pendingTxs = [];
 
   for (const attendee of eligible) {
+    const txNonce = nonce;
     try {
       const tx = await withRpcFallback(() =>
-        c.issueCertificate(BigInt(onChainEventId), attendee, certMetaURI, { nonce: nonce++ })
+        c.issueCertificate(BigInt(onChainEventId), attendee, certMetaURI, { nonce: txNonce })
       );
-      console.log(`[cert] submitted issueCertificate attendee=${attendee} nonce=${nonce - 1} tx=${tx.hash}`);
+      console.log(`[cert] submitted tx=${tx.hash} nonce=${txNonce} attendee=${attendee}`);
       pendingTxs.push({ attendee, tx });
+      nonce++; // increment only after successful submission
     } catch (err) {
       const reason = err?.reason || err?.revert?.args?.[0] || err?.shortMessage || err?.message || "Unknown";
-      // "already certified" reverts are expected — treat as skipped
-      const status = reason.toLowerCase().includes("already") ? "skipped" : "failed";
-      console.log(`[cert] issueCertificate submit ${status} attendee=${attendee}: ${reason}`);
-      results.push({ attendee, status, reason });
-      if (status === "failed") nonce++; // keep nonce in sync even on revert
+      console.error(`[cert] submit failed attendee=${attendee} nonce=${txNonce}: ${reason}`);
+      results.push({ attendee, status: "failed", reason });
+      // tx was NOT submitted — nonce unchanged, no increment needed
     }
+    await sleep(200);
   }
 
-  // Wait for all receipts with a single polling loop — avoids N parallel tx.wait() calls
-  // each independently calling eth_blockNumber which triggers Alchemy 429 bursts.
+  if (pendingTxs.length === 0) return results;
+
+  // Single polling loop — one getTransactionReceipt per tx per cycle instead of
+  // N independent tx.wait() calls each polling eth_blockNumber (causes 429 bursts).
   const pending = new Map(pendingTxs.map(({ attendee, tx }) => [tx.hash, attendee]));
-  const receiptMap = new Map(); // txHash → receipt
+  const receiptMap = new Map();
   const deadline = Date.now() + 120_000;
 
   while (pending.size > 0 && Date.now() < deadline) {
@@ -1123,22 +1116,26 @@ async function issueCertificatesBulk(onChainEventId, baseMetadataURI) {
     for (const hash of [...pending.keys()]) {
       try {
         const receipt = await provider.getTransactionReceipt(hash);
-        if (receipt?.blockNumber) {
+        if (receipt?.blockNumber != null) {
           receiptMap.set(hash, receipt);
           pending.delete(hash);
         }
       } catch {}
+      await sleep(300); // small gap between receipt checks to stay under CU limit
     }
   }
 
   for (const { attendee, tx } of pendingTxs) {
     const receipt = receiptMap.get(tx.hash);
-    if (receipt) {
-      console.log(`[cert] issued cert attendee=${attendee} event=${onChainEventId} tx=${receipt.hash}`);
-      results.push({ attendee, status: "issued", txHash: receipt.hash });
-    } else {
-      console.error(`[cert] receipt timeout attendee=${attendee} tx=${tx.hash}`);
+    if (!receipt) {
+      console.error(`[cert] timeout attendee=${attendee} tx=${tx.hash}`);
       results.push({ attendee, status: "failed", reason: "tx not mined within 2 minutes" });
+    } else if (receipt.status === 0) {
+      console.error(`[cert] reverted attendee=${attendee} tx=${receipt.hash}`);
+      results.push({ attendee, status: "failed", reason: "tx reverted on-chain (possibly already certified)" });
+    } else {
+      console.log(`[cert] issued attendee=${attendee} event=${onChainEventId} tx=${receipt.hash}`);
+      results.push({ attendee, status: "issued", txHash: receipt.hash });
     }
   }
 
