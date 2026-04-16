@@ -12,11 +12,13 @@ interface BadgesPageProps {
   isMilestoneLoading: boolean;
   badgeTokenIds: Record<number, string>;
   milestoneNftIds: Record<number, string>;
+  badgeMmAdded: Record<number, boolean>;
   onClaimMilestone: (threshold: number) => void;
   onAddNftToWallet: (tokenId: string) => void;
+  onAddBadgeToWallet: (eventId: number, tokenId: string) => void;
 }
 
-export default function BadgesPage({ events, userCheckins, userBadges, isConnected, claimedMilestones, isMilestoneLoading, badgeTokenIds, milestoneNftIds, onClaimMilestone, onAddNftToWallet }: BadgesPageProps) {
+export default function BadgesPage({ events, userCheckins, userBadges, isConnected, claimedMilestones, isMilestoneLoading, badgeTokenIds, milestoneNftIds, badgeMmAdded, onClaimMilestone, onAddNftToWallet, onAddBadgeToWallet }: BadgesPageProps) {
   return (
     <>
       {/* POAP Badges */}
@@ -38,6 +40,7 @@ export default function BadgesPage({ events, userCheckins, userBadges, isConnect
             const ev = events.find((e) => e.id === id);
             if (!ev) return null;
             const tokenId = badgeTokenIds[id];
+            const alreadyAdded = !!badgeMmAdded[id];
             return (
               <div key={id} className="card badge">
                 <div
@@ -49,6 +52,16 @@ export default function BadgesPage({ events, userCheckins, userBadges, isConnect
                 <div className="badge-name">{ev.name}</div>
                 <div className="badge-date">{ev.date}</div>
                 <div className="badge-soulbound">SOULBOUND</div>
+                {tokenId && (
+                  <button
+                    type="button"
+                    className={`btn-add-metamask${alreadyAdded ? " btn-add-metamask--added" : ""}`}
+                    onClick={() => onAddBadgeToWallet(id, tokenId)}
+                    disabled={alreadyAdded}
+                  >
+                    {alreadyAdded ? "✓ Added to MetaMask" : "🦊 Add to MetaMask"}
+                  </button>
+                )}
               </div>
             );
           })

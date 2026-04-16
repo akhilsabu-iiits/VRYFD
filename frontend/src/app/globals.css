@@ -507,6 +507,7 @@ body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%
 }
 .btn-add-metamask:hover{background:rgba(255,149,0,0.18);border-color:rgba(255,149,0,0.6)}
 .btn-add-metamask:active{transform:scale(0.97)}
+.btn-add-metamask--added{opacity:0.45;cursor:default;pointer-events:none}
 .btn-claim-milestone{margin-top:10px;font-size:12px;padding:6px 0}
 .milestone-claimed-row{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:8px;width:100%}
 .milestone-claimed-label{font-size:12px;color:var(--green);font-weight:600}

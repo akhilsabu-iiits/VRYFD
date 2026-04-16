@@ -55,12 +55,13 @@ function loadWalletData(addr: string): {
   vryfHistory: VRYFEntry[];
   badgeTokenIds: Record<number, string>;
   milestoneNftIds: Record<number, string>;
+  badgeMmAdded: Record<number, boolean>;
 } {
   try {
     const raw = localStorage.getItem(`vryfd_wallet_${addr}`);
-    if (raw) return { vryfBalance: 0, claimedMilestones: [], checkedInIds: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, milestoneNftIds: {}, ...JSON.parse(raw) };
+    if (raw) return { vryfBalance: 0, claimedMilestones: [], checkedInIds: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, milestoneNftIds: {}, badgeMmAdded: {}, ...JSON.parse(raw) };
   } catch {}
-  return { checkins: 0, badges: [], checkedInIds: [], vryfBalance: 0, claimedMilestones: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, milestoneNftIds: {} };
+  return { checkins: 0, badges: [], checkedInIds: [], vryfBalance: 0, claimedMilestones: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, milestoneNftIds: {}, badgeMmAdded: {} };
 }
 
 function saveWalletData(
@@ -68,8 +69,9 @@ function saveWalletData(
   claimedMilestones: number[], badgeBlockNums: Record<number, number>, badgeMintTimes: Record<number, string>,
   pendingIds: number[], vryfHistory: VRYFEntry[],
   badgeTokenIds: Record<number, string>, milestoneNftIds: Record<number, string>,
+  badgeMmAdded: Record<number, boolean>,
 ) {
-  localStorage.setItem(`vryfd_wallet_${addr}`, JSON.stringify({ checkins, badges, checkedInIds, vryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingIds, vryfHistory, badgeTokenIds, milestoneNftIds }));
+  localStorage.setItem(`vryfd_wallet_${addr}`, JSON.stringify({ checkins, badges, checkedInIds, vryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingIds, vryfHistory, badgeTokenIds, milestoneNftIds, badgeMmAdded }));
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -216,6 +218,8 @@ export default function Home() {
   const [badgeTokenIds, setBadgeTokenIds] = useState<Record<number, string>>({});
   // Maps milestone threshold (5/10/20) → on-chain ERC-1155 tokenId
   const [milestoneNftIds, setMilestoneNftIds] = useState<Record<number, string>>({});
+  // Tracks which POAP badge eventIds have been added to MetaMask (persisted per wallet)
+  const [badgeMmAdded, setBadgeMmAdded] = useState<Record<number, boolean>>({});
 
   // Use a ref to hold current address for the save effect (avoids stale closure)
   const addressRef = useRef<string | undefined>(undefined);
@@ -587,6 +591,7 @@ export default function Home() {
       setBadgeMintTimes(data.badgeMintTimes);
       setBadgeTokenIds(data.badgeTokenIds ?? {});
       setMilestoneNftIds(data.milestoneNftIds ?? {});
+      setBadgeMmAdded(data.badgeMmAdded ?? {});
       if (data.pendingIds.length > 0) setPendingRegistrationIds(data.pendingIds);
       setVryfHistory(data.vryfHistory ?? []);
       setCheckinStep(0);
@@ -604,6 +609,7 @@ export default function Home() {
       setBadgeBlockNums({});
       setVryfHistory([]);
       setBadgeMintTimes({});
+      setBadgeMmAdded({});
       setUserCertificates([]);
       setCheckedInIds([]);
       setPendingRegistrationIds([]);
@@ -625,8 +631,8 @@ export default function Home() {
       return;
     }
     if (!addressRef.current) return;
-    saveWalletData(addressRef.current, userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, milestoneNftIds);
-  }, [userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, milestoneNftIds]);
+    saveWalletData(addressRef.current, userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, milestoneNftIds, badgeMmAdded);
+  }, [userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, milestoneNftIds, badgeMmAdded]);
 
   // Persist full VEvent array to localStorage and backend on every change.
   // Skip the very first render — hydration's setEvents hasn't run yet, so events
@@ -1562,8 +1568,13 @@ export default function Home() {
               isMilestoneLoading={isMilestoneLoading}
               badgeTokenIds={badgeTokenIds}
               milestoneNftIds={milestoneNftIds}
+              badgeMmAdded={badgeMmAdded}
               onClaimMilestone={handleClaimMilestone}
               onAddNftToWallet={(tokenId) => promptAddNft(CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111], tokenId)}
+              onAddBadgeToWallet={(eventId, tokenId) => {
+                setBadgeMmAdded((prev) => ({ ...prev, [eventId]: true }));
+                promptAddNft(CONTRACT_ADDRESSES[chainId] ?? CONTRACT_ADDRESSES[11155111], tokenId);
+              }}
             />
           )}
         </div>
