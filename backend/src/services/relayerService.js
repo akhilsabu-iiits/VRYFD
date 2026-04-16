@@ -718,6 +718,25 @@ async function gaslessClaimBadge(attendee, onChainEventId, signature) {
 
   return withRpcFallback(async () => {
     const c = getContract();
+
+    // Pre-verify the signature on the backend before sending to chain.
+    // If it fails here, we get the exact mismatch in logs rather than a generic revert.
+    try {
+      const currentNonce = await c.nonces(attendee);
+      const domain = { name: "VryfdAttendance", version: "1", chainId: 11155111, verifyingContract: c.target };
+      const types = { ClaimBadge: [{ name: "attendee", type: "address" }, { name: "eventId", type: "uint256" }, { name: "nonce", type: "uint256" }] };
+      const value = { attendee, eventId: BigInt(onChainEventId), nonce: currentNonce };
+      const digest = ethers.TypedDataEncoder.hash(domain, types, value);
+      const recovered = ethers.recoverAddress(digest, sig);
+      console.log(`[gaslessClaimBadge] sig check: expected=${attendee} recovered=${recovered} nonce=${currentNonce} contract=${c.target} eventId=${onChainEventId}`);
+      if (recovered.toLowerCase() !== attendee.toLowerCase()) {
+        throw new Error(`Invalid signature: signer mismatch — expected ${attendee}, recovered ${recovered} (nonce=${currentNonce}, contract=${c.target})`);
+      }
+    } catch (e) {
+      if (e.message.startsWith("Invalid signature:")) throw e;
+      console.warn(`[gaslessClaimBadge] pre-verify failed (non-fatal): ${e.message}`);
+    }
+
     const tx = await c.claimBadgeGasless(attendee, BigInt(onChainEventId), sig.v, sig.r, sig.s);
     console.log(`[gaslessClaimBadge] tx submitted: ${tx.hash}`);
 
