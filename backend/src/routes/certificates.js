@@ -1,6 +1,7 @@
 const express = require("express");
 const { ethers } = require("ethers");
 const { createFullCertificate } = require("../services/certificateService");
+const { getContract } = require("../services/relayerService");
 
 const router = express.Router();
 
@@ -29,6 +30,13 @@ function certGenRateLimit(req, res, next) {
  * Returns all valid on-chain certificates issued to a wallet address.
  * Reads directly from Sepolia — source of truth.
  */
+// Returns the currently-deployed contract address — prefers the live relayer contract
+// (updated on every Reset) over the static env var (stale after redeployment).
+function liveContractAddress() {
+  try { return getContract().target; } catch {}
+  return process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || null;
+}
+
 router.get("/mine/:address", async (req, res) => {
   try {
     const { address } = req.params;
@@ -37,7 +45,7 @@ router.get("/mine/:address", async (req, res) => {
     }
 
     const rpcUrl = process.env.SEPOLIA_RPC || "https://rpc.sepolia.org";
-    const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
+    const contractAddress = liveContractAddress();
     if (!contractAddress) return res.status(500).json({ error: "Contract not configured" });
 
     const provider = new ethers.JsonRpcProvider(rpcUrl);
@@ -102,7 +110,7 @@ router.post("/generate", certGenRateLimit, async (req, res) => {
 
     // Verify on-chain: certificate must exist and belong to this attendee
     const rpcUrl = process.env.SEPOLIA_RPC || "https://rpc.sepolia.org";
-    const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
+    const contractAddress = liveContractAddress();
     if (!contractAddress) return res.status(500).json({ error: "Contract not configured" });
 
     const provider = new ethers.JsonRpcProvider(rpcUrl);

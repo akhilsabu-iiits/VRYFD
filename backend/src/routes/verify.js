@@ -1,6 +1,12 @@
 const express = require("express");
 const { ethers } = require("ethers");
 const { getENSOverride } = require("../services/ensOverrides");
+const { getContract } = require("../services/relayerService");
+
+function liveContractAddress() {
+  try { return getContract().target; } catch {}
+  return process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || null;
+}
 
 const router = express.Router();
 
@@ -15,7 +21,7 @@ router.get("/:certificateId", async (req, res) => {
     if (!/^\d+$/.test(certificateId) || Number(certificateId) < 1) {
       return res.status(400).json({ verified: false, error: "Invalid certificate ID" });
     }
-    const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
+    const contractAddress = liveContractAddress();
     const rpcUrl = process.env.SEPOLIA_RPC || "https://rpc.sepolia.org";
 
     if (!contractAddress) {
