@@ -1000,14 +1000,13 @@ export default function Home() {
         }
         showToast("Soulbound POAP Badge minted! It's in your wallet.", "success");
 
-        // Prompt wallet to add the newly minted NFT.
-        // Primary: tokenId returned by backend (from TransferSingle log in receipt).
-        // Fallback: if backend tx.wait() timed out, wait for receipt ourselves using
-        // waitForTransactionReceipt which polls until mined (up to 90s on Sepolia).
-        let nftTokenId: string | null = (data.tokenId && data.tokenId !== "0") ? String(data.tokenId) : null;
+        // Always wait for receipt before calling wallet_watchAsset —
+        // MetaMask validates token existence on-chain and silently rejects for unminted tokens.
+        let nftTokenId: string | null = null;
 
-        if (!nftTokenId && data.txHash && publicClient) {
+        if (data.txHash && publicClient) {
           try {
+            showToast("Waiting for badge NFT to mint on-chain...", "");
             const receipt = await publicClient.waitForTransactionReceipt({
               hash: data.txHash as `0x${string}`,
               timeout: 90_000,
@@ -1033,7 +1032,6 @@ export default function Home() {
           if (capturedBadgeEventId !== null) setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: nftTokenId! }));
           promptAddNft(contractAddress, nftTokenId);
         } else {
-          // tokenId unavailable — show manual import instructions as fallback
           showToast(`NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${contractAddress.slice(0, 8)}…`, "");
         }
         refetchVryf().catch(() => {});
