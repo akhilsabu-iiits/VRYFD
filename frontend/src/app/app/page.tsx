@@ -336,6 +336,7 @@ export default function Home() {
         if (contractAddress && contractAddress !== "0x0000000000000000000000000000000000000000") {
           const newCheckedIn: number[] = [];
           const newBadges: number[] = [];
+          const newBadgeTokenIds: Record<number, string> = {};
 
           // Read per-event records + wallet-level counters in parallel
           const [, , totalAttendanceRaw, highestMilestoneRaw] = await Promise.all([
@@ -350,7 +351,20 @@ export default function Home() {
                   }) as { timestamp: bigint; badgeClaimed: boolean };
                   const demoId = Number(demoIdStr);
                   if (Number(record.timestamp) > 0) newCheckedIn.push(demoId);
-                  if (record.badgeClaimed) newBadges.push(demoId);
+                  if (record.badgeClaimed) {
+                    newBadges.push(demoId);
+                    // Fetch the minted tokenId so the "Add to MetaMask" button shows
+                    // even for badges claimed in a previous session.
+                    try {
+                      const tid = await publicClient.readContract({
+                        address: contractAddress,
+                        abi: VryfdABI.abi,
+                        functionName: "eventBadgeToken",
+                        args: [BigInt(onChainId)],
+                      }) as bigint;
+                      if (tid > 0n) newBadgeTokenIds[demoId] = tid.toString();
+                    } catch { /* token lookup failed — button hidden until next claim */ }
+                  }
                 } catch { /* single event read failed — skip */ }
               })
             ),
@@ -382,6 +396,9 @@ export default function Home() {
               const merged = [...new Set([...prev, ...newBadges])];
               return merged.length === prev.length ? prev : merged;
             });
+          }
+          if (Object.keys(newBadgeTokenIds).length > 0) {
+            setBadgeTokenIds((prev) => ({ ...prev, ...newBadgeTokenIds }));
           }
           // Sync on-chain total attendance — on-chain is authoritative.
           // Use exact on-chain value (not Math.max) so a redeployed contract resets the counter.
