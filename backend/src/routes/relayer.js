@@ -98,6 +98,21 @@ router.get("/checkin-nonce/:attendee", async (req, res) => {
 });
 
 /**
+ * GET /api/relay/contract-address
+ * Returns the live contract address from the backend relayer.
+ * Used by the frontend on startup to sync CONTRACT_ADDRESSES without relying on
+ * env vars or localStorage, which may be stale after a reset or redeployment.
+ */
+router.get("/contract-address", (req, res) => {
+  try {
+    const contractAddress = getContract().target;
+    res.json({ contractAddress });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * GET /api/relay/joincode/:onChainEventId
  * Returns the deterministic 6-char join code for an event (organizer view)
  * Code is derived from the event ID — consistent across restarts, no storage needed

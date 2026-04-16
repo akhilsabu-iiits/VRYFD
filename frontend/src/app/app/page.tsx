@@ -552,6 +552,19 @@ export default function Home() {
       } catch {}
     })();
 
+    // Sync live contract address from backend — overrides env var and localStorage
+    // so every call (EIP-712 signing, writeContractAsync, readContract) always uses
+    // the actual deployed contract address regardless of resets or env drift.
+    fetch(`${BACKEND}/api/relay/contract-address`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.contractAddress && data.contractAddress.startsWith("0x")) {
+          CONTRACT_ADDRESSES[11155111] = data.contractAddress as `0x${string}`;
+          localStorage.setItem("vryfd_contract_address", data.contractAddress);
+        }
+      })
+      .catch(() => {});
+
     hydratedRef.current = true;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
