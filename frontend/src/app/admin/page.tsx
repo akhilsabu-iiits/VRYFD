@@ -54,29 +54,16 @@ interface Attendee {
 }
 type StatusFilter = "all" | "live" | "upcoming" | "ended";
 
-// ─── Design tokens ────────────────────────────────────────────────────────────
-
-const C = {
-  bg: "#070711", surface: "#0d0d1f", card: "#111127",
-  border: "#1c1c38", borderBright: "#28285a",
-  purple: "#7c6cf0", purpleLight: "#a78bfa",
-  green: "#22c55e", greenDim: "#166534",
-  amber: "#f59e0b", amberDim: "#92400e",
-  red: "#ef4444", redDim: "#7f1d1d",
-  blue: "#38bdf8", blueDim: "#0c4a6e",
-  text: "#e2e8f0", muted: "#64748b", faint: "#2d3748",
-};
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const mono: React.CSSProperties = { fontFamily: "var(--font-space-mono, monospace)" };
 
 function short(addr: string, n = 6) {
   return addr ? `${addr.slice(0, n)}…${addr.slice(-4)}` : "—";
 }
 function fmtDate(ts: number | null) {
   if (!ts) return "—";
-  return new Date(ts * 1000).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return new Date(ts * 1000).toLocaleDateString("en-IN", {
+    day: "2-digit", month: "short", year: "numeric",
+  });
 }
 function fmtAge(ts: number | null) {
   if (!ts) return null;
@@ -97,67 +84,49 @@ function useCopy() {
   return { copy, copied };
 }
 
-// ─── Shared UI pieces ─────────────────────────────────────────────────────────
+// ─── Small reusable pieces ────────────────────────────────────────────────────
 
 function CopyBtn({ text, id, copy, copied }: {
   text: string; id: string;
   copy: (t: string, k: string) => void; copied: string | null;
 }) {
   return (
-    <button onClick={() => copy(text, id)} title="Copy" style={{
-      background: "none", border: "none", color: copied === id ? C.green : C.muted,
-      cursor: "pointer", padding: "1px 5px", fontSize: 12, borderRadius: 4,
-      transition: "color 0.2s",
-    }}>
+    <button
+      onClick={() => copy(text, id)}
+      className="btn btn-sm"
+      style={{
+        padding: "2px 8px", fontSize: 11,
+        color: copied === id ? "var(--green)" : "var(--text3)",
+        background: "none", border: "none",
+      }}
+    >
       {copied === id ? "✓" : "⎘"}
     </button>
   );
 }
 
-function EtherscanLink({ href, label }: { href: string; label: string }) {
+function ELink({ href, label }: { href: string; label: string }) {
   return (
-    <a href={href} target="_blank" rel="noreferrer" style={{
-      color: C.purple, fontSize: 11, textDecoration: "none",
-      border: `1px solid ${C.purple}40`, borderRadius: 5,
-      padding: "2px 7px", whiteSpace: "nowrap",
-    }}>
+    <a href={href} target="_blank" rel="noreferrer"
+      style={{
+        color: "var(--accent2)", fontSize: 11, textDecoration: "none",
+        border: "1px solid var(--border2)", borderRadius: 6,
+        padding: "2px 8px", whiteSpace: "nowrap",
+      }}
+    >
       {label} ↗
     </a>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, [string, string]> = {
-    live: [C.green, C.green + "20"],
-    upcoming: [C.amber, C.amber + "20"],
-    ended: [C.muted, C.faint],
-    unknown: [C.muted, C.faint],
-  };
-  const [col, bg] = map[status] ?? map.unknown;
+function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: 4,
-      background: bg, color: col, border: `1px solid ${col}35`,
-      fontSize: 9, fontWeight: 700, padding: "3px 9px",
-      borderRadius: 20, textTransform: "uppercase", letterSpacing: "0.07em",
-    }}>
-      <span style={{
-        width: 5, height: 5, borderRadius: "50%", background: col,
-        boxShadow: status === "live" ? `0 0 6px ${col}` : "none",
-      }} />
-      {status}
-    </span>
-  );
-}
-
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{
-      color: C.muted, fontSize: 10, textTransform: "uppercase",
-      letterSpacing: "0.09em", marginBottom: 5,
+    <h3 style={{
+      fontSize: 13, fontWeight: 600, color: "var(--text3)",
+      textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 14,
     }}>
       {children}
-    </div>
+    </h3>
   );
 }
 
@@ -173,65 +142,44 @@ function LoginScreen({ onAuth }: { onAuth: (s: string) => Promise<boolean> }) {
     if (!secret.trim()) return;
     setLoading(true); setError("");
     const ok = await onAuth(secret.trim());
-    if (!ok) { setError("Invalid secret — check ADMIN_SECRET in Railway"); setLoading(false); }
+    if (!ok) { setError("Invalid secret — check ADMIN_SECRET in Railway env vars"); setLoading(false); }
   }
 
   return (
-    <div style={{
-      minHeight: "100vh", background: C.bg,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      ...mono,
-    }}>
-      <div style={{
-        width: 390, background: C.card, borderRadius: 18,
-        border: `1px solid ${C.border}`,
-        boxShadow: `0 0 80px #7c6cf018, 0 24px 64px #00000070`,
-        overflow: "hidden",
-      }}>
-        <div style={{
-          background: "linear-gradient(135deg, #7c6cf0 0%, #a855f7 50%, #6366f1 100%)",
-          padding: "32px 36px 28px", textAlign: "center",
-        }}>
-          <div style={{ fontSize: 40, marginBottom: 10 }}>🛡</div>
-          <div style={{ color: "#fff", fontSize: 22, fontWeight: 700, letterSpacing: "-0.5px" }}>
-            VRYFD Admin
+    <div className="wallet-gate">
+      <div className="wallet-gate-icon">🛡</div>
+      <h1 className="wallet-gate-title">VRYFD Admin</h1>
+      <p className="wallet-gate-sub">Enter your admin secret to access the operational dashboard.</p>
+
+      <form onSubmit={submit} style={{ width: "100%", maxWidth: 360 }}>
+        <input
+          type="password"
+          placeholder="Admin secret (ADMIN_SECRET)"
+          value={secret}
+          onChange={(e) => setSecret(e.target.value)}
+          autoFocus
+          className="org-input"
+          style={{ marginBottom: 12, fontSize: 14 }}
+        />
+        {error && (
+          <div style={{
+            background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)",
+            color: "var(--coral)", fontSize: 12, padding: "10px 14px",
+            borderRadius: "var(--radius-sm)", marginBottom: 12,
+          }}>
+            ⚠ {error}
           </div>
-          <div style={{ color: "#c4b5fd", fontSize: 12, marginTop: 5, opacity: 0.9 }}>
-            Operational Monitoring Dashboard
-          </div>
-        </div>
-        <div style={{ padding: "28px 32px 32px" }}>
-          <form onSubmit={submit}>
-            <Label>Admin Secret</Label>
-            <input
-              type="password" placeholder="ADMIN_SECRET value"
-              value={secret} onChange={(e) => setSecret(e.target.value)}
-              autoFocus
-              style={{
-                display: "block", width: "100%", marginBottom: 14,
-                background: C.surface, border: `1px solid ${C.borderBright}`,
-                borderRadius: 9, color: C.text, padding: "11px 14px",
-                fontSize: 14, outline: "none", boxSizing: "border-box", ...mono,
-              }}
-            />
-            {error && (
-              <div style={{
-                background: "#1c0a0a", border: `1px solid ${C.red}44`,
-                color: C.red, fontSize: 12, padding: "10px 14px",
-                borderRadius: 8, marginBottom: 14,
-              }}>⚠ {error}</div>
-            )}
-            <button type="submit" disabled={loading || !secret.trim()} style={{
-              width: "100%", border: "none", borderRadius: 9, padding: "12px 0",
-              background: loading ? C.faint : "linear-gradient(135deg,#7c6cf0,#a855f7)",
-              color: "#fff", fontSize: 14, fontWeight: 600,
-              cursor: loading ? "not-allowed" : "pointer", ...mono,
-            }}>
-              {loading ? "Authenticating…" : "Enter Dashboard →"}
-            </button>
-          </form>
-        </div>
-      </div>
+        )}
+        <button
+          type="submit"
+          disabled={loading || !secret.trim()}
+          className="btn btn-primary btn-block"
+          style={{ fontSize: 15, padding: "12px 24px" }}
+        >
+          {loading ? <><span className="spinner" /> Authenticating…</> : "Enter Dashboard →"}
+        </button>
+      </form>
+      <p className="wallet-gate-hint">Session is cleared when you close this tab.</p>
     </div>
   );
 }
@@ -243,75 +191,85 @@ function RelayerCard({ relayer, copy, copied }: {
 }) {
   const bal = parseFloat(relayer.balanceEth);
   const [balColor, balLabel] =
-    bal < 0.05 ? [C.red, "Critical — top up now"] :
-    bal < 0.15 ? [C.amber, "Low balance"] : [C.green, "Healthy"];
+    bal < 0.05 ? ["var(--coral)", "Critical"] :
+    bal < 0.15 ? ["var(--amber)", "Low balance"] :
+                 ["var(--green)", "Healthy"];
 
   return (
-    <div style={{
-      background: C.card, border: `1px solid ${C.borderBright}`,
-      borderRadius: 14, padding: "20px 24px", marginBottom: 16,
-    }}>
+    <div className="card" style={{ marginBottom: 16 }}>
+      <SectionTitle>Relayer Wallet</SectionTitle>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 28, alignItems: "flex-start" }}>
 
-        {/* Wallet */}
-        <div style={{ flex: "1 1 220px" }}>
-          <Label>Relayer Wallet</Label>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+        {/* Address */}
+        <div style={{ flex: "1 1 240px" }}>
+          <div style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
+            Address
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
             <span style={{
-              width: 8, height: 8, borderRadius: "50%", background: C.green,
-              boxShadow: `0 0 7px ${C.green}`, flexShrink: 0,
+              width: 8, height: 8, borderRadius: "50%", background: "var(--green)",
+              boxShadow: "0 0 8px rgba(52,211,153,0.5)", flexShrink: 0,
             }} />
             <a href={`${ETHERSCAN}/address/${relayer.address}`} target="_blank" rel="noreferrer"
-              style={{ color: C.purple, fontSize: 13, textDecoration: "none", ...mono }}>
+              style={{ color: "var(--accent2)", fontSize: 13, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
               {short(relayer.address, 12)}
             </a>
             <CopyBtn text={relayer.address} id="wallet" copy={copy} copied={copied} />
           </div>
-          <div style={{ color: C.faint, fontSize: 10, ...mono }}>{relayer.address}</div>
+          <div style={{ color: "var(--text3)", fontSize: 10, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+            {relayer.address}
+          </div>
         </div>
 
         {/* Balance */}
-        <div style={{ flex: "0 0 auto" }}>
-          <Label>ETH Balance</Label>
+        <div>
+          <div style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
+            ETH Balance
+          </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-            <span style={{ color: balColor, fontSize: 28, fontWeight: 700, ...mono }}>
+            <span style={{ color: balColor, fontSize: 30, fontWeight: 700, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
               {relayer.balanceEth}
             </span>
-            <span style={{ color: balColor, fontSize: 12 }}>ETH</span>
+            <span style={{ color: balColor, fontSize: 13 }}>ETH</span>
           </div>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 4, marginTop: 5,
-            background: `${balColor}18`, border: `1px solid ${balColor}40`,
-            color: balColor, fontSize: 10, padding: "3px 9px", borderRadius: 20,
+          <span style={{
+            display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6,
+            background: `${balColor === "var(--green)" ? "rgba(52,211,153" : balColor === "var(--amber)" ? "rgba(251,191,36" : "rgba(248,113,113"},0.12)`,
+            border: `1px solid ${balColor === "var(--green)" ? "rgba(52,211,153" : balColor === "var(--amber)" ? "rgba(251,191,36" : "rgba(248,113,113"},0.3)`,
+            color: balColor, fontSize: 11, padding: "2px 10px", borderRadius: 20,
           }}>
             <span style={{ width: 5, height: 5, borderRadius: "50%", background: balColor }} />
             {balLabel}
-          </div>
+          </span>
         </div>
 
         {/* Contract */}
         {relayer.contractAddress && (
-          <div style={{ flex: "1 1 200px" }}>
-            <Label>Contract</Label>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
-              <span style={{ color: C.text, fontSize: 13, ...mono }}>
+          <div style={{ flex: "1 1 220px" }}>
+            <div style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
+              Contract
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ color: "var(--text)", fontSize: 13, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
                 {short(relayer.contractAddress, 10)}
               </span>
               <CopyBtn text={relayer.contractAddress} id="contract" copy={copy} copied={copied} />
-              <EtherscanLink href={`${ETHERSCAN}/address/${relayer.contractAddress}`} label="View" />
+              <ELink href={`${ETHERSCAN}/address/${relayer.contractAddress}`} label="Etherscan" />
             </div>
-            <div style={{ color: C.muted, fontSize: 11 }}>Sepolia · Chain {relayer.chainId}</div>
+            <div style={{ color: "var(--text3)", fontSize: 11 }}>Sepolia · Chain {relayer.chainId}</div>
           </div>
         )}
 
         {/* Block */}
         {relayer.blockNumber && (
-          <div style={{ flex: "0 0 auto" }}>
-            <Label>Latest Block</Label>
-            <div style={{ color: C.text, fontSize: 20, fontWeight: 600, ...mono }}>
+          <div>
+            <div style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
+              Latest Block
+            </div>
+            <div style={{ color: "var(--text)", fontSize: 22, fontWeight: 700, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
               #{numFmt(relayer.blockNumber)}
             </div>
-            <div style={{ color: C.muted, fontSize: 11, marginTop: 4 }}>Sepolia Testnet</div>
+            <div style={{ color: "var(--text3)", fontSize: 11, marginTop: 4 }}>Sepolia Testnet</div>
           </div>
         )}
       </div>
@@ -319,31 +277,73 @@ function RelayerCard({ relayer, copy, copied }: {
   );
 }
 
-// ─── Stats Grid ───────────────────────────────────────────────────────────────
+// ─── Contract Stats ───────────────────────────────────────────────────────────
 
-function StatCard({ label, value, sub, icon, accent }: {
-  label: string; value: string | number; sub?: string; icon: string; accent: string;
+function ContractStats({ secret, copy, copied }: {
+  secret: string; copy: (t: string, k: string) => void; copied: string | null;
 }) {
+  const [data, setData] = useState<ContractStats | null>(null);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 12000);
+    fetch(`${API}/api/admin/contract-stats`, {
+      headers: { "x-admin-secret": secret }, signal: ctrl.signal,
+    })
+      .then(r => r.json())
+      .then(d => { if (!d.error) setData(d); })
+      .catch(() => {})
+      .finally(() => clearTimeout(t));
+  }, [secret]);
+
+  if (!data) return null;
+
   return (
-    <div style={{
-      background: C.card, border: `1px solid ${C.border}`,
-      borderTop: `3px solid ${accent}`, borderRadius: 12,
-      padding: "16px 20px", flex: 1, minWidth: 130,
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <div style={{ color: C.muted, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
-            {label}
+    <div className="card" style={{ marginBottom: 16 }}>
+      <SectionTitle>On-Chain Contract State</SectionTitle>
+      <div className="org-manage-stats" style={{ flexWrap: "wrap", gap: 24 }}>
+        {data.totalCertificatesIssued !== null && (
+          <div className="org-manage-stat">
+            <span className="org-manage-stat-val" style={{ color: "var(--green)" }}>
+              {numFmt(data.totalCertificatesIssued)}
+            </span>
+            <span className="org-manage-stat-label">Certificates Issued</span>
           </div>
-          <div style={{ color: C.text, fontSize: 26, fontWeight: 700, lineHeight: 1 }}>{value}</div>
-          {sub && <div style={{ color: C.muted, fontSize: 11, marginTop: 5 }}>{sub}</div>}
-        </div>
-        <div style={{
-          background: `${accent}18`, width: 40, height: 40, borderRadius: 10,
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
-        }}>
-          {icon}
-        </div>
+        )}
+        {data.totalEventsCreatedOnChain !== null && (
+          <div className="org-manage-stat">
+            <span className="org-manage-stat-val">{numFmt(data.totalEventsCreatedOnChain)}</span>
+            <span className="org-manage-stat-label">Events On-Chain</span>
+          </div>
+        )}
+        {data.vryfDistributed !== null && (
+          <div className="org-manage-stat">
+            <span className="org-manage-stat-val" style={{ color: "var(--amber)" }}>
+              {data.vryfDistributed}
+            </span>
+            <span className="org-manage-stat-label">VRYF Distributed</span>
+          </div>
+        )}
+        {data.contractDeployedAt && (
+          <div className="org-manage-stat">
+            <span className="org-manage-stat-val" style={{ fontSize: 15 }}>
+              {fmtDate(data.contractDeployedAt / 1000)}
+            </span>
+            <span className="org-manage-stat-label">Last Deployed · {fmtAge(data.contractDeployedAt)}</span>
+          </div>
+        )}
+        {data.vryfTokenAddress && (
+          <div className="org-manage-stat" style={{ alignItems: "flex-start" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ color: "var(--accent2)", fontSize: 13, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                {short(data.vryfTokenAddress, 10)}
+              </span>
+              <CopyBtn text={data.vryfTokenAddress} id="vryf" copy={copy} copied={copied} />
+              <ELink href={`${ETHERSCAN}/token/${data.vryfTokenAddress}`} label="Token" />
+            </div>
+            <span className="org-manage-stat-label" style={{ marginTop: 4 }}>VRYF Token</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -367,279 +367,163 @@ function GasSection({ secret }: { secret: string }) {
       });
       const d = await res.json();
       if (d.error) throw new Error(d.error);
-      setData(d);
-      setOpen(true);
+      setData(d); setOpen(true);
     } catch (e: unknown) {
       const m = e instanceof Error ? e.message : String(e);
       setError(m.includes("abort") ? "Timed out — try again" : m);
-    } finally {
-      clearTimeout(t); setLoading(false);
-    }
+    } finally { clearTimeout(t); setLoading(false); }
   }
 
-  const SummaryItem = ({ label, value, accent }: { label: string; value: string; accent: string }) => (
-    <div style={{
-      background: C.surface, border: `1px solid ${C.border}`,
-      borderRadius: 10, padding: "14px 18px", flex: 1, minWidth: 120,
-    }}>
-      <div style={{ color: C.muted, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
-        {label}
-      </div>
-      <div style={{ color: accent, fontSize: 16, fontWeight: 700, ...mono }}>{value}</div>
-    </div>
-  );
-
   return (
-    <div style={{
-      background: C.card, border: `1px solid ${C.border}`,
-      borderRadius: 14, overflow: "hidden", marginBottom: 20,
-    }}>
-      {/* Header row */}
+    <div className="card" style={{ marginBottom: 16, padding: 0, overflow: "hidden" }}>
+      {/* Header */}
       <div style={{
-        padding: "14px 20px", display: "flex",
-        alignItems: "center", justifyContent: "space-between",
-        borderBottom: open ? `1px solid ${C.border}` : "none",
+        padding: "16px 24px", display: "flex", alignItems: "center",
+        justifyContent: "space-between",
+        borderBottom: open ? "1px solid var(--border)" : "none",
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{
-            background: `${C.amber}20`, color: C.amber,
-            width: 32, height: 32, borderRadius: 8, fontSize: 16,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>⛽</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: "var(--radius-sm)",
+            background: "rgba(251,191,36,0.12)", display: "flex",
+            alignItems: "center", justifyContent: "center", fontSize: 18,
+          }}>⛽</div>
           <div>
-            <div style={{ color: C.text, fontSize: 14, fontWeight: 600 }}>Gas & Cost Analysis</div>
-            <div style={{ color: C.muted, fontSize: 11, marginTop: 1 }}>
+            <div style={{ fontWeight: 600, fontSize: 15, color: "var(--text)" }}>Gas & Cost Analysis</div>
+            <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
               {data
                 ? `${data.gasPriceGwei} Gwei · Est. total ${data.summary.estimatedTotalSpent} ETH`
-                : "Event creation receipts + operation cost estimates"}
+                : "Event creation receipts + per-operation cost estimates"}
             </div>
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           {data && (
-            <button onClick={() => setOpen(o => !o)} style={{
-              background: C.surface, border: `1px solid ${C.borderBright}`,
-              color: C.muted, borderRadius: 7, padding: "5px 12px",
-              fontSize: 11, cursor: "pointer", ...mono,
-            }}>
+            <button onClick={() => setOpen(o => !o)} className="btn btn-outline btn-sm">
               {open ? "▴ Hide" : "▾ Show"}
             </button>
           )}
-          <button onClick={load} disabled={loading} style={{
-            background: loading ? C.faint : `${C.amber}20`,
-            border: `1px solid ${C.amber}50`,
-            color: loading ? C.muted : C.amber,
-            borderRadius: 7, padding: "5px 14px",
-            fontSize: 11, cursor: loading ? "not-allowed" : "pointer", fontWeight: 600, ...mono,
+          <button onClick={load} disabled={loading} className="btn btn-sm" style={{
+            background: loading ? "var(--bg3)" : "rgba(251,191,36,0.12)",
+            border: "1px solid rgba(251,191,36,0.3)",
+            color: loading ? "var(--text3)" : "var(--amber)",
           }}>
-            {loading ? "Loading…" : data ? "↺ Refresh" : "Load Gas Data"}
+            {loading ? <><span className="spinner" style={{ borderTopColor: "var(--amber)" }} /> Loading…</> : data ? "↺ Refresh" : "Load Gas Data"}
           </button>
         </div>
       </div>
 
       {error && (
-        <div style={{ padding: "12px 20px", color: C.red, fontSize: 12 }}>⚠ {error}</div>
+        <div style={{ padding: "10px 24px", color: "var(--coral)", fontSize: 12 }}>⚠ {error}</div>
       )}
 
       {open && data && (
-        <div style={{ padding: "20px" }}>
-          {/* Summary */}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
-            <SummaryItem label="Network Gas Price" value={`${data.gasPriceGwei} Gwei`} accent={C.blue} />
-            <SummaryItem label="Event Creations (actual)" value={`${data.summary.actualCreationCost} ETH`} accent={C.purple} />
-            <SummaryItem label="Confirmations (est.)" value={`${data.summary.estimatedConfirmCost} ETH`} accent={C.amber} />
-            <SummaryItem label="Total Est. Spent" value={`${data.summary.estimatedTotalSpent} ETH`} accent={C.green} />
+        <div style={{ padding: "20px 24px" }}>
+          {/* Summary stats */}
+          <div className="grid grid-4" style={{ marginBottom: 20, marginTop: 0 }}>
+            {[
+              { label: "Gas Price", value: `${data.gasPriceGwei} Gwei`, color: "var(--accent2)" },
+              { label: "Creation Cost (actual)", value: `${data.summary.actualCreationCost} ETH`, color: "var(--text)" },
+              { label: "Confirmations (est.)", value: `${data.summary.estimatedConfirmCost} ETH`, color: "var(--amber)" },
+              { label: "Total Est. Spent", value: `${data.summary.estimatedTotalSpent} ETH`, color: "var(--green)" },
+            ].map(s => (
+              <div key={s.label} className="card stat-card" style={{ margin: 0, padding: "14px 16px" }}>
+                <div className="stat-label" style={{ marginBottom: 6 }}>{s.label}</div>
+                <div className="stat-value" style={{ fontSize: 16, color: s.color }}>{s.value}</div>
+              </div>
+            ))}
           </div>
 
           {/* Per-operation cost table */}
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
-              Operation Cost Estimates @ {data.gasPriceGwei} Gwei
-            </div>
-            <div style={{
-              border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden",
-            }}>
-              <div style={{
-                display: "grid", gridTemplateColumns: "28px 1fr 110px 110px 110px",
-                padding: "8px 14px", background: C.surface,
-                color: C.muted, fontSize: 10, textTransform: "uppercase",
-                letterSpacing: "0.06em", gap: 8,
-              }}>
-                <span></span><span>Operation</span>
-                <span style={{ textAlign: "right" }}>Est. Gas</span>
-                <span style={{ textAlign: "right" }}>Cost (Gwei)</span>
-                <span style={{ textAlign: "right" }}>Cost (ETH)</span>
-              </div>
-              {data.operationCosts.map((op, i) => (
-                <div key={op.key} style={{
-                  display: "grid", gridTemplateColumns: "28px 1fr 110px 110px 110px",
-                  padding: "10px 14px", gap: 8, alignItems: "center",
-                  borderTop: i > 0 ? `1px solid ${C.border}` : "none",
-                  background: i % 2 === 0 ? "transparent" : `${C.surface}80`,
-                }}>
-                  <span style={{ fontSize: 16 }}>{op.icon}</span>
-                  <span style={{ color: C.text, fontSize: 12 }}>{op.label}</span>
-                  <span style={{ color: C.muted, fontSize: 12, textAlign: "right", ...mono }}>
-                    {numFmt(op.estimatedGas)}
-                  </span>
-                  <span style={{ color: C.muted, fontSize: 12, textAlign: "right", ...mono }}>
-                    {numFmt(parseInt(op.estimatedCostGwei))}
-                  </span>
-                  <span style={{ color: C.amber, fontSize: 12, textAlign: "right", ...mono }}>
-                    {op.estimatedCostEth}
-                  </span>
-                </div>
-              ))}
-            </div>
+          <SectionTitle>Operation Cost @ {data.gasPriceGwei} Gwei</SectionTitle>
+          <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 20 }}>
+            <table className="cert-history-table" style={{ width: "100%" }}>
+              <thead>
+                <tr>
+                  <th style={{ paddingLeft: 20 }}>Operation</th>
+                  <th style={{ textAlign: "right" }}>Est. Gas</th>
+                  <th style={{ textAlign: "right" }}>Gas Cost (Gwei)</th>
+                  <th style={{ textAlign: "right", paddingRight: 20 }}>ETH Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.operationCosts.map(op => (
+                  <tr key={op.key}>
+                    <td style={{ paddingLeft: 20 }}>
+                      <span style={{ marginRight: 8 }}>{op.icon}</span>
+                      <span style={{ color: "var(--text)" }}>{op.label}</span>
+                    </td>
+                    <td style={{ textAlign: "right", fontFamily: "var(--font-space-mono),'Space Mono',monospace", color: "var(--text3)" }}>
+                      {numFmt(op.estimatedGas)}
+                    </td>
+                    <td style={{ textAlign: "right", fontFamily: "var(--font-space-mono),'Space Mono',monospace", color: "var(--text3)" }}>
+                      {numFmt(parseInt(op.estimatedCostGwei))}
+                    </td>
+                    <td style={{ textAlign: "right", paddingRight: 20, fontFamily: "var(--font-space-mono),'Space Mono',monospace", color: "var(--amber)", fontWeight: 600 }}>
+                      {op.estimatedCostEth}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
           {/* Event creation receipts */}
           {data.eventCosts.length > 0 && (
-            <div>
-              <div style={{ color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
-                Event Creation Receipts (actual on-chain data)
+            <>
+              <SectionTitle>Event Creation Receipts (actual on-chain data)</SectionTitle>
+              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                <table className="cert-history-table" style={{ width: "100%" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ paddingLeft: 20 }}>Event</th>
+                      <th>Block</th>
+                      <th style={{ textAlign: "right" }}>Gas Used</th>
+                      <th style={{ textAlign: "right" }}>Gas Price</th>
+                      <th style={{ textAlign: "right", paddingRight: 20 }}>ETH Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.eventCosts.map(ev => (
+                      <tr key={ev.onChainId}>
+                        <td style={{ paddingLeft: 20 }}>
+                          <div style={{ color: "var(--text)", fontWeight: 500, fontSize: 13 }}>{ev.eventName}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3 }}>
+                            <a href={`${ETHERSCAN}/tx/${ev.txHash}`} target="_blank" rel="noreferrer"
+                              className="tx-link" style={{ fontSize: 11 }}>
+                              {short(ev.txHash)} ↗
+                            </a>
+                            {ev.confirmedAttendees > 0 && (
+                              <span style={{ color: "var(--text3)", fontSize: 10 }}>
+                                · {ev.confirmedAttendees} attendees (~{ev.estimatedCheckInCost} ETH extra)
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <a href={`${ETHERSCAN}/block/${ev.blockNumber}`} target="_blank" rel="noreferrer"
+                            style={{ color: "var(--accent2)", fontSize: 12, textDecoration: "none", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                            #{numFmt(ev.blockNumber)}
+                          </a>
+                        </td>
+                        <td style={{ textAlign: "right", fontFamily: "var(--font-space-mono),'Space Mono',monospace", color: "var(--text3)", fontSize: 12 }}>
+                          {numFmt(ev.gasUsed)}
+                        </td>
+                        <td style={{ textAlign: "right", fontFamily: "var(--font-space-mono),'Space Mono',monospace", color: "var(--text3)", fontSize: 12 }}>
+                          {ev.gasPriceGwei} Gwei
+                        </td>
+                        <td style={{ textAlign: "right", paddingRight: 20, fontFamily: "var(--font-space-mono),'Space Mono',monospace", color: "var(--green)", fontWeight: 600 }}>
+                          {ev.ethCost}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
-                <div style={{
-                  display: "grid", gridTemplateColumns: "1fr 80px 90px 90px 90px",
-                  padding: "8px 14px", background: C.surface,
-                  color: C.muted, fontSize: 10, textTransform: "uppercase",
-                  letterSpacing: "0.06em", gap: 8,
-                }}>
-                  <span>Event</span><span>Block</span>
-                  <span style={{ textAlign: "right" }}>Gas Used</span>
-                  <span style={{ textAlign: "right" }}>Gas Price</span>
-                  <span style={{ textAlign: "right" }}>ETH Cost</span>
-                </div>
-                {data.eventCosts.map((ev, i) => (
-                  <div key={ev.onChainId} style={{
-                    display: "grid", gridTemplateColumns: "1fr 80px 90px 90px 90px",
-                    padding: "10px 14px", gap: 8, alignItems: "center",
-                    borderTop: i > 0 ? `1px solid ${C.border}` : "none",
-                  }}>
-                    <div>
-                      <div style={{ color: C.text, fontSize: 12 }}>{ev.eventName}</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
-                        <a href={`${ETHERSCAN}/tx/${ev.txHash}`} target="_blank" rel="noreferrer"
-                          style={{ color: C.purple, fontSize: 10, textDecoration: "none", ...mono }}>
-                          {short(ev.txHash)} ↗
-                        </a>
-                        {ev.confirmedAttendees > 0 && (
-                          <span style={{ color: C.muted, fontSize: 10 }}>
-                            · {ev.confirmedAttendees} attendees (~{ev.estimatedCheckInCost} ETH extra)
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <a href={`${ETHERSCAN}/block/${ev.blockNumber}`} target="_blank" rel="noreferrer"
-                      style={{ color: C.purple, fontSize: 11, textDecoration: "none", ...mono }}>
-                      #{numFmt(ev.blockNumber)}
-                    </a>
-                    <span style={{ color: C.muted, fontSize: 11, textAlign: "right", ...mono }}>
-                      {numFmt(ev.gasUsed)}
-                    </span>
-                    <span style={{ color: C.muted, fontSize: 11, textAlign: "right", ...mono }}>
-                      {ev.gasPriceGwei} Gwei
-                    </span>
-                    <span style={{ color: C.green, fontSize: 12, textAlign: "right", fontWeight: 600, ...mono }}>
-                      {ev.ethCost}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            </>
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-// ─── Contract Stats ───────────────────────────────────────────────────────────
-
-function ContractStats({ secret, copy, copied }: {
-  secret: string; copy: (t: string, k: string) => void; copied: string | null;
-}) {
-  const [data, setData] = useState<ContractStats | null>(null);
-
-  useEffect(() => {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 12000);
-    fetch(`${API}/api/admin/contract-stats`, {
-      headers: { "x-admin-secret": secret }, signal: ctrl.signal,
-    })
-      .then((r) => r.json())
-      .then((d) => { if (!d.error) setData(d); })
-      .catch(() => {})
-      .finally(() => clearTimeout(t));
-  }, [secret]);
-
-  if (!data) return null;
-
-  return (
-    <div style={{
-      background: C.card, border: `1px solid ${C.border}`,
-      borderRadius: 14, padding: "16px 20px", marginBottom: 16,
-    }}>
-      <div style={{ color: C.muted, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: 14 }}>
-        On-Chain Contract State
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 24 }}>
-
-        {data.totalCertificatesIssued !== null && (
-          <div>
-            <Label>Certificates Issued</Label>
-            <div style={{ color: C.green, fontSize: 22, fontWeight: 700 }}>
-              {numFmt(data.totalCertificatesIssued)}
-            </div>
-          </div>
-        )}
-
-        {data.totalEventsCreatedOnChain !== null && (
-          <div>
-            <Label>Events On-Chain (total)</Label>
-            <div style={{ color: C.purple, fontSize: 22, fontWeight: 700 }}>
-              {numFmt(data.totalEventsCreatedOnChain)}
-            </div>
-            <div style={{ color: C.muted, fontSize: 10, marginTop: 3 }}>incl. past deployments</div>
-          </div>
-        )}
-
-        {data.vryfDistributed !== null && (
-          <div>
-            <Label>VRYF Distributed</Label>
-            <div style={{ color: C.amber, fontSize: 22, fontWeight: 700 }}>
-              {data.vryfDistributed}
-            </div>
-            <div style={{ color: C.muted, fontSize: 10, marginTop: 3 }}>total supply minted</div>
-          </div>
-        )}
-
-        {data.contractDeployedAt && (
-          <div>
-            <Label>Last Deployed</Label>
-            <div style={{ color: C.text, fontSize: 14, fontWeight: 600 }}>
-              {fmtDate(data.contractDeployedAt / 1000)}
-            </div>
-            <div style={{ color: C.muted, fontSize: 10, marginTop: 3 }}>
-              {fmtAge(data.contractDeployedAt)}
-            </div>
-          </div>
-        )}
-
-        {data.vryfTokenAddress && (
-          <div>
-            <Label>VRYF Token</Label>
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <span style={{ color: C.text, fontSize: 12, ...mono }}>
-                {short(data.vryfTokenAddress, 10)}
-              </span>
-              <CopyBtn text={data.vryfTokenAddress} id="vryf" copy={copy} copied={copied} />
-              <EtherscanLink href={`${ETHERSCAN}/token/${data.vryfTokenAddress}`} label="Token" />
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -652,7 +536,6 @@ function AttendeeDrawer({ onChainId, secret, copy, copied }: {
 }) {
   const [attendees, setAttendees] = useState<Attendee[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -660,57 +543,65 @@ function AttendeeDrawer({ onChainId, secret, copy, copied }: {
     fetch(`${API}/api/admin/events/${onChainId}/attendees`, {
       headers: { "x-admin-secret": secret }, signal: ctrl.signal,
     })
-      .then((r) => r.json())
-      .then((d) => { setAttendees(d.attendees || []); setLoading(false); })
-      .catch((e) => { setError(e.message); setLoading(false); })
-      .finally(() => clearTimeout(t));
+      .then(r => r.json())
+      .then(d => { setAttendees(d.attendees || []); })
+      .catch(() => setAttendees([]))
+      .finally(() => { clearTimeout(t); setLoading(false); });
   }, [onChainId, secret]);
 
-  if (loading) return <div style={{ padding: "14px 22px", color: C.muted, fontSize: 12 }}>Loading attendees…</div>;
-  if (error)   return <div style={{ padding: "14px 22px", color: C.red, fontSize: 12 }}>⚠ {error}</div>;
-  if (!attendees?.length) return <div style={{ padding: "14px 22px", color: C.muted, fontSize: 12 }}>No confirmed attendees yet.</div>;
+  if (loading) return (
+    <div style={{ padding: "14px 20px", display: "flex", alignItems: "center", gap: 8, color: "var(--text3)", fontSize: 13 }}>
+      <span className="spinner" /> Loading attendees…
+    </div>
+  );
+  if (!attendees?.length) return (
+    <div style={{ padding: "14px 20px", color: "var(--text3)", fontSize: 13 }}>No confirmed attendees yet.</div>
+  );
 
   return (
-    <div style={{ padding: "12px 22px 18px" }}>
-      <div style={{
-        display: "grid", gridTemplateColumns: "1fr 130px 100px",
-        gap: 8, fontSize: 9, color: C.muted,
-        textTransform: "uppercase", letterSpacing: "0.07em",
-        paddingBottom: 7, borderBottom: `1px solid ${C.border}`, marginBottom: 4,
-      }}>
-        <span>Address</span><span>Tx Hash</span><span>Date</span>
-      </div>
-      {attendees.map((a, i) => {
-        const addr = a.address || a.addr || "";
-        const tx = a.txHash || "";
-        return (
-          <div key={i} style={{
-            display: "grid", gridTemplateColumns: "1fr 130px 100px",
-            gap: 8, fontSize: 12, color: C.text,
-            padding: "6px 0", borderBottom: `1px solid ${C.border}18`, alignItems: "center",
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              {addr ? (
-                <>
-                  <a href={`${ETHERSCAN}/address/${addr}`} target="_blank" rel="noreferrer"
-                    style={{ color: C.purple, textDecoration: "none", ...mono }}>{short(addr)}</a>
-                  <CopyBtn text={addr} id={`a-${i}`} copy={copy} copied={copied} />
-                </>
-              ) : "—"}
-            </div>
-            <div>
-              {tx ? (
-                <a href={`${ETHERSCAN}/tx/${tx}`} target="_blank" rel="noreferrer"
-                  style={{ color: C.purple, fontSize: 11, textDecoration: "none", ...mono }}>
-                  {short(tx)} ↗
-                </a>
-              ) : "—"}
-            </div>
-            <div style={{ color: C.muted, fontSize: 11 }}>{a.timestamp ? fmtDate(a.timestamp) : "—"}</div>
-          </div>
-        );
-      })}
-    </div>
+    <table className="cert-history-table" style={{ width: "100%" }}>
+      <thead>
+        <tr>
+          <th style={{ paddingLeft: 20 }}>Address</th>
+          <th>Tx Hash</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {attendees.map((a, i) => {
+          const addr = a.address || a.addr || "";
+          const tx = a.txHash || "";
+          return (
+            <tr key={i}>
+              <td style={{ paddingLeft: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  {addr ? (
+                    <>
+                      <a href={`${ETHERSCAN}/address/${addr}`} target="_blank" rel="noreferrer"
+                        className="tx-link" style={{ fontSize: 12 }}>
+                        {short(addr)}
+                      </a>
+                      <CopyBtn text={addr} id={`a-${i}`} copy={copy} copied={copied} />
+                    </>
+                  ) : "—"}
+                </div>
+              </td>
+              <td>
+                {tx ? (
+                  <a href={`${ETHERSCAN}/tx/${tx}`} target="_blank" rel="noreferrer"
+                    className="tx-link" style={{ fontSize: 11 }}>
+                    {short(tx)} ↗
+                  </a>
+                ) : "—"}
+              </td>
+              <td style={{ color: "var(--text3)", fontSize: 12 }}>
+                {a.timestamp ? fmtDate(a.timestamp) : "—"}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
@@ -724,39 +615,42 @@ function EventCard({ ev, secret, copy, copied }: {
   const total = ev.confirmedAttendees + ev.pendingAttendees;
 
   return (
-    <div style={{
-      background: C.card, borderRadius: 12,
-      border: `1px solid ${C.border}`,
-      borderLeft: `3px solid ${ev.color || C.purple}`,
-      boxShadow: open ? `0 0 18px ${ev.color || C.purple}14` : "none",
-      overflow: "hidden",
+    <div className="card" style={{
+      padding: 0, overflow: "hidden",
+      borderLeft: `3px solid ${ev.color || "var(--accent)"}`,
+      boxShadow: open ? `0 0 24px ${ev.color || "var(--accent)"}18` : undefined,
     }}>
       <div style={{ padding: "16px 20px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          {/* Left */}
+          {/* Left side */}
           <div style={{ flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-              <span style={{ fontSize: 22 }}>{ev.emoji}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <span style={{ fontSize: 24 }}>{ev.emoji}</span>
               <div>
-                <div style={{ color: C.text, fontSize: 14, fontWeight: 600 }}>{ev.name}</div>
-                <div style={{ color: C.muted, fontSize: 11, marginTop: 2 }}>
+                <div className="event-name" style={{ fontSize: 15 }}>{ev.name}</div>
+                <div className="event-meta" style={{ fontSize: 12, marginBottom: 0 }}>
                   {fmtDate(ev.startTime)}{ev.endTime && ev.endTime !== ev.startTime ? ` → ${fmtDate(ev.endTime)}` : ""}
                   {" · "}
-                  <span style={{ color: C.faint, ...mono }}>#{ev.onChainId}</span>
+                  <span style={{ fontFamily: "var(--font-space-mono),'Space Mono',monospace", color: "var(--text3)" }}>
+                    onChain #{ev.onChainId}
+                  </span>
                 </div>
               </div>
             </div>
 
-            {/* Metrics chips */}
+            {/* Chips */}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
               {/* Join code */}
               <div style={{
                 display: "flex", alignItems: "center", gap: 6,
-                background: C.surface, border: `1px solid ${C.borderBright}`,
-                borderRadius: 8, padding: "5px 10px",
+                background: "var(--bg3)", border: "1px solid var(--border2)",
+                borderRadius: "var(--radius-sm)", padding: "5px 10px",
               }}>
-                <span style={{ color: C.muted, fontSize: 10 }}>CODE</span>
-                <span style={{ color: C.text, fontSize: 13, letterSpacing: "0.12em", fontWeight: 700, ...mono }}>
+                <span style={{ color: "var(--text3)", fontSize: 10, textTransform: "uppercase" }}>Code</span>
+                <span style={{
+                  color: "var(--text)", fontSize: 14, letterSpacing: "0.14em",
+                  fontWeight: 700, fontFamily: "var(--font-space-mono),'Space Mono',monospace",
+                }}>
                   {ev.joinCode || "—"}
                 </span>
                 {ev.joinCode && <CopyBtn text={ev.joinCode} id={`code-${ev.onChainId}`} copy={copy} copied={copied} />}
@@ -765,38 +659,41 @@ function EventCard({ ev, secret, copy, copied }: {
               {/* Confirmed */}
               <div style={{
                 display: "flex", alignItems: "center", gap: 5,
-                background: `${C.green}12`, border: `1px solid ${C.green}30`,
-                borderRadius: 8, padding: "5px 11px",
+                background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.25)",
+                borderRadius: "var(--radius-sm)", padding: "5px 12px",
               }}>
-                <span style={{ color: C.green, fontSize: 17, fontWeight: 700 }}>{ev.confirmedAttendees}</span>
-                <span style={{ color: C.greenDim, fontSize: 10 }}>confirmed</span>
+                <span style={{ color: "var(--green)", fontSize: 17, fontWeight: 700, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                  {ev.confirmedAttendees}
+                </span>
+                <span style={{ color: "var(--green2)", fontSize: 10, color: "var(--green)" }}>confirmed</span>
               </div>
 
               {/* Pending */}
               <div style={{
                 display: "flex", alignItems: "center", gap: 5,
-                background: ev.pendingAttendees > 0 ? `${C.amber}12` : `${C.faint}18`,
-                border: `1px solid ${ev.pendingAttendees > 0 ? C.amber : C.faint}30`,
-                borderRadius: 8, padding: "5px 11px",
+                background: ev.pendingAttendees > 0 ? "rgba(251,191,36,0.1)" : "rgba(107,103,128,0.08)",
+                border: `1px solid ${ev.pendingAttendees > 0 ? "rgba(251,191,36,0.25)" : "var(--border)"}`,
+                borderRadius: "var(--radius-sm)", padding: "5px 12px",
               }}>
-                <span style={{ color: ev.pendingAttendees > 0 ? C.amber : C.muted, fontSize: 17, fontWeight: 700 }}>
+                <span style={{ color: ev.pendingAttendees > 0 ? "var(--amber)" : "var(--text3)", fontSize: 17, fontWeight: 700, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
                   {ev.pendingAttendees}
                 </span>
-                <span style={{ color: ev.pendingAttendees > 0 ? C.amberDim : C.faint, fontSize: 10 }}>pending</span>
+                <span style={{ color: ev.pendingAttendees > 0 ? "var(--amber)" : "var(--text3)", fontSize: 10 }}>pending</span>
               </div>
             </div>
 
-            {/* Progress */}
+            {/* Progress bar */}
             {total > 0 && (
               <div>
-                <div style={{ height: 3, background: C.border, borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ height: 3, background: "var(--bg4)", borderRadius: 3, overflow: "hidden" }}>
                   <div style={{
                     height: "100%", borderRadius: 3,
                     width: `${(ev.confirmedAttendees / total) * 100}%`,
-                    background: `linear-gradient(90deg, ${ev.color || C.purple}, ${C.green})`,
+                    background: `linear-gradient(90deg, ${ev.color || "var(--accent)"}, var(--green))`,
+                    transition: "width 0.5s ease",
                   }} />
                 </div>
-                <div style={{ color: C.muted, fontSize: 10, marginTop: 4 }}>
+                <div style={{ color: "var(--text3)", fontSize: 11, marginTop: 4 }}>
                   {ev.confirmedAttendees}/{total} confirmed
                   {ev.pendingAttendees > 0 && ` · ${ev.pendingAttendees} awaiting organizer`}
                 </div>
@@ -804,36 +701,22 @@ function EventCard({ ev, secret, copy, copied }: {
             )}
           </div>
 
-          {/* Right */}
+          {/* Right side */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
-            <StatusBadge status={ev.status} />
+            <span className={`event-status ${ev.status}`}>{ev.status}</span>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-              {ev.txHash && (
-                <EtherscanLink href={`${ETHERSCAN}/tx/${ev.txHash}`} label="Deploy Tx" />
-              )}
-              {ev.txHash && (
-                <EtherscanLink
-                  href={`${ETHERSCAN}/address/${process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || ""}#events`}
-                  label="Events"
-                />
-              )}
+              {ev.txHash && <ELink href={`${ETHERSCAN}/tx/${ev.txHash}`} label="Deploy Tx" />}
             </div>
           </div>
         </div>
 
-        {/* Expand button */}
-        <button onClick={() => setOpen(o => !o)} style={{
-          marginTop: 10, background: "none",
-          border: `1px solid ${C.borderBright}`,
-          color: C.muted, borderRadius: 7, padding: "5px 14px",
-          fontSize: 11, cursor: "pointer", display: "inline-flex",
-          alignItems: "center", gap: 6, ...mono,
-        }}>
+        {/* Expand */}
+        <button onClick={() => setOpen(o => !o)} className="btn btn-outline btn-sm" style={{ marginTop: 12 }}>
           {open ? "▴ Hide" : "▾ View"} attendees
           {ev.confirmedAttendees > 0 && (
             <span style={{
-              background: `${C.purple}30`, color: C.purple,
-              borderRadius: 10, padding: "1px 7px", fontSize: 10,
+              background: "rgba(124,108,240,0.15)", color: "var(--accent2)",
+              borderRadius: 10, padding: "1px 7px", fontSize: 10, marginLeft: 4,
             }}>
               {ev.confirmedAttendees}
             </span>
@@ -842,7 +725,7 @@ function EventCard({ ev, secret, copy, copied }: {
       </div>
 
       {open && (
-        <div style={{ borderTop: `1px solid ${C.border}`, background: C.surface }}>
+        <div style={{ borderTop: "1px solid var(--border)", background: "var(--bg3)" }}>
           <AttendeeDrawer onChainId={ev.onChainId} secret={secret} copy={copy} copied={copied} />
         </div>
       )}
@@ -882,9 +765,7 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
     } catch (e: unknown) {
       const m = e instanceof Error ? e.message : String(e);
       setError(m.includes("abort") ? "Request timed out — try refreshing" : m);
-    } finally {
-      clearTimeout(timer); setLoading(false);
-    }
+    } finally { clearTimeout(timer); setLoading(false); }
   }, [secret]);
 
   useEffect(() => {
@@ -893,7 +774,7 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
     return () => clearInterval(t);
   }, [refresh]);
 
-  const filteredEvents = (stats?.events || []).filter((ev) =>
+  const filteredEvents = (stats?.events || []).filter(ev =>
     (filter === "all" || ev.status === filter) &&
     (!search || ev.name.toLowerCase().includes(search.toLowerCase()))
   );
@@ -906,133 +787,108 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, color: C.text, ...mono }}>
-      {/* Sticky header */}
-      <div style={{
-        background: C.surface, borderBottom: `1px solid ${C.border}`,
-        position: "sticky", top: 0, zIndex: 100,
-      }}>
-        <div style={{
-          maxWidth: 1120, margin: "0 auto", padding: "0 24px",
-          display: "flex", alignItems: "center", justifyContent: "space-between", height: 52,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 16 }}>🛡</span>
-            <span style={{ fontWeight: 700, fontSize: 14 }}>VRYFD</span>
-            <span style={{ color: C.faint }}>/ Admin</span>
-            <span style={{
-              background: `${C.purple}22`, color: C.purple, fontSize: 9,
-              padding: "2px 8px", borderRadius: 20, border: `1px solid ${C.purple}40`,
-              textTransform: "uppercase", letterSpacing: "0.08em",
-            }}>Sepolia</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {lastRefresh && (
-              <span style={{ color: C.faint, fontSize: 10 }}>
-                {lastRefresh.toLocaleTimeString()}
-              </span>
-            )}
-            <button onClick={refresh} disabled={loading} style={{
-              background: C.card, border: `1px solid ${C.borderBright}`,
-              color: C.muted, borderRadius: 7, padding: "4px 11px",
-              fontSize: 11, cursor: "pointer", ...mono,
-            }}>↺ Refresh</button>
-            <button onClick={onLogout} style={{
-              background: "none", border: `1px solid ${C.border}`,
-              color: C.muted, borderRadius: 7, padding: "4px 11px",
-              fontSize: 11, cursor: "pointer", ...mono,
-            }}>Logout</button>
-          </div>
+    <div style={{ minHeight: "100vh" }}>
+      {/* Navbar — matches app's .nav exactly */}
+      <nav className="nav">
+        <div className="nav-left">
+          <span className="nav-brand">VRYFD</span>
+          <span style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "4px 14px", borderRadius: 50, fontSize: 12,
+            background: "rgba(124,108,240,0.1)", border: "1px solid var(--border2)",
+            color: "var(--accent2)",
+          }}>
+            🛡 Admin
+          </span>
         </div>
-      </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {lastRefresh && (
+            <span style={{ color: "var(--text3)", fontSize: 11 }}>
+              {lastRefresh.toLocaleTimeString()}
+            </span>
+          )}
+          <button onClick={refresh} disabled={loading} className="btn btn-outline btn-sm">
+            ↺ Refresh
+          </button>
+          <button onClick={onLogout} className="wallet-btn" style={{ padding: "6px 16px", fontSize: 12 }}>
+            <span className="wallet-dot" /> Logout
+          </button>
+        </div>
+      </nav>
 
-      {/* Body */}
-      <div style={{ maxWidth: 1120, margin: "0 auto", padding: "22px 24px 60px" }}>
+      <div className="container">
         {/* Error */}
         {error && (
-          <div style={{
-            background: "#160808", border: `1px solid ${C.red}40`,
-            color: C.red, borderRadius: 10, padding: "11px 16px",
-            fontSize: 12, marginBottom: 18, display: "flex", alignItems: "center", gap: 8,
+          <div className="toast show error" style={{
+            position: "relative", transform: "none", bottom: "auto", right: "auto",
+            marginBottom: 20, opacity: 1,
           }}>
             <span>⚠</span> {error}
-            <button onClick={refresh} style={{
-              marginLeft: "auto", background: "none", border: `1px solid ${C.red}60`,
-              color: C.red, borderRadius: 5, padding: "3px 10px",
-              fontSize: 11, cursor: "pointer", ...mono,
+            <button onClick={refresh} className="btn btn-sm" style={{
+              marginLeft: "auto", color: "var(--coral)", background: "none",
+              border: "1px solid rgba(248,113,113,0.4)", padding: "2px 10px",
             }}>Retry</button>
           </div>
         )}
 
         {loading && !stats ? (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 280, gap: 12, color: C.muted, fontSize: 13 }}>
-            <span style={{
-              width: 18, height: 18, border: `2px solid ${C.purple}`,
-              borderTopColor: "transparent", borderRadius: "50%",
-              display: "inline-block", animation: "spin 0.8s linear infinite",
-            }} />
-            Loading dashboard…
-            <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            height: 300, gap: 12, color: "var(--text3)", fontSize: 14,
+          }}>
+            <span className="spinner" /> Loading dashboard…
           </div>
         ) : (
-          <>
-            {/* Relayer */}
+          <div className="fade-up">
             {relayer && <RelayerCard relayer={relayer} copy={copy} copied={copied} />}
-
-            {/* Contract Stats (lazy loads from chain) */}
             <ContractStats secret={secret} copy={copy} copied={copied} />
 
             {/* System stats */}
             {stats && (
-              <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-                <StatCard label="Deployed Events" value={stats.totalEvents}
-                  icon="📅" accent={C.purple} sub={`${counts.live} live`} />
-                <StatCard label="Confirmed On-Chain" value={stats.totalConfirmed}
-                  icon="✅" accent={C.green} sub="total check-ins" />
-                <StatCard label="Pending Confirmation" value={stats.totalPending}
-                  icon="⏳" accent={C.amber} sub="need organizer action" />
+              <div className="grid grid-3" style={{ marginTop: 0, marginBottom: 16 }}>
+                {[
+                  { label: "Deployed Events", value: stats.totalEvents, icon: "📅", sub: `${counts.live} live`, iconBg: "rgba(124,108,240,0.12)", color: "var(--accent2)" },
+                  { label: "Confirmed On-Chain", value: stats.totalConfirmed, icon: "✅", sub: "total attendees", iconBg: "rgba(52,211,153,0.12)", color: "var(--green)" },
+                  { label: "Pending Confirmation", value: stats.totalPending, icon: "⏳", sub: "need organizer action", iconBg: "rgba(251,191,36,0.12)", color: "var(--amber)" },
+                ].map(s => (
+                  <div key={s.label} className="card stat-card">
+                    <div className="stat-icon" style={{ background: s.iconBg }}>{s.icon}</div>
+                    <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
+                    <div className="stat-label">{s.label}</div>
+                    {s.sub && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{s.sub}</div>}
+                  </div>
+                ))}
               </div>
             )}
 
-            {/* Gas Analysis */}
+            {/* Gas */}
             <GasSection secret={secret} />
 
             {/* Events */}
             {stats && (
-              <div>
-                <div style={{
-                  display: "flex", alignItems: "center",
-                  justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 12,
-                }}>
-                  <div style={{ color: C.text, fontSize: 14, fontWeight: 600 }}>
-                    Deployed Events
-                  </div>
+              <>
+                <div className="section-header" style={{ marginBottom: 12 }}>
+                  <h2 className="section-title">Deployed Events</h2>
                   <input
                     type="text" placeholder="Search events…"
-                    value={search} onChange={(e) => setSearch(e.target.value)}
-                    style={{
-                      background: C.card, border: `1px solid ${C.borderBright}`,
-                      borderRadius: 8, color: C.text, padding: "7px 12px",
-                      fontSize: 12, outline: "none", width: 200, ...mono,
-                    }}
+                    value={search} onChange={e => setSearch(e.target.value)}
+                    className="org-input" style={{ width: 200, padding: "7px 12px", fontSize: 12 }}
                   />
                 </div>
 
                 {/* Filter tabs */}
-                <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-                  {(["all", "live", "upcoming", "ended"] as StatusFilter[]).map((tab) => (
-                    <button key={tab} onClick={() => setFilter(tab)} style={{
-                      background: filter === tab ? C.purple : C.card,
-                      border: `1px solid ${filter === tab ? C.purple : C.borderBright}`,
-                      color: filter === tab ? "#fff" : C.muted,
-                      borderRadius: 8, padding: "5px 14px",
-                      fontSize: 11, cursor: "pointer", textTransform: "capitalize",
-                      fontWeight: filter === tab ? 600 : 400, ...mono,
-                    }}>
+                <div className="org-tabs" style={{ marginBottom: 14 }}>
+                  {(["all", "live", "upcoming", "ended"] as StatusFilter[]).map(tab => (
+                    <button
+                      key={tab}
+                      onClick={() => setFilter(tab)}
+                      className={`btn btn-sm ${filter === tab ? "btn-primary" : "btn-outline"}`}
+                      style={{ textTransform: "capitalize" }}
+                    >
                       {tab}{" "}
                       <span style={{
-                        background: filter === tab ? "#ffffff25" : C.faint,
-                        borderRadius: 10, padding: "1px 6px", fontSize: 10,
+                        background: filter === tab ? "rgba(255,255,255,0.2)" : "var(--bg3)",
+                        borderRadius: 10, padding: "1px 6px", fontSize: 10, marginLeft: 2,
                       }}>
                         {counts[tab]}
                       </span>
@@ -1040,25 +896,20 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                   ))}
                 </div>
 
-                {/* Event cards */}
                 {filteredEvents.length === 0 ? (
-                  <div style={{
-                    background: C.card, border: `1px solid ${C.border}`,
-                    borderRadius: 12, padding: "36px 24px", textAlign: "center",
-                    color: C.muted, fontSize: 13,
-                  }}>
+                  <div className="card" style={{ textAlign: "center", padding: "40px 24px", color: "var(--text3)" }}>
                     {search ? `No events matching "${search}"` : `No ${filter} events`}
                   </div>
                 ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {filteredEvents.map((ev) => (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {filteredEvents.map(ev => (
                       <EventCard key={ev.onChainId} ev={ev} secret={secret} copy={copy} copied={copied} />
                     ))}
                   </div>
                 )}
-              </div>
+              </>
             )}
-          </>
+          </div>
         )}
       </div>
     </div>
