@@ -4,7 +4,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import { useAccount, useDisconnect, useChainId, useEnsName, useWriteContract, usePublicClient, useReadContract, useSignTypedData, useSignMessage, useWalletClient } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { CONTRACT_ADDRESSES, VRYF_TOKEN_ADDRESS } from "../../utils/wagmiConfig";
-import { promptAddNft as _promptAddNft } from "../../utils/promptAddNft";
+import { promptAddNft as _promptAddNft, tryAddNftImport } from "../../utils/promptAddNft";
 import Dashboard from "../../components/Dashboard";
 import EventsPage from "../../components/EventsPage";
 import BadgesPage from "../../components/BadgesPage";
@@ -59,13 +59,14 @@ function loadWalletData(addr: string): {
   badgeTokenIds: Record<number, string>;
   badgeContractAddrs: Record<number, string>;
   milestoneNftIds: Record<number, string>;
+  milestoneContractAddrs: Record<number, string>;
   certificates: OnChainCert[];
 } {
   try {
     const raw = localStorage.getItem(`vryfd_wallet_${addr}`);
-    if (raw) return { vryfBalance: 0, claimedMilestones: [], checkedInIds: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, badgeContractAddrs: {}, milestoneNftIds: {}, certificates: [], ...JSON.parse(raw) };
+    if (raw) return { vryfBalance: 0, claimedMilestones: [], checkedInIds: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, badgeContractAddrs: {}, milestoneNftIds: {}, milestoneContractAddrs: {}, certificates: [], ...JSON.parse(raw) };
   } catch {}
-  return { checkins: 0, badges: [], checkedInIds: [], vryfBalance: 0, claimedMilestones: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, badgeContractAddrs: {}, milestoneNftIds: {}, certificates: [] };
+  return { checkins: 0, badges: [], checkedInIds: [], vryfBalance: 0, claimedMilestones: [], badgeBlockNums: {}, badgeMintTimes: {}, pendingIds: [], vryfHistory: [], badgeTokenIds: {}, badgeContractAddrs: {}, milestoneNftIds: {}, milestoneContractAddrs: {}, certificates: [] };
 }
 
 function saveWalletData(
@@ -73,9 +74,10 @@ function saveWalletData(
   claimedMilestones: number[], badgeBlockNums: Record<number, number>, badgeMintTimes: Record<number, string>,
   pendingIds: number[], vryfHistory: VRYFEntry[],
   badgeTokenIds: Record<number, string>, badgeContractAddrs: Record<number, string>,
-  milestoneNftIds: Record<number, string>, certificates: OnChainCert[],
+  milestoneNftIds: Record<number, string>, milestoneContractAddrs: Record<number, string>,
+  certificates: OnChainCert[],
 ) {
-  localStorage.setItem(`vryfd_wallet_${addr}`, JSON.stringify({ checkins, badges, checkedInIds, vryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingIds, vryfHistory, badgeTokenIds, badgeContractAddrs, milestoneNftIds, certificates }));
+  localStorage.setItem(`vryfd_wallet_${addr}`, JSON.stringify({ checkins, badges, checkedInIds, vryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingIds, vryfHistory, badgeTokenIds, badgeContractAddrs, milestoneNftIds, milestoneContractAddrs, certificates }));
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -91,7 +93,11 @@ export default function Home() {
   const { signTypedDataAsync } = useSignTypedData();
   // For join-code check-in — simple personal_sign, verified off-chain by backend
   const { signMessageAsync } = useSignMessage();
-  const publicClient = usePublicClient();
+  // Pin to Sepolia (11155111) — all contract reads must target Sepolia regardless of
+  // which network the user's wallet is currently on. Without chainId, usePublicClient()
+  // returns the client for the connected chain (e.g. mainnet), causing readContract to
+  // throw "contract not found" for every on-demand fetch and sync operation.
+  const publicClient = usePublicClient({ chainId: 11155111 });
   const { data: walletClient } = useWalletClient();
   // Refs so callbacks always see the latest values without needing them in every dep array
   const walletClientRef = useRef(walletClient);
@@ -178,6 +184,8 @@ export default function Home() {
   const [badgeContractAddrs, setBadgeContractAddrs] = useState<Record<number, string>>({});
   // Maps milestone threshold (5/10/20) → on-chain ERC-1155 tokenId
   const [milestoneNftIds, setMilestoneNftIds] = useState<Record<number, string>>({});
+  // Maps milestone threshold (5/10/20) → contract address used when milestone was minted
+  const [milestoneContractAddrs, setMilestoneContractAddrs] = useState<Record<number, string>>({});
 
   // Use a ref to hold current address for the save effect (avoids stale closure)
   const addressRef = useRef<string | undefined>(undefined);
@@ -221,11 +229,32 @@ export default function Home() {
   // If tokenId is not yet known (receipt hasn't confirmed), we fetch it on-demand from chain.
   // contractAddr is the address stored at claim time (signingContractAddress), so post-Reset
   // badges always use the new contract — never the stale env-var address.
+  //
+  // KEY: ethereum.request({ method: "eth_requestAccounts" }) is called FIRST — this triggers
+  // MetaMask inside the user-gesture context. All subsequent await chains (contract reads,
+  // wallet_switchEthereumChain, wallet_watchAsset) remain inside that same async chain, so
+  // MetaMask treats them as user-initiated and shows popups. Without this, wallet_watchAsset
+  // called inside a setTimeout (even delay=0) is outside the gesture context and MetaMask
+  // may silently suppress the popup.
   const handleAddToWallet = useCallback(async (eventId: number, tokenId: string, contractAddr: string, onSuccess: () => void) => {
-    // Resolve contract address — prefer stored claim-time address, then live backend, then env fallback
+    const eth = typeof window !== "undefined"
+      ? (window as unknown as { ethereum?: { request: (a: { method: string; params?: unknown }) => Promise<unknown> } }).ethereum
+      : undefined;
+
+    // ── Step 1: connect / ping MetaMask FIRST ─────────────────────────────────
+    // eth_requestAccounts captures the user-gesture frame. All subsequent awaits
+    // (address resolution, on-demand chain read, tryAddNftImport) remain inside
+    // the same async chain, so MetaMask treats wallet_watchAsset as user-initiated
+    // and shows the popup. Already-connected wallets return silently — no popup.
+    if (eth) {
+      try { await eth.request({ method: "eth_requestAccounts" }); } catch {}
+    }
+
+    // ── Step 2: resolve contract address ─────────────────────────────────────
+    // Prefer the claim-time address (correct even after a Reset), then live backend,
+    // then the in-memory cache updated at page load.
     let addr = (contractAddr && contractAddr.startsWith("0x")) ? contractAddr : CONTRACT_ADDRESSES[11155111];
     if (!addr || addr === "0x0000000000000000000000000000000000000000") {
-      // No cached address — fetch live from backend (handles post-Reset state)
       try {
         const caRes = await fetch(`${BACKEND}/api/relay/contract-address`);
         if (caRes.ok) {
@@ -241,8 +270,12 @@ export default function Home() {
       showToastRef.current("Contract address not available — try again after the page syncs", "error");
       return;
     }
+
+    // ── Step 3: resolve token ID ──────────────────────────────────────────────
+    // On-demand chain read when the stored tokenId is missing or zero. Uses `addr`
+    // which was already resolved to the live contract in Step 2 — never overwrite
+    // it with CONTRACT_ADDRESSES[11155111] which may be stale before hydration.
     let resolvedTokenId = tokenId;
-    // Fetch on-demand when tokenId is missing, empty, or "0" (contract mapping not yet read / fresh contract)
     const needsFetch = !resolvedTokenId || resolvedTokenId === "0";
     if (needsFetch && publicClient) {
       const onChainId = onChainEventIds[eventId];
@@ -266,14 +299,52 @@ export default function Home() {
       }
     }
     if (!resolvedTokenId || resolvedTokenId === "0") {
-      showToastRef.current(`NFT minted ✓  To add manually: MetaMask → NFTs → Import NFT → Contract: ${addr.slice(0, 10)}…`, "");
+      showToastRef.current(`NFT minted ✓  To add manually: MetaMask → NFTs tab → Import NFT → Contract: ${addr.slice(0, 8)}… Token ID: ${resolvedTokenId || "?"}`, "");
       return;
     }
 
-    // Delegate to promptAddNft — uses window.ethereum directly, ERC1155→ERC721 fallback,
-    // 900ms delay for MetaMask RPC propagation. All invariants tested in promptAddNft.test.ts.
-    promptAddNft(addr, resolvedTokenId, onSuccess, 900);
-  }, [promptAddNft, publicClient, onChainEventIds]);
+    // ── Step 4: wallet_watchAsset via tryAddNftImport ─────────────────────────
+    // tryAddNftImport handles: chain switch to Sepolia, ERC1155 → ERC721 fallback,
+    // and returns a typed outcome. No setTimeout — still in the user-gesture chain.
+    if (!eth) {
+      showToastRef.current(`NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${addr.slice(0, 8)}… Token ID: ${resolvedTokenId}`, "");
+      return;
+    }
+
+    const outcome = await tryAddNftImport(
+      { request: eth.request.bind(eth) },
+      addr,
+      // Normalise to decimal string (invariant 1: MetaMask rejects hex / numeric)
+      BigInt(resolvedTokenId).toString(),
+    );
+
+    switch (outcome.status) {
+      case "added":
+        showToastRef.current("NFT added to MetaMask — check your NFTs tab", "success");
+        onSuccess();
+        break;
+      case "dismissed":
+        showToastRef.current(
+          `NFT is in your wallet ✓ — check MetaMask → NFTs tab. Not showing? Import NFT → Contract: ${addr.slice(0, 8)}… Token ID: ${resolvedTokenId}`,
+          "success",
+        );
+        break;
+      case "wrong_chain":
+        showToastRef.current(
+          `Switch your wallet to Sepolia to add this NFT, or import manually → Token ID: ${resolvedTokenId}` +
+          ` | https://sepolia.etherscan.io/token/${addr}?a=${resolvedTokenId}`,
+          "",
+        );
+        break;
+      case "unsupported":
+        showToastRef.current(
+          `NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${addr.slice(0, 8)}… Token ID: ${resolvedTokenId}` +
+          ` | https://sepolia.etherscan.io/token/${addr}?a=${resolvedTokenId}`,
+          "",
+        );
+        break;
+    }
+  }, [publicClient, onChainEventIds]);
 
   // No loadBackendDeployedEvents needed — onChainId/deployTxHash live on the VEvent itself.
 
@@ -357,6 +428,7 @@ export default function Home() {
             ts: number; checkedInIds: number[]; userBadges: number[];
             userCheckins: number; claimedMilestones: number[];
             badgeTokenIds?: Record<number, string>;
+            badgeContractAddrs?: Record<number, string>;
           };
           if (Date.now() - cached.ts < CACHE_TTL_MS) {
             // Merge — never decrease counts that may have been updated in-session
@@ -372,6 +444,9 @@ export default function Home() {
             }
             if (cached.badgeTokenIds && Object.keys(cached.badgeTokenIds).length > 0) {
               setBadgeTokenIds((prev) => ({ ...prev, ...cached.badgeTokenIds }));
+            }
+            if (cached.badgeContractAddrs && Object.keys(cached.badgeContractAddrs).length > 0) {
+              setBadgeContractAddrs((prev) => ({ ...prev, ...cached.badgeContractAddrs }));
             }
             fireBackgroundFetches(cached.checkedInIds);
             return;
@@ -489,6 +564,7 @@ export default function Home() {
               userCheckins: Math.max(onChainCount, newCheckedIn.length),
               claimedMilestones: claimedList,
               badgeTokenIds: newBadgeTokenIds,
+              badgeContractAddrs: newBadgeContractAddrs,
             }));
           } catch { /* localStorage full — skip cache write */ }
 
@@ -705,6 +781,7 @@ export default function Home() {
       setBadgeTokenIds(data.badgeTokenIds ?? {});
       setBadgeContractAddrs(data.badgeContractAddrs ?? {});
       setMilestoneNftIds(data.milestoneNftIds ?? {});
+      setMilestoneContractAddrs(data.milestoneContractAddrs ?? {});
       if (Array.isArray(data.certificates) && data.certificates.length > 0) setUserCertificates(data.certificates);
       if (data.pendingIds.length > 0) setPendingRegistrationIds(data.pendingIds);
       setVryfHistory(data.vryfHistory ?? []);
@@ -744,8 +821,8 @@ export default function Home() {
       return;
     }
     if (!addressRef.current) return;
-    saveWalletData(addressRef.current, userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, badgeContractAddrs, milestoneNftIds, userCertificates);
-  }, [userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, badgeContractAddrs, milestoneNftIds, userCertificates]);
+    saveWalletData(addressRef.current, userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, badgeContractAddrs, milestoneNftIds, milestoneContractAddrs, userCertificates);
+  }, [userCheckins, userBadges, checkedInIds, userVryfBalance, claimedMilestones, badgeBlockNums, badgeMintTimes, pendingRegistrationIds, vryfHistory, badgeTokenIds, badgeContractAddrs, milestoneNftIds, milestoneContractAddrs, userCertificates]);
 
   // Persist full VEvent array to localStorage and backend on every change.
   // Skip the very first render — hydration's setEvents hasn't run yet, so events
@@ -1046,6 +1123,13 @@ export default function Home() {
 
     } else if (checkinStep === 3) {
       // Gasless badge mint — attendee signs EIP-712, relayer submits tx (no gas for attendee)
+      //
+      // eth_requestAccounts FIRST — establishes MetaMask user-gesture context so the
+      // wallet_watchAsset call (fired after tx mines) shows the popup. Already-connected
+      // wallets return silently. Must happen before any awaits so the gesture is captured.
+      if (typeof window !== "undefined" && (window as { ethereum?: { request: (a: { method: string }) => Promise<unknown> } }).ethereum) {
+        try { await (window as { ethereum: { request: (a: { method: string }) => Promise<unknown> } }).ethereum.request({ method: "eth_requestAccounts" }); } catch {}
+      }
       const onChainEventId = onChainEventIds[currentEventId ?? -1];
       const contractAddress = CONTRACT_ADDRESSES[chainId];
       if (chainId !== 11155111) {
@@ -1185,7 +1269,7 @@ export default function Home() {
             setBadgeTokenIds((prev) => ({ ...prev, [capturedBadgeEventId]: predictedTokenId }));
             setBadgeContractAddrs((prev) => ({ ...prev, [capturedBadgeEventId]: signingContractAddress }));
           }
-          promptAddNft(signingContractAddress, predictedTokenId);
+          promptAddNft(signingContractAddress, predictedTokenId, undefined, 0);
         } else {
           showToastRef.current(`NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${signingContractAddress.slice(0, 8)}…`, "");
         }
@@ -1454,6 +1538,12 @@ export default function Home() {
       return;
     }
 
+    // eth_requestAccounts FIRST — captures the user-gesture context so wallet_watchAsset
+    // (called after tx mines) shows the MetaMask popup. Already-connected wallets return silently.
+    if (typeof window !== "undefined" && (window as { ethereum?: { request: (a: { method: string }) => Promise<unknown> } }).ethereum) {
+      try { await (window as { ethereum: { request: (a: { method: string }) => Promise<unknown> } }).ethereum.request({ method: "eth_requestAccounts" }); } catch {}
+    }
+
     setIsMilestoneLoading(true);
     try {
       // Step 1: fetch nonce + live contract address from backend
@@ -1537,8 +1627,19 @@ export default function Home() {
           eligible.forEach((m, i) => { if (milestoneTokenIds[i] != null) next[m.threshold] = milestoneTokenIds[i]; });
           return next;
         });
-        // Use signingContractAddress (from backend nonce) — always the live post-reset contract
-        for (const tid of milestoneTokenIds) promptAddNft(signingContractAddress, tid);
+        // Store the contract address used at claim time so the "+ Add to MetaMask" button
+        // always passes the correct address to wallet_watchAsset, even after a page reload
+        // or contract reset. Without this, the button falls back to CONTRACT_ADDRESSES which
+        // may point to a different (newer) contract — wallet_watchAsset would silently fail.
+        setMilestoneContractAddrs((prev) => {
+          const next = { ...prev };
+          eligible.forEach((m) => { next[m.threshold] = signingContractAddress; });
+          return next;
+        });
+        // Use signingContractAddress (from backend nonce) — always the live post-reset contract.
+        // delay=0: tx is already confirmed (receipt waited above) and eth_requestAccounts was
+        // called at the top of this handler, so wallet_watchAsset runs in user-gesture context.
+        for (const tid of milestoneTokenIds) promptAddNft(signingContractAddress, tid, undefined, 0);
       }
       refetchVryf().catch(() => {});
     } catch (err: unknown) {
@@ -1555,7 +1656,7 @@ export default function Home() {
     } finally {
       setIsMilestoneLoading(false);
     }
-  }, [chainId, address, signTypedDataAsync, showToast, refetchVryf, userCheckins, claimedMilestones]);
+  }, [chainId, address, signTypedDataAsync, showToast, refetchVryf, userCheckins, claimedMilestones, publicClient, promptAddNft, addVryfEntry, events]);
 
   // ─── Wallet button ──────────────────────────────────────────────────────────
 
@@ -1761,6 +1862,7 @@ export default function Home() {
               badgeTokenIds={badgeTokenIds}
               badgeContractAddrs={badgeContractAddrs}
               milestoneNftIds={milestoneNftIds}
+              milestoneContractAddrs={milestoneContractAddrs}
               onAddToWallet={handleAddToWallet}
             />
           )}

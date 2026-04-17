@@ -13,9 +13,13 @@ function makeProvider(returnValue: boolean | Error = true): {
   provider: NftProvider;
   calls: Array<{ method: string; params: unknown }>;
 } {
+  // Only records wallet_watchAsset calls — chain-check methods (eth_chainId,
+  // wallet_switchEthereumChain) succeed silently so they don't interfere with assertions.
   const calls: Array<{ method: string; params: unknown }> = [];
   const provider: NftProvider = {
     request: vi.fn(async (args) => {
+      if (args.method === "eth_chainId") return "0xaa36a7"; // already on Sepolia — no switch needed
+      if (args.method === "wallet_switchEthereumChain") return null;
       calls.push(args);
       if (returnValue instanceof Error) throw returnValue;
       return returnValue;
@@ -178,13 +182,16 @@ describe("promptAddNft — ERC type ordering", () => {
 
   it("falls through to ERC721 when ERC1155 throws", async () => {
     vi.useFakeTimers();
-    let callCount = 0;
+    let watchCallCount = 0;
     const calls: Array<{ method: string; params: unknown }> = [];
     const provider: NftProvider = {
       request: vi.fn(async (args) => {
+        // Silently handle chain-check methods so they don't affect watchAsset call ordering
+        if (args.method === "eth_chainId") return "0xaa36a7";
+        if (args.method === "wallet_switchEthereumChain") return null;
         calls.push(args);
-        callCount++;
-        if (callCount === 1) throw new Error("ERC1155 not supported");
+        watchCallCount++;
+        if (watchCallCount === 1) throw new Error("ERC1155 not supported");
         return true; // ERC721 succeeds
       }),
     };
@@ -192,7 +199,7 @@ describe("promptAddNft — ERC type ordering", () => {
 
     promptAddNft({ contractAddr: "0xABC", tokenId: "7", provider, onToast, delay: 0 });
     vi.runAllTimers();
-    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
 
     expect((calls[0].params as { type: string }).type).toBe("ERC1155");
     expect((calls[1].params as { type: string }).type).toBe("ERC721");
@@ -200,36 +207,37 @@ describe("promptAddNft — ERC type ordering", () => {
     vi.useRealTimers();
   });
 
-  it("shows fallback toast when both ERC1155 and ERC721 fail", async () => {
+  it("shows manual import toast when both ERC1155 and ERC721 throw (wallet unsupported)", async () => {
     vi.useFakeTimers();
     const { provider } = makeProvider(new Error("not supported"));
     const { onToast, messages } = makeToast();
 
     promptAddNft({ contractAddr: "0xABC", tokenId: "9", provider, onToast, delay: 0 });
     vi.runAllTimers();
-    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
 
     expect(messages[0].msg).toContain("Import NFT");
     expect(messages[0].msg).toContain("Token ID: 9");
     vi.useRealTimers();
   });
 
-  it("shows fallback toast when both ERC1155 and ERC721 return false (user dismissed)", async () => {
+  it("shows 'already in wallet' toast when both ERC1155 and ERC721 return false (already tracked or dismissed)", async () => {
     vi.useFakeTimers();
     const { provider } = makeProvider(false);
     const { onToast, messages } = makeToast();
 
     promptAddNft({ contractAddr: "0xABC", tokenId: "9", provider, onToast, delay: 0 });
     vi.runAllTimers();
-    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
 
-    expect(messages[0].msg).toContain("Import NFT");
+    expect(messages[0].msg).toContain("NFTs tab");
+    expect(messages[0].type).toBe("success");
     vi.useRealTimers();
   });
 });
 
 describe("promptAddNft — delay", () => {
-  it("default delay is 900ms (MetaMask RPC propagation window)", () => {
+  it("default delay is 900ms (MetaMask RPC propagation window)", async () => {
     vi.useFakeTimers();
     const { provider, calls } = makeProvider(true);
     const { onToast } = makeToast();
@@ -240,13 +248,14 @@ describe("promptAddNft — delay", () => {
     vi.advanceTimersByTime(899);
     expect(calls).toHaveLength(0);
 
-    // At 900ms it fires
+    // At 900ms the setTimeout fires; flush async chain-check + wallet_watchAsset microtasks
     vi.advanceTimersByTime(1);
+    await Promise.resolve(); await Promise.resolve();
     expect(calls.length).toBeGreaterThan(0);
     vi.useRealTimers();
   });
 
-  it("respects a custom delay", () => {
+  it("respects a custom delay", async () => {
     vi.useFakeTimers();
     const { provider, calls } = makeProvider(true);
     const { onToast } = makeToast();
@@ -257,6 +266,7 @@ describe("promptAddNft — delay", () => {
     expect(calls).toHaveLength(0);
 
     vi.advanceTimersByTime(1);
+    await Promise.resolve(); await Promise.resolve();
     expect(calls.length).toBeGreaterThan(0);
     vi.useRealTimers();
   });
@@ -271,7 +281,7 @@ describe("promptAddNft — success callback", () => {
 
     promptAddNft({ contractAddr: "0xABC", tokenId: "4", provider, onToast, onSuccess, delay: 0 });
     vi.runAllTimers();
-    await Promise.resolve(); await Promise.resolve();
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
 
     expect(onSuccess).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
@@ -285,7 +295,7 @@ describe("promptAddNft — success callback", () => {
 
     promptAddNft({ contractAddr: "0xABC", tokenId: "4", provider, onToast, onSuccess, delay: 0 });
     vi.runAllTimers();
-    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
 
     expect(onSuccess).not.toHaveBeenCalled();
     vi.useRealTimers();
@@ -333,7 +343,7 @@ describe("promptAddNft — post-Reset contract address", () => {
     const { provider: p2, calls: calls2 } = makeProvider(true);
     promptAddNft({ contractAddr: newAddr, tokenId: "1", provider: p2, onToast, delay: 0 });
     vi.runAllTimers();
-    await Promise.resolve(); await Promise.resolve();
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     expect((calls2[0].params as { options: { address: string } }).options.address).toBe(newAddr);
 
     // Both should have succeeded
@@ -349,7 +359,7 @@ describe("promptAddNft — post-Reset contract address", () => {
 
     promptAddNft({ contractAddr: newAddr, tokenId: "5", provider, onToast, delay: 0 });
     vi.runAllTimers();
-    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
 
     expect(messages[0].msg).toContain(newAddr.slice(0, 8));
     vi.useRealTimers();
