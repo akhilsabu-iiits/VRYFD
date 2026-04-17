@@ -778,17 +778,19 @@ async function createEvent(name, metadataURI, startTime, endTime) {
   return withRpcFallback(async () => {
     const c = getContract();
 
-    // Read nextEventId BEFORE submitting — lets us return without waiting for block confirmation.
-    // nextEventId is the slot that will be assigned to this tx (contract increments after creation).
-    const nextId = await c.nextEventId();
+    // Fetch nextEventId and fee data in parallel — saves one extra RPC round-trip.
+    // nextEventId is the slot assigned to this tx (contract increments after creation).
+    const [nextId, feeData] = await Promise.all([
+      c.nextEventId(),
+      provider.getFeeData().catch(() => null),
+    ]);
     const eventId = nextId.toString();
 
-    const tx = await c.createEvent(name, metadataURI, BigInt(startTime), BigInt(endTime));
+    const overrides = feeData ? { maxFeePerGas: feeData.maxFeePerGas, maxPriorityFeePerGas: feeData.maxPriorityFeePerGas } : {};
+    const tx = await c.createEvent(name, metadataURI, BigInt(startTime), BigInt(endTime), overrides);
     console.log(`[createEvent] tx submitted: ${tx.hash}, predicted eventId: ${eventId}`);
 
     // Fire-and-forget — don't block the HTTP response on block confirmation.
-    // The event is registered optimistically; on revert (shouldn't happen) the
-    // frontend will show a stale onChainId but the user can redeploy.
     tx.wait(1, 120_000)
       .then((receipt) => console.log(`[createEvent] confirmed: ${receipt.hash} eventId=${eventId}`))
       .catch((e) => console.warn(`[createEvent] tx.wait failed (${tx.hash}):`, e.message));

@@ -180,26 +180,35 @@ export default function OrganizerPage({ events, deployedEventIds, onChainDeploye
   async function deployEvent(ev: VEvent & { startTime: number; endTime: number }) {
     setDeployingId(ev.id);
     try {
-      const regRes = await fetch(`${BACKEND}/api/metadata/badge/register`, {
-        method: "POST",
-        headers: adminHeaders(),
-        body: JSON.stringify({ id: ev.id, name: ev.name, date: ev.date, color: ev.color, emoji: ev.emoji }),
-      });
-      if (!regRes.ok) {
-        const regErr = await regRes.json().catch(() => ({}));
-        throw new Error(regErr.error || "Badge metadata registration failed");
-      }
-      const metaURI = await fetchBadgeDataURI(ev.id);
+      // metadataURI uses the backend URL directly — no IPFS/Pinata wait in the critical path.
+      // The register call stores the event data so the backend can serve /api/metadata/badge/:id.
+      // IPFS pinning still happens in the background (kicked off by the register endpoint).
+      const metaURI = `${BACKEND}/api/metadata/badge/${ev.id}`;
       const now = Math.floor(Date.now() / 1000);
       const deployStart = ev.startTime > now ? now - 3600 : ev.startTime;
-      const res = await fetch(`${BACKEND}/api/relay/createEvent`, {
-        method: "POST",
-        headers: adminHeaders(),
-        body: JSON.stringify({ name: ev.name, metadataURI: metaURI, startTime: deployStart, endTime: ev.endTime, demoId: ev.id, joinCode: ev.joinCode }),
-      });
-      const data = await res.json();
+
+      // Run metadata registration and on-chain event creation in parallel.
+      // register is fire-and-forget for the metadata endpoint; createEvent is the real work.
+      const [regRes, res] = await Promise.all([
+        fetch(`${BACKEND}/api/metadata/badge/register`, {
+          method: "POST",
+          headers: adminHeaders(),
+          body: JSON.stringify({ id: ev.id, name: ev.name, date: ev.date, color: ev.color, emoji: ev.emoji }),
+        }),
+        fetch(`${BACKEND}/api/relay/createEvent`, {
+          method: "POST",
+          headers: adminHeaders(),
+          body: JSON.stringify({ name: ev.name, metadataURI: metaURI, startTime: deployStart, endTime: ev.endTime, demoId: ev.id, joinCode: ev.joinCode }),
+        }),
+      ]);
+
+      if (!regRes.ok) {
+        const regErr = await regRes.json().catch(() => ({})) as { error?: string };
+        console.warn("Badge metadata registration failed (non-fatal):", regErr.error);
+      }
+      const data = await res.json() as { eventId?: number; txHash?: string; error?: string };
       if (!res.ok) throw new Error(data.error || "Failed");
-      onEventDeployed(ev.id, Number(data.eventId), data.txHash);
+      onEventDeployed(ev.id, Number(data.eventId), data.txHash ?? "");
       const code = ev.joinCode ?? "";
       if (code) setJoinCodes((prev) => ({ ...prev, [ev.id]: code }));
       onToast(`"${ev.name}" deployed! Join code: ${code}`, "success");
