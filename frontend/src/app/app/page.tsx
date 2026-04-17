@@ -1132,13 +1132,11 @@ export default function Home() {
           setCheckedInIds((prev) => prev.includes(currentEventId) ? prev : [...prev, currentEventId]);
         }
 
-        let vryfEarned = 10;
+        const vryfEarned = 10;
         const milestone = MILESTONES.find((m) => m.threshold === newCheckins);
-        if (milestone) vryfEarned += milestone.bonus;
         setUserVryfBalance((prev) => prev + vryfEarned);
         const eventName = events.find((e) => e.id === currentEventId)?.name ?? "Event";
         addVryfEntry({ type: "checkin", amount: 10, label: `Check-in: ${eventName}`, timestamp: Math.floor(Date.now() / 1000), txHash: txHash as string });
-        if (milestone) addVryfEntry({ type: "milestone", amount: milestone.bonus, label: `${milestone.icon} ${milestone.label} Milestone`, timestamp: Math.floor(Date.now() / 1000), txHash: txHash as string });
         setCheckinStep(3);
 
         const newTier = getTier(newCheckins);
@@ -1158,7 +1156,7 @@ export default function Home() {
 
         if (milestone) {
           setTimeout(() => {
-            showToast(`${milestone.icon} ${milestone.label} unlocked! +${milestone.bonus} VRYF bonus!`, "success");
+            showToast(`${milestone.icon} ${milestone.label} milestone reached! Go to Badges → Claim NFT Reward.`, "success");
           }, 2000);
         }
       } catch (err: unknown) {
@@ -1494,10 +1492,8 @@ export default function Home() {
         setCheckedInIds((prev) => prev.includes(currentEventId) ? prev : [...prev, currentEventId]);
       }
 
-      let vryfEarned = 10;
       const milestone = MILESTONES.find((m) => m.threshold === newCheckins);
-      if (milestone) vryfEarned += milestone.bonus;
-      setUserVryfBalance((prev) => prev + vryfEarned);
+      setUserVryfBalance((prev) => prev + 10);
       setCheckinStep(3);
       setJoinCode("");
 
@@ -1518,7 +1514,7 @@ export default function Home() {
       showToast(`Attendance confirmed! Tx: ${txHash.slice(0, 10)}...`, "success");
       if (milestone) {
         setTimeout(() => {
-          showToast(`${milestone.icon} ${milestone.label} unlocked! +${milestone.bonus} VRYF bonus!`, "success");
+          showToast(`${milestone.icon} ${milestone.label} milestone reached! Go to Badges → Claim NFT Reward.`, "success");
         }, 2000);
       }
     } catch (err: unknown) {
@@ -1569,13 +1565,15 @@ export default function Home() {
         if (!alreadyCounted) {
           const newCheckins = userCheckins + 1;
           setUserCheckins(newCheckins);
-          let vryfEarned = 10;
           const milestone = MILESTONES.find((m) => m.threshold === newCheckins);
-          if (milestone) vryfEarned += milestone.bonus;
-          setUserVryfBalance((prev) => prev + vryfEarned);
+          setUserVryfBalance((prev) => prev + 10);
           const evName = events.find((e) => e.id === currentEventId)?.name ?? "Event";
           addVryfEntry({ type: "checkin", amount: 10, label: `Check-in: ${evName}`, timestamp: Math.floor(Date.now() / 1000), txHash: data.txHash });
-          if (milestone) addVryfEntry({ type: "milestone", amount: milestone.bonus, label: `${milestone.icon} ${milestone.label} Milestone`, timestamp: Math.floor(Date.now() / 1000), txHash: data.txHash });
+          if (milestone) {
+            setTimeout(() => {
+              showToast(`${milestone.icon} ${milestone.label} milestone reached! Go to Badges → Claim NFT Reward.`, "success");
+            }, 1500);
+          }
         }
         setCheckinStep(3);
         showToast("Attendance confirmed! Claim your POAP badge.", "success");
@@ -1648,14 +1646,15 @@ export default function Home() {
       // `eligible` was computed at the top of this handler (before signing).
       const totalBonus = eligible.reduce((sum, x) => sum + x.bonus, 0);
       const newThresholds = eligible.map((x) => x.threshold);
+      // Optimistic update: flip buttons to "✓ NFT Claimed" immediately for good UX.
+      // Rolled back below if the tx reverts on-chain.
       setClaimedMilestones((prev) => {
         const next = [...prev];
         for (const t of newThresholds) if (!next.includes(t)) next.push(t);
         return next;
       });
       if (totalBonus > 0) setUserVryfBalance((prev) => prev + totalBonus);
-      const now = Math.floor(Date.now() / 1000);
-      eligible.forEach((m) => addVryfEntry({ type: "milestone", amount: m.bonus, label: `${m.icon} ${m.label} Milestone`, timestamp: now, txHash: data.txHash ?? undefined }));
+      // addVryfEntry is intentionally deferred to after receipt confirms (see below).
       const label = eligible.length === 1
         ? `${eligible[0].icon} ${eligible[0].label} NFT claimed! +${eligible[0].bonus} VRYF`
         : `${eligible.length} milestone NFTs claimed! +${totalBonus} VRYF`;
@@ -1668,6 +1667,19 @@ export default function Home() {
         try {
           showToast("Waiting for NFT to mint on-chain...", "");
           const receipt = await publicClient.waitForTransactionReceipt({ hash: data.txHash as `0x${string}`, timeout: 90_000, pollingInterval: 1_000 });
+
+          if (receipt.status === "reverted") {
+            // Tx reverted — roll back optimistic state so buttons don't stay stuck as claimed
+            setClaimedMilestones((prev) => prev.filter((t) => !(newThresholds as number[]).includes(t)));
+            if (totalBonus > 0) setUserVryfBalance((prev) => prev - totalBonus);
+            showToast("Milestone claim failed on-chain. Please try again.", "error");
+            return;
+          }
+
+          // Tx confirmed — now safe to record VRYF history entries
+          const now = Math.floor(Date.now() / 1000);
+          eligible.forEach((m) => addVryfEntry({ type: "milestone", amount: m.bonus, label: `${m.icon} ${m.label} Milestone`, timestamp: now, txHash: data.txHash ?? undefined }));
+
           // Try to get confirmed tokenIds from logs — overrides predicted values if present
           const abi = VryfdABI.abi as Parameters<typeof decodeEventLog>[0]["abi"];
           const fromLogs: string[] = [];
