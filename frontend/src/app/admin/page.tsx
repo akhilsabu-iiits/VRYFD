@@ -109,6 +109,21 @@ function fmtTimeAgo(ts: number | null) {
 }
 function numFmt(n: number) { return n.toLocaleString(); }
 
+function downloadCSV(rows: Attendee[], eventName: string) {
+  const header = "address,tx_hash,date";
+  const lines = rows.map(a => {
+    const addr = a.address || a.addr || "";
+    const tx   = a.txHash || "";
+    const date = a.timestamp ? new Date(a.timestamp * 1000).toISOString().split("T")[0] : "";
+    return `${addr},${tx},${date}`;
+  });
+  const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = `${eventName.replace(/\s+/g, "_")}_attendees.csv`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
 function useCopy() {
   const [copied, setCopied] = useState<string | null>(null);
   const t = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -839,8 +854,8 @@ function GasSection({ secret, autoLoad }: { secret: string; autoLoad?: boolean }
 
 // ─── Attendee Drawer (confirmed) ──────────────────────────────────────────────
 
-function ConfirmedDrawer({ onChainId, secret, copy, copied }: {
-  onChainId: string | number; secret: string;
+function ConfirmedDrawer({ onChainId, eventName, secret, copy, copied }: {
+  onChainId: string | number; eventName: string; secret: string;
   copy: (t: string, k: string) => void; copied: string | null;
 }) {
   const [attendees, setAttendees] = useState<Attendee[] | null>(null);
@@ -870,62 +885,85 @@ function ConfirmedDrawer({ onChainId, secret, copy, copied }: {
   );
 
   return (
-    <table className="cert-history-table" style={{ width: "100%" }}>
-      <thead>
-        <tr>
-          <th style={{ paddingLeft: 20 }}>Address</th>
-          <th>Tx Hash</th>
-          <th>Date</th>
-        </tr>
-      </thead>
-      <tbody>
-        {attendees.map((a, i) => {
-          const addr = a.address || a.addr || "";
-          const tx   = a.txHash || "";
-          return (
-            <tr key={i}>
-              <td style={{ paddingLeft: 20 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  {addr ? (
-                    <>
-                      <a href={`${ETHERSCAN}/address/${addr}`} target="_blank" rel="noreferrer"
-                        className="tx-link" style={{ fontSize: 12 }}>
-                        {short(addr)}
-                      </a>
-                      <CopyBtn text={addr} id={`a-${i}`} copy={copy} copied={copied} />
-                    </>
+    <div>
+      {/* Toolbar */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "8px 20px", borderBottom: "1px solid var(--border)",
+        background: "rgba(52,211,153,0.04)",
+      }}>
+        <span style={{ fontSize: 12, color: "var(--text3)" }}>
+          {attendees.length} confirmed attendee{attendees.length !== 1 ? "s" : ""}
+        </span>
+        <button
+          onClick={() => downloadCSV(attendees, eventName)}
+          className="btn btn-outline btn-sm"
+          style={{ fontSize: 11, color: "var(--green)", borderColor: "rgba(52,211,153,0.3)" }}
+        >
+          ↓ Export CSV
+        </button>
+      </div>
+      <table className="cert-history-table" style={{ width: "100%" }}>
+        <thead>
+          <tr>
+            <th style={{ paddingLeft: 20 }}>Address</th>
+            <th>Tx Hash</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {attendees.map((a, i) => {
+            const addr = a.address || a.addr || "";
+            const tx   = a.txHash || "";
+            return (
+              <tr key={i}>
+                <td style={{ paddingLeft: 20 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    {addr ? (
+                      <>
+                        <a href={`${ETHERSCAN}/address/${addr}`} target="_blank" rel="noreferrer"
+                          className="tx-link" style={{ fontSize: 12 }}>
+                          {short(addr)}
+                        </a>
+                        <CopyBtn text={addr} id={`a-${i}`} copy={copy} copied={copied} />
+                      </>
+                    ) : "—"}
+                  </div>
+                </td>
+                <td>
+                  {tx ? (
+                    <a href={`${ETHERSCAN}/tx/${tx}`} target="_blank" rel="noreferrer"
+                      className="tx-link" style={{ fontSize: 11 }}>
+                      {short(tx)} ↗
+                    </a>
                   ) : "—"}
-                </div>
-              </td>
-              <td>
-                {tx ? (
-                  <a href={`${ETHERSCAN}/tx/${tx}`} target="_blank" rel="noreferrer"
-                    className="tx-link" style={{ fontSize: 11 }}>
-                    {short(tx)} ↗
-                  </a>
-                ) : "—"}
-              </td>
-              <td style={{ color: "var(--text3)", fontSize: 12 }}>
-                {a.timestamp ? fmtDate(a.timestamp) : "—"}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+                </td>
+                <td style={{ color: "var(--text3)", fontSize: 12 }}>
+                  {a.timestamp ? fmtDate(a.timestamp) : "—"}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
 // ─── Pending Drawer ───────────────────────────────────────────────────────────
 
-function PendingDrawer({ onChainId, secret, copy, copied }: {
+function PendingDrawer({ onChainId, secret, copy, copied, onConfirmed }: {
   onChainId: string | number; secret: string;
   copy: (t: string, k: string) => void; copied: string | null;
+  onConfirmed?: () => void;
 }) {
-  const [pending, setPending] = useState<PendingAttendee[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [pending, setPending]       = useState<PendingAttendee[] | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [confirming, setConfirming] = useState(false);
+  const [result, setResult]         = useState<{ confirmed: number; failed: number } | null>(null);
 
-  useEffect(() => {
+  function fetchPending() {
+    setLoading(true);
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 10000);
     fetch(`${API}/api/admin/events/${onChainId}/pending`, {
@@ -935,7 +973,29 @@ function PendingDrawer({ onChainId, secret, copy, copied }: {
       .then(d => { setPending(d.pending || []); })
       .catch(() => setPending([]))
       .finally(() => { clearTimeout(t); setLoading(false); });
-  }, [onChainId, secret]);
+  }
+
+  useEffect(() => { fetchPending(); }, [onChainId, secret]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function confirmAll() {
+    if (!pending?.length) return;
+    setConfirming(true); setResult(null);
+    try {
+      const res = await fetch(`${API}/api/relay/confirmAllAttendees`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+        body: JSON.stringify({ onChainEventId: onChainId }),
+      });
+      const d = await res.json();
+      setResult({ confirmed: d.confirmed ?? 0, failed: d.failed ?? 0 });
+      fetchPending();
+      onConfirmed?.();
+    } catch {
+      setResult({ confirmed: 0, failed: pending.length });
+    } finally {
+      setConfirming(false);
+    }
+  }
 
   if (loading) return (
     <div style={{ padding: "14px 20px", display: "flex", alignItems: "center", gap: 8, color: "var(--text3)", fontSize: 13 }}>
@@ -944,19 +1004,47 @@ function PendingDrawer({ onChainId, secret, copy, copied }: {
   );
   if (!pending?.length) return (
     <div style={{ padding: "14px 20px", color: "var(--text3)", fontSize: 13 }}>
-      No pending attendees — queue is clear.
+      {result
+        ? <span style={{ color: "var(--green)" }}>✓ {result.confirmed} confirmed on-chain{result.failed > 0 ? ` · ${result.failed} failed` : ""}. Queue is now clear.</span>
+        : "No pending attendees — queue is clear."
+      }
     </div>
   );
 
   return (
     <div>
+      {/* Warning + Confirm All bar */}
       <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10,
         padding: "10px 20px",
-        background: "rgba(251,191,36,0.06)",
-        borderBottom: "1px solid rgba(251,191,36,0.15)",
-        fontSize: 12, color: "var(--amber)",
+        background: "rgba(251,191,36,0.06)", borderBottom: "1px solid rgba(251,191,36,0.15)",
       }}>
-        ⚠ {pending.length} attendee{pending.length !== 1 ? "s" : ""} entered the join code and are awaiting on-chain confirmation by the organizer.
+        <span style={{ fontSize: 12, color: "var(--amber)" }}>
+          ⚠ {pending.length} attendee{pending.length !== 1 ? "s" : ""} awaiting on-chain confirmation
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {result && (
+            <span style={{ fontSize: 11, color: result.failed > 0 ? "var(--coral)" : "var(--green)" }}>
+              {result.failed > 0 ? `⚠ ${result.failed} failed` : `✓ ${result.confirmed} confirmed`}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={confirmAll}
+            disabled={confirming}
+            className="btn btn-sm"
+            style={{
+              background: confirming ? "var(--bg3)" : "rgba(52,211,153,0.12)",
+              border: "1px solid rgba(52,211,153,0.3)",
+              color: confirming ? "var(--text3)" : "var(--green)",
+            }}
+          >
+            {confirming
+              ? <><span className="spinner" style={{ borderTopColor: "var(--green)" }} /> Confirming…</>
+              : `⚡ Confirm All (${pending.length})`
+            }
+          </button>
+        </div>
       </div>
       <table className="cert-history-table" style={{ width: "100%" }}>
         <thead>
@@ -995,9 +1083,10 @@ function PendingDrawer({ onChainId, secret, copy, copied }: {
 
 // ─── Event Card ───────────────────────────────────────────────────────────────
 
-function EventCard({ ev, secret, copy, copied }: {
+function EventCard({ ev, secret, copy, copied, onStatsRefresh }: {
   ev: EventStat; secret: string;
   copy: (t: string, k: string) => void; copied: string | null;
+  onStatsRefresh?: () => void;
 }) {
   const [showConfirmed, setShowConfirmed] = useState(false);
   const [showPending,   setShowPending]   = useState(false);
@@ -1138,7 +1227,7 @@ function EventCard({ ev, secret, copy, copied }: {
           <div style={{ padding: "8px 20px 0", fontSize: 11, fontWeight: 600, color: "var(--green)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
             ✅ Confirmed Attendees
           </div>
-          <ConfirmedDrawer onChainId={ev.onChainId} secret={secret} copy={copy} copied={copied} />
+          <ConfirmedDrawer onChainId={ev.onChainId} eventName={ev.name} secret={secret} copy={copy} copied={copied} />
         </div>
       )}
       {showPending && (
@@ -1146,7 +1235,7 @@ function EventCard({ ev, secret, copy, copied }: {
           <div style={{ padding: "8px 20px 0", fontSize: 11, fontWeight: 600, color: "var(--amber)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
             ⏳ Pending Queue
           </div>
-          <PendingDrawer onChainId={ev.onChainId} secret={secret} copy={copy} copied={copied} />
+          <PendingDrawer onChainId={ev.onChainId} secret={secret} copy={copy} copied={copied} onConfirmed={onStatsRefresh} />
         </div>
       )}
     </div>
@@ -1310,6 +1399,40 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
         }}
       />
 
+      {/* Low ETH balance banner — shown across all tabs */}
+      {relayer && parseFloat(relayer.balanceEth) < 0.1 && (
+        <div style={{
+          background: parseFloat(relayer.balanceEth) < 0.05
+            ? "rgba(248,113,113,0.1)" : "rgba(251,191,36,0.08)",
+          borderBottom: `1px solid ${parseFloat(relayer.balanceEth) < 0.05
+            ? "rgba(248,113,113,0.3)" : "rgba(251,191,36,0.25)"}`,
+          padding: "10px 24px",
+          display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+        }}>
+          <span style={{ fontSize: 16 }}>{parseFloat(relayer.balanceEth) < 0.05 ? "🚨" : "⚠️"}</span>
+          <span style={{
+            fontSize: 13, fontWeight: 600,
+            color: parseFloat(relayer.balanceEth) < 0.05 ? "var(--coral)" : "var(--amber)",
+          }}>
+            {parseFloat(relayer.balanceEth) < 0.05 ? "Critical:" : "Low balance:"} Relayer wallet has only {relayer.balanceEth} ETH
+          </span>
+          <span style={{ fontSize: 12, color: "var(--text3)" }}>
+            — gasless transactions will fail if it runs out. Top up to at least 0.2 ETH.
+          </span>
+          <a
+            href={`${ETHERSCAN}/address/${relayer.address}`}
+            target="_blank" rel="noreferrer"
+            style={{
+              marginLeft: "auto", fontSize: 12, color: "var(--accent2)",
+              border: "1px solid var(--border2)", borderRadius: 6,
+              padding: "3px 10px", textDecoration: "none", whiteSpace: "nowrap",
+            }}
+          >
+            View on Etherscan ↗
+          </a>
+        </div>
+      )}
+
       <div className="container">
         {error && (
           <div className="toast show error" style={{
@@ -1364,6 +1487,63 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
 
                 {/* On-chain contract stats */}
                 <ContractStats secret={secret} copy={copy} copied={copied} />
+
+                {/* Funding calculator */}
+                {stats && relayer && stats.totalPending > 0 && (() => {
+                  const CHECKIN_GAS  = 85000;
+                  const GAS_PRICE_GWEI = 10; // conservative Sepolia estimate
+                  const costEth = stats.totalPending * CHECKIN_GAS * GAS_PRICE_GWEI * 1e-9;
+                  const balEth  = parseFloat(relayer.balanceEth);
+                  const surplus = balEth - costEth;
+                  const ok      = surplus >= 0;
+                  return (
+                    <div className="card" style={{ marginBottom: 16, padding: "18px 22px" }}>
+                      <SectionTitle>Funding Calculator</SectionTitle>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 20, alignItems: "flex-start" }}>
+                        <div style={{ flex: "1 1 200px" }}>
+                          <div style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>Cost to confirm all pending</div>
+                          <div style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                            ~{costEth.toFixed(6)} ETH
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>
+                            {stats.totalPending} × {numFmt(CHECKIN_GAS)} gas × {GAS_PRICE_GWEI} Gwei
+                          </div>
+                        </div>
+                        <div style={{ flex: "1 1 160px" }}>
+                          <div style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>Relayer balance</div>
+                          <div style={{ fontSize: 24, fontWeight: 700, color: ok ? "var(--green)" : "var(--coral)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                            {relayer.balanceEth} ETH
+                          </div>
+                        </div>
+                        <div style={{ flex: "1 1 180px" }}>
+                          <div style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>Status</div>
+                          <div style={{
+                            display: "inline-flex", alignItems: "center", gap: 8,
+                            padding: "8px 16px", borderRadius: "var(--radius-sm)",
+                            background: ok ? "rgba(52,211,153,0.1)" : "rgba(248,113,113,0.1)",
+                            border: `1px solid ${ok ? "rgba(52,211,153,0.3)" : "rgba(248,113,113,0.3)"}`,
+                          }}>
+                            <span style={{ fontSize: 16 }}>{ok ? "✅" : "🚨"}</span>
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: ok ? "var(--green)" : "var(--coral)" }}>
+                                {ok ? "Sufficient" : "Shortfall"}
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>
+                                {ok
+                                  ? `${surplus.toFixed(6)} ETH remaining after`
+                                  : `Need ${Math.abs(surplus).toFixed(6)} ETH more`
+                                }
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 11, color: "var(--text3)" }}>
+                        ℹ Estimate uses {GAS_PRICE_GWEI} Gwei gas price. Actual cost varies — check the Gas tab for live prices.
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Navigation strip to other tabs */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 16 }}>
@@ -1467,7 +1647,7 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     {filteredEvents.map(ev => (
-                      <EventCard key={ev.onChainId} ev={ev} secret={secret} copy={copy} copied={copied} />
+                      <EventCard key={ev.onChainId} ev={ev} secret={secret} copy={copy} copied={copied} onStatsRefresh={refresh} />
                     ))}
                   </div>
                 )}
