@@ -6,7 +6,7 @@ const path = require("path");
 const adminAuth = require("../middleware/adminAuth");
 const {
   getContract, getProvider, getEventAttendees, getPendingAttendees,
-  queryFilterPaginated,
+  queryFilterPaginated, getDeployedEvents,
 } = require("../services/relayerService");
 
 const DATA_DIR = path.join(__dirname, "../../data");
@@ -65,7 +65,8 @@ router.get("/relayer", async (req, res) => {
 // System-wide counts from persisted JSON — no chain queries
 router.get("/stats", async (req, res) => {
   try {
-    const deployedEvents = readJSON("deployedEvents.json") || {};
+    // Use getDeployedEvents() so _contract tag check discards stale events from old contracts
+    const deployedEvents = getDeployedEvents();
     const allEvents = readJSON("events.json") || [];
     const pending = readJSON("pending.json") || {};
 
@@ -186,7 +187,7 @@ router.get("/system", async (req, res) => {
 // Timeline of all confirmed attendees across all events, newest first
 router.get("/activity", async (req, res) => {
   try {
-    const deployedEvents = readJSON("deployedEvents.json") || {};
+    const deployedEvents = getDeployedEvents();
     const allEvents      = readJSON("events.json") || [];
 
     const entries = [];
@@ -245,7 +246,7 @@ router.get("/gas", async (req, res) => {
   try {
     const contract = getContract();
     const provider = getProvider();
-    const deployedEvents = readJSON("deployedEvents.json") || {};
+    const deployedEvents = getDeployedEvents();
     const allEvents = readJSON("events.json") || [];
 
     // Current network gas price
