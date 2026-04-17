@@ -1638,6 +1638,84 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                   {/* ── Detail Cards Grid ────────────────────────────────────── */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 14, marginBottom: 16 }}>
 
+                    {/* ── System Health — full-width top card with distinctive style ── */}
+                    <div style={{
+                      gridColumn: "1 / -1",
+                      background: "linear-gradient(120deg, rgba(124,108,240,0.1) 0%, rgba(96,165,250,0.07) 50%, rgba(52,211,153,0.06) 100%)",
+                      borderRadius: "var(--radius)",
+                      border: "1px solid var(--border)",
+                      borderTop: `3px solid ${overallStatus === "healthy" ? "var(--green)" : overallStatus === "degraded" ? "var(--amber)" : overallStatus === "critical" ? "var(--coral)" : "var(--border2)"}`,
+                      padding: "20px 24px",
+                    }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+                        {/* Left: title + description */}
+                        <div style={{ flex: "0 0 220px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                            <span style={{ fontSize: 18 }}>🖥</span>
+                            <span style={{ fontWeight: 700, fontSize: 14, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>System Health</span>
+                          </div>
+                          <p style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.6, margin: 0 }}>
+                            Live metrics for the VRYFD backend server — uptime, memory usage, and environment config.
+                            A healthy system means all gasless operations are running normally.
+                          </p>
+                        </div>
+                        {/* Right: stats */}
+                        {systemData ? (
+                          <div style={{ flex: 1, minWidth: 260, display: "flex", flexDirection: "column", gap: 12 }}>
+                            <div style={{ display: "flex", gap: 10 }}>
+                              <div style={{ flex: 1, background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "10px 14px" }}>
+                                <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", marginBottom: 4 }}>UPTIME</div>
+                                <div style={{ fontSize: 18, fontWeight: 700, color: "var(--green)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                                  {fmtUptime(liveUptime!)}
+                                </div>
+                              </div>
+                              <div style={{ flex: 1, background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "10px 14px" }}>
+                                <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", marginBottom: 4 }}>NODE VERSION</div>
+                                <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text2)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                                  {systemData.nodeVersion}
+                                </div>
+                              </div>
+                              <div style={{ flex: 1, background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "10px 14px" }}>
+                                <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", marginBottom: 4 }}>ENVIRONMENT</div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: systemData.env.nodeEnv === "production" ? "var(--green)" : "var(--amber)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                                  {systemData.env.nodeEnv.toUpperCase()}
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                                <span style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.06em" }}>HEAP MEMORY</span>
+                                <span style={{ fontSize: 10, fontWeight: 600, color: memPct > 80 ? "var(--coral)" : "var(--text3)" }}>
+                                  {systemData.memoryMB.heapUsed} / {systemData.memoryMB.heapTotal} MB ({memPct}%)
+                                </span>
+                              </div>
+                              <div style={{ height: 6, background: "var(--bg4)", borderRadius: 99, overflow: "hidden" }}>
+                                <div style={{
+                                  height: "100%", borderRadius: 99, transition: "width 0.6s ease",
+                                  width: `${memPct}%`,
+                                  background: memPct > 80
+                                    ? "linear-gradient(90deg, var(--coral), #ff8a80)"
+                                    : memPct > 60
+                                    ? "linear-gradient(90deg, var(--amber), #ffd54f)"
+                                    : "linear-gradient(90deg, var(--accent), var(--accent2))",
+                                }} />
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                              <EnvBadge ok={systemData.env.hasPrivateKey} label="Private Key" />
+                              <EnvBadge ok={systemData.env.hasAlchemyUrl} label="RPC URL" />
+                              <EnvBadge ok={systemData.env.hasMongoUri}   label="Database" />
+                              <EnvBadge ok={systemData.env.nodeEnv === "production"} label="Production" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ color: "var(--text3)", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+                            <span className="spinner" /> Fetching…
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
                     {/* Relayer Wallet */}
                     <div style={{
                       background: "var(--bg2)", borderRadius: "var(--radius)",
@@ -1645,7 +1723,7 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                       borderLeft: `4px solid ${bal === null ? "var(--border2)" : bal < 0.05 ? "var(--coral)" : bal < 0.1 ? "var(--amber)" : "var(--green)"}`,
                       padding: "18px 20px",
                     }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                         <span style={{ fontSize: 16 }}>🔑</span>
                         <span style={{ fontWeight: 700, fontSize: 13, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Relayer Wallet</span>
                         {relayer && (
@@ -1659,6 +1737,9 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                           </span>
                         )}
                       </div>
+                      <p style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5, margin: "0 0 14px 0" }}>
+                        The server-side Ethereum wallet that pays gas fees on behalf of attendees, making all check-ins and NFT minting completely free for users.
+                      </p>
                       {relayer ? (
                         <>
                           <div style={{ marginBottom: 12 }}>
@@ -1706,11 +1787,14 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                       border: "1px solid var(--border)", borderLeft: "4px solid rgba(52,211,153,0.6)",
                       padding: "18px 20px",
                     }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                         <span style={{ fontSize: 16 }}>📜</span>
                         <span style={{ fontWeight: 700, fontSize: 13, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Smart Contract</span>
                         <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 8px" }}>Sepolia</span>
                       </div>
+                      <p style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5, margin: "0 0 14px 0" }}>
+                        The core on-chain program deployed to Ethereum Sepolia. It handles event creation, attendance verification, POAP badge minting, and certificate issuance — all recorded permanently on-chain.
+                      </p>
                       {relayer?.contractAddress ? (
                         <>
                           <div style={{ marginBottom: 12 }}>
@@ -1757,11 +1841,14 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                       border: "1px solid var(--border)", borderLeft: "4px solid rgba(251,191,36,0.6)",
                       padding: "18px 20px",
                     }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                         <span style={{ fontSize: 16 }}>🪙</span>
                         <span style={{ fontWeight: 700, fontSize: 13, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>VRYF Token</span>
                         <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 8px" }}>ERC-20</span>
                       </div>
+                      <p style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5, margin: "0 0 14px 0" }}>
+                        The platform&apos;s reward token awarded to attendees for participating in events. It is soulbound (non-transferable), meaning it stays permanently in the earner&apos;s wallet as proof of participation.
+                      </p>
                       {contractData?.vryfTokenAddress ? (
                         <>
                           <div style={{ marginBottom: 12 }}>
@@ -1782,66 +1869,7 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                               <span style={{ fontSize: 13, fontWeight: 500, marginLeft: 6, color: "var(--text3)" }}>VRYF</span>
                             </div>
                           </div>
-                          <div style={{ fontSize: 11, color: "var(--text3)" }}>Soulbound reward token · Non-transferable</div>
-                        </>
-                      ) : (
-                        <div style={{ color: "var(--text3)", fontSize: 13, display: "flex", alignItems: "center", gap: 8, padding: "8px 0" }}>
-                          <span className="spinner" /> Fetching…
-                        </div>
-                      )}
-                    </div>
-
-                    {/* System Health */}
-                    <div style={{
-                      background: "var(--bg2)", borderRadius: "var(--radius)",
-                      border: "1px solid var(--border)", borderLeft: "4px solid rgba(124,108,240,0.6)",
-                      padding: "18px 20px",
-                    }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-                        <span style={{ fontSize: 16 }}>🖥</span>
-                        <span style={{ fontWeight: 700, fontSize: 13, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>System Health</span>
-                      </div>
-                      {systemData ? (
-                        <>
-                          <div style={{ display: "flex", gap: 0, background: "var(--bg3)", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)", marginBottom: 12 }}>
-                            <div style={{ flex: 1, padding: "10px 14px", borderRight: "1px solid var(--border)" }}>
-                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", marginBottom: 4 }}>UPTIME</div>
-                              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--green)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
-                                {fmtUptime(liveUptime!)}
-                              </div>
-                            </div>
-                            <div style={{ flex: 1, padding: "10px 14px" }}>
-                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", marginBottom: 4 }}>NODE</div>
-                              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text2)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
-                                {systemData.nodeVersion}
-                              </div>
-                            </div>
-                          </div>
-                          <div style={{ marginBottom: 12 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                              <span style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.06em" }}>HEAP MEMORY</span>
-                              <span style={{ fontSize: 10, fontWeight: 600, color: memPct > 80 ? "var(--coral)" : "var(--text3)" }}>
-                                {systemData.memoryMB.heapUsed} / {systemData.memoryMB.heapTotal} MB ({memPct}%)
-                              </span>
-                            </div>
-                            <div style={{ height: 6, background: "var(--bg4)", borderRadius: 99, overflow: "hidden" }}>
-                              <div style={{
-                                height: "100%", borderRadius: 99, transition: "width 0.6s ease",
-                                width: `${memPct}%`,
-                                background: memPct > 80
-                                  ? "linear-gradient(90deg, var(--coral), #ff8a80)"
-                                  : memPct > 60
-                                  ? "linear-gradient(90deg, var(--amber), #ffd54f)"
-                                  : "linear-gradient(90deg, var(--accent), var(--accent2))",
-                              }} />
-                            </div>
-                          </div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                            <EnvBadge ok={systemData.env.hasPrivateKey} label="Key" />
-                            <EnvBadge ok={systemData.env.hasAlchemyUrl} label="RPC" />
-                            <EnvBadge ok={systemData.env.hasMongoUri}   label="DB" />
-                            <EnvBadge ok={systemData.env.nodeEnv === "production"} label="Prod" />
-                          </div>
+                          <div style={{ fontSize: 11, color: "var(--text3)" }}>Soulbound · Non-transferable · Sepolia Testnet</div>
                         </>
                       ) : (
                         <div style={{ color: "var(--text3)", fontSize: 13, display: "flex", alignItems: "center", gap: 8, padding: "8px 0" }}>
