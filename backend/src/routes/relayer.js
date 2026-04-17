@@ -2,6 +2,7 @@ const express = require("express");
 const { getENSOverride, getAddressOverride } = require("../services/ensOverrides");
 const {
   createEvent,
+  createEventsBatch,
   getConfirmedCount,
   getOnChainAttendeeCount,
   generateJoinCode,
@@ -70,6 +71,31 @@ router.post("/createEvent", async (req, res) => {
     res.json({ success: true, ...result });
   } catch (error) {
     console.error("createEvent error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/relay/createEventsBatch
+ * Create multiple events in one shot — single nonce + feeData fetch, all txs submitted in parallel.
+ * Body: { events: [{ name, metadataURI, startTime, endTime, demoId, joinCode }] }
+ * Returns: { results: [{ demoId, eventId, txHash, status }] }
+ */
+router.post("/createEventsBatch", async (req, res) => {
+  try {
+    const { events } = req.body;
+    if (!Array.isArray(events) || events.length === 0) {
+      return res.status(400).json({ error: "events must be a non-empty array" });
+    }
+    for (const ev of events) {
+      if (!ev.name || !ev.startTime || !ev.endTime) {
+        return res.status(400).json({ error: "Each event needs name, startTime, endTime" });
+      }
+    }
+    const results = await createEventsBatch(events);
+    res.json({ success: true, results });
+  } catch (error) {
+    console.error("createEventsBatch error:", error.message);
     res.status(500).json({ error: error.message });
   }
 });

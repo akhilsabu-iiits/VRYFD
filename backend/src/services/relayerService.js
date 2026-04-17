@@ -865,6 +865,68 @@ async function createEvent(name, metadataURI, startTime, endTime) {
 }
 
 /**
+ * Create multiple events in a single batch — relayer pays gas (has ORGANIZER_ROLE).
+ * Fetches nonce + nextEventId + feeData once, then submits all N txs in parallel
+ * with explicit sequential nonces so there are no nonce collisions.
+ * Returns immediately after tx submission (does not wait for mining).
+ *
+ * @param {Array<{name, metadataURI, startTime, endTime, demoId, joinCode}>} events
+ */
+async function createEventsBatch(events) {
+  if (!events || events.length === 0) return [];
+  return withRpcFallback(async () => {
+    const c = getContract();
+
+    // Fetch nonce, nextEventId, and feeData in a single parallel round-trip
+    const [nonce, nextId, feeData] = await Promise.all([
+      provider.getTransactionCount(relayerWallet.address, "pending"),
+      c.nextEventId(),
+      getCachedFeeData(),
+    ]);
+
+    const feeOverrides = feeData?.maxFeePerGas
+      ? { maxFeePerGas: feeData.maxFeePerGas, maxPriorityFeePerGas: feeData.maxPriorityFeePerGas }
+      : {};
+
+    console.log(`[createEventsBatch] submitting ${events.length} events (nonces ${nonce}-${nonce + events.length - 1}, nextId=${nextId})`);
+
+    const results = await Promise.all(
+      events.map(async ({ name, metadataURI, startTime, endTime, demoId, joinCode }, i) => {
+        const eventId = Number(BigInt(nextId) + BigInt(i));
+        try {
+          const tx = await c.createEvent(
+            name, metadataURI, BigInt(startTime), BigInt(endTime),
+            { ...feeOverrides, nonce: nonce + i },
+          );
+          console.log(`[createEventsBatch] tx[${i}]: ${tx.hash}, eventId=${eventId}`);
+
+          // Register side-effects immediately so join codes are usable before mining
+          try { setEventMeta(eventId, startTime, endTime); } catch {}
+          if (joinCode) { try { setCustomCode(eventId, joinCode); } catch {} }
+
+          // Fire-and-forget: persist to disk after confirmation
+          tx.wait(1, 120_000)
+            .then((receipt) => {
+              console.log(`[createEventsBatch] confirmed: ${receipt.hash} eventId=${eventId}`);
+              if (demoId != null) {
+                try { saveDeployedEvent(demoId, receipt.hash, eventId, joinCode || null, Number(startTime), Number(endTime)); } catch {}
+              }
+            })
+            .catch((e) => console.warn(`[createEventsBatch] tx.wait failed (${tx.hash}):`, e.message));
+
+          return { demoId, eventId, txHash: tx.hash, status: "ok" };
+        } catch (err) {
+          console.warn(`[createEventsBatch] event[${i}] submit failed:`, err.message);
+          return { demoId, eventId, txHash: null, status: "failed", error: err.message };
+        }
+      })
+    );
+
+    return results;
+  });
+}
+
+/**
  * Issue a certificate on-chain — relayer wallet pays gas (has ORGANIZER_ROLE)
  * Guards: attendance confirmed, event timing, no duplicate
  */
@@ -943,20 +1005,57 @@ async function gaslessClaimBadge(attendee, onChainEventId, signature) {
     console.warn(`[gaslessClaimBadge] pre-checks failed: ${e.message} — proceeding`);
   }
 
-  // If organizer's confirmAttendee tx is still in-flight, wait for it to mine
-  // before submitting the badge mint (contract reverts with "Not attended" otherwise).
-  if (Number(onChainRecord?.timestamp ?? 0) === 0) {
+  // ── Attendance pre-check ─────────────────────────────────────────────────────
+  // Only gate on timestamp=0 when the RPC call *succeeded* and returned real data.
+  // When onChainRecord is undefined (pre-checks failed due to a transient RPC error),
+  // skip this guard entirely — the contract itself validates attendance and reverts
+  // with "Not attended" if truly unconfirmed, which is the safe failure mode.
+  // Previously, `onChainRecord?.timestamp ?? 0` silently coerced undefined to 0,
+  // causing a false "Not attended" error any time the pre-check RPC call failed.
+  if (onChainRecord !== undefined && Number(onChainRecord.timestamp) === 0) {
     const detail = confirmedAttendeesDetailStore.get(String(onChainEventId))?.get(attendee.toLowerCase());
     if (detail?.txHash) {
+      // Organizer's confirmAttendee tx is still in-flight — wait for it to mine.
       console.log(`[gaslessClaimBadge] attendance tx pending (${detail.txHash}), waiting...`);
       try {
-        await provider.waitForTransaction(detail.txHash, 1, 60_000);
-        console.log(`[gaslessClaimBadge] attendance tx confirmed, proceeding`);
+        const attendanceTxReceipt = await provider.waitForTransaction(detail.txHash, 1, 60_000);
+        if (attendanceTxReceipt?.status === 0) {
+          // Tx was mined but reverted (e.g. double-confirm race, gas issue).
+          // Re-read chain — another tx may have successfully confirmed the attendee.
+          console.warn(`[gaslessClaimBadge] attendance tx ${detail.txHash} reverted — re-checking chain`);
+          let recheck;
+          try {
+            recheck = await withRpcFallback(() => c.getAttendanceRecord(BigInt(onChainEventId), attendee));
+          } catch (e2) {
+            console.warn(`[gaslessClaimBadge] re-check after revert also failed: ${e2.message}`);
+          }
+          if (Number(recheck?.timestamp ?? 0) === 0) {
+            throw new Error("Attendance confirmation failed on-chain — ask the organizer to confirm your attendance again");
+          }
+          console.log(`[gaslessClaimBadge] re-check confirmed attendance for ${attendee} despite reverted tx — proceeding`);
+        } else {
+          console.log(`[gaslessClaimBadge] attendance tx confirmed, proceeding`);
+        }
       } catch (e) {
+        if (e.message.startsWith("Attendance confirmation failed")) throw e;
         throw new Error("Attendance confirmation is still pending — please try again in a moment");
       }
     } else {
-      throw new Error("Not attended");
+      // Detail store has no record (e.g. backend restarted and Railway wiped the FS).
+      // Do one chain re-read after a short delay — the initial read might have been
+      // stale (RPC node lag) or the confirmation tx may have mined in the meantime.
+      console.log(`[gaslessClaimBadge] no detail for ${attendee} on event ${onChainEventId} — re-checking chain in 2s`);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      let recheck;
+      try {
+        recheck = await withRpcFallback(() => c.getAttendanceRecord(BigInt(onChainEventId), attendee));
+      } catch (e) {
+        console.warn(`[gaslessClaimBadge] re-check RPC also failed: ${e.message}`);
+      }
+      if (Number(recheck?.timestamp ?? 0) === 0) {
+        throw new Error("Not attended");
+      }
+      console.log(`[gaslessClaimBadge] re-check confirmed attendance for ${attendee} — proceeding`);
     }
   }
 
@@ -1507,6 +1606,7 @@ async function syncMissingAttendeeCounts() {
 module.exports = {
   initRelayer,
   createEvent,
+  createEventsBatch,
   getConfirmedCount,
   getOnChainAttendeeCount,
   syncMissingAttendeeCounts,
