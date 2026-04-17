@@ -1813,4 +1813,5 @@ module.exports = {
   getProvider,
   getVryfTokenAddress,
   restoreContractStateFromDB,
+  queryFilterPaginated,
 };

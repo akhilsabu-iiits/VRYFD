@@ -39,10 +39,15 @@ interface EventCost {
   gasPriceGwei: string; ethCost: string;
   confirmedAttendees: number; estimatedCheckInCost: string;
 }
+interface GasBreakdownRow {
+  key: string; label: string; icon: string;
+  txCount: number; opCount: number; totalGasUsed: number; ethCost: string;
+}
 interface GasData {
   gasPriceGwei: string;
   operationCosts: OperationCost[];
   eventCosts: EventCost[];
+  gasBreakdown: { breakdown: GasBreakdownRow[]; totalGasUsed: number; totalEthCost: string } | null;
   summary: {
     actualCreationCost: string; estimatedConfirmCost: string;
     estimatedTotalSpent: string; totalConfirmedAttendees: number;
@@ -757,6 +762,94 @@ function GasSection({ secret, autoLoad }: { secret: string; autoLoad?: boolean }
               </div>
             ))}
           </div>
+
+          {/* ── Actual Total Gas Used + Breakdown ─────────────────────────── */}
+          {data.gasBreakdown && (
+            <>
+              <SectionTitle>Total Gas Used (Actual On-Chain)</SectionTitle>
+              {/* Total gas hero */}
+              <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+                {[
+                  { label: "Total Gas Used",  value: numFmt(data.gasBreakdown.totalGasUsed), color: "var(--amber)" },
+                  { label: "Total ETH Spent", value: `${data.gasBreakdown.totalEthCost} ETH`, color: "var(--green)" },
+                  { label: "Transactions",    value: numFmt(data.gasBreakdown.breakdown.reduce((s, b) => s + b.txCount, 0)), color: "var(--accent2)" },
+                  { label: "Operations",      value: numFmt(data.gasBreakdown.breakdown.reduce((s, b) => s + b.opCount, 0)), color: "var(--text)" },
+                ].map(s => (
+                  <div key={s.label} className="card" style={{ flex: 1, minWidth: 120, margin: 0, padding: "14px 16px" }}>
+                    <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{s.label}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: s.color, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>{s.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Breakdown table + bar chart */}
+              <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 20 }}>
+                <table className="cert-history-table" style={{ width: "100%" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ paddingLeft: 20 }}>Operation</th>
+                      <th style={{ textAlign: "right" }}>Txs</th>
+                      <th style={{ textAlign: "right" }}>Ops</th>
+                      <th style={{ textAlign: "right" }}>Gas Used</th>
+                      <th style={{ textAlign: "right", paddingRight: 20 }}>ETH Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.gasBreakdown.breakdown.map(row => {
+                      const pct = data.gasBreakdown!.totalGasUsed > 0
+                        ? (row.totalGasUsed / data.gasBreakdown!.totalGasUsed) * 100
+                        : 0;
+                      return (
+                        <tr key={row.key}>
+                          <td style={{ paddingLeft: 20 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span>{row.icon}</span>
+                              <div>
+                                <div style={{ color: "var(--text)", fontSize: 13 }}>{row.label}</div>
+                                {row.totalGasUsed > 0 && (
+                                  <div style={{ marginTop: 4, height: 4, width: 120, background: "var(--bg3)", borderRadius: 2 }}>
+                                    <div style={{ height: "100%", width: `${pct}%`, background: "var(--amber)", borderRadius: 2, transition: "width 0.4s" }} />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ textAlign: "right", color: "var(--text3)", fontSize: 12, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                            {row.txCount > 0 ? numFmt(row.txCount) : "—"}
+                          </td>
+                          <td style={{ textAlign: "right", color: "var(--text3)", fontSize: 12, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                            {row.opCount > 0 ? numFmt(row.opCount) : "—"}
+                          </td>
+                          <td style={{ textAlign: "right", color: row.totalGasUsed > 0 ? "var(--text)" : "var(--text3)", fontSize: 12, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                            {row.totalGasUsed > 0 ? numFmt(row.totalGasUsed) : "—"}
+                          </td>
+                          <td style={{ textAlign: "right", paddingRight: 20, color: parseFloat(row.ethCost) > 0 ? "var(--green)" : "var(--text3)", fontSize: 12, fontWeight: 600, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                            {parseFloat(row.ethCost) > 0 ? `${row.ethCost} ETH` : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {/* Total row */}
+                    <tr style={{ borderTop: "2px solid var(--border)", background: "var(--bg2)" }}>
+                      <td style={{ paddingLeft: 20, fontWeight: 700, color: "var(--text)", fontSize: 13 }}>Total</td>
+                      <td style={{ textAlign: "right", fontWeight: 700, fontFamily: "var(--font-space-mono),'Space Mono',monospace", fontSize: 12 }}>
+                        {numFmt(data.gasBreakdown.breakdown.reduce((s, b) => s + b.txCount, 0))}
+                      </td>
+                      <td style={{ textAlign: "right", fontWeight: 700, fontFamily: "var(--font-space-mono),'Space Mono',monospace", fontSize: 12 }}>
+                        {numFmt(data.gasBreakdown.breakdown.reduce((s, b) => s + b.opCount, 0))}
+                      </td>
+                      <td style={{ textAlign: "right", fontWeight: 700, color: "var(--amber)", fontFamily: "var(--font-space-mono),'Space Mono',monospace", fontSize: 12 }}>
+                        {numFmt(data.gasBreakdown.totalGasUsed)}
+                      </td>
+                      <td style={{ textAlign: "right", paddingRight: 20, fontWeight: 700, color: "var(--green)", fontFamily: "var(--font-space-mono),'Space Mono',monospace", fontSize: 12 }}>
+                        {data.gasBreakdown.totalEthCost} ETH
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
 
           {/* Per-operation cost table */}
           <SectionTitle>Operation Cost @ {data.gasPriceGwei} Gwei</SectionTitle>

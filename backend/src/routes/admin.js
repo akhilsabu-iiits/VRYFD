@@ -6,6 +6,7 @@ const path = require("path");
 const adminAuth = require("../middleware/adminAuth");
 const {
   getContract, getProvider, getEventAttendees, getPendingAttendees,
+  queryFilterPaginated,
 } = require("../services/relayerService");
 
 const DATA_DIR = path.join(__dirname, "../../data");
@@ -232,10 +233,17 @@ router.get("/activity", async (req, res) => {
   }
 });
 
+// ─── In-memory cache for gas breakdown (expensive log scan) ──────────────────
+let _gasBreakdownCache = null;
+let _gasBreakdownCachedAt = 0;
+let _gasBreakdownContractAddr = null;
+const GAS_BREAKDOWN_TTL = 120_000; // 2 minutes
+
 // ─── GET /api/admin/gas ───────────────────────────────────────────────────────
-// Gas analysis: event creation receipts + estimates for each operation type
+// Gas analysis: actual total gas from log scan + per-operation breakdown + estimates
 router.get("/gas", async (req, res) => {
   try {
+    const contract = getContract();
     const provider = getProvider();
     const deployedEvents = readJSON("deployedEvents.json") || {};
     const allEvents = readJSON("events.json") || [];
@@ -313,6 +321,84 @@ router.get("/gas", async (req, res) => {
     const actualCreationCost   = eventCosts.reduce((s, e) => s + parseFloat(e.ethCost), 0);
     const estimatedConfirmCost = estimateCost(GAS_COSTS.checkInFor.gas * totalConfirmed);
 
+    // ── Actual total gas breakdown via contract log scan (cached 2 min) ────────
+    const now = Date.now();
+    const contractAddr = contract.target;
+    let gasBreakdown = null;
+
+    if (
+      _gasBreakdownCache &&
+      now - _gasBreakdownCachedAt < GAS_BREAKDOWN_TTL &&
+      _gasBreakdownContractAddr === contractAddr
+    ) {
+      gasBreakdown = _gasBreakdownCache;
+    } else {
+      try {
+        const latest = await provider.getBlockNumber();
+        const fromBlock = Math.max(0, latest - 500_000);
+
+        // Scan all relevant event logs in parallel
+        const [createdLogs, confirmedLogs, badgeLogs, certLogs, milestoneLogs] = await Promise.all([
+          queryFilterPaginated(contract, contract.filters.EventCreated(),        fromBlock, latest).catch(() => []),
+          queryFilterPaginated(contract, contract.filters.AttendanceConfirmed(), fromBlock, latest).catch(() => []),
+          queryFilterPaginated(contract, contract.filters.BadgeMinted(),         fromBlock, latest).catch(() => []),
+          queryFilterPaginated(contract, contract.filters.CertificateIssued(),   fromBlock, latest).catch(() => []),
+          queryFilterPaginated(contract, contract.filters.MilestoneReached(),    fromBlock, latest).catch(() => []),
+        ]);
+
+        // Collect unique tx hashes per category
+        const categories = [
+          { key: "createEvent",     label: "Create Event",           icon: "📅", logs: createdLogs },
+          { key: "checkInFor",      label: "Confirm Check-in",       icon: "✅", logs: confirmedLogs },
+          { key: "claimBadge",      label: "Mint POAP Badge",        icon: "🏅", logs: badgeLogs },
+          { key: "issueCertificate",label: "Issue Certificate",      icon: "📜", logs: certLogs },
+          { key: "milestoneReward", label: "Milestone Reward",       icon: "🏆", logs: milestoneLogs },
+        ];
+
+        // Batch-fetch all unique receipts across all categories
+        const allTxHashes = new Set(categories.flatMap(c => c.logs.map(l => l.transactionHash)));
+        const receiptMap = new Map();
+        await Promise.allSettled([...allTxHashes].map(async (h) => {
+          try {
+            const r = await provider.getTransactionReceipt(h);
+            if (r) receiptMap.set(h, r);
+          } catch {}
+        }));
+
+        // Aggregate gas per category
+        const breakdown = categories.map(({ key, label, icon, logs }) => {
+          const uniqueTxs = [...new Set(logs.map(l => l.transactionHash))];
+          const totalGasUsed = uniqueTxs.reduce((sum, h) => {
+            const r = receiptMap.get(h);
+            return sum + (r ? Number(r.gasUsed) : 0);
+          }, 0);
+          const totalEthCost = uniqueTxs.reduce((sum, h) => {
+            const r = receiptMap.get(h);
+            if (!r) return sum;
+            const gp = r.gasPrice ?? currentGasPrice;
+            return sum + parseFloat(ethers.formatEther(r.gasUsed * gp));
+          }, 0);
+          return {
+            key, label, icon,
+            txCount:      uniqueTxs.length,
+            opCount:      logs.length,
+            totalGasUsed,
+            ethCost:      totalEthCost.toFixed(8),
+          };
+        });
+
+        const totalGasUsed = breakdown.reduce((s, b) => s + b.totalGasUsed, 0);
+        const totalEthCost = breakdown.reduce((s, b) => s + parseFloat(b.ethCost), 0);
+
+        gasBreakdown = { breakdown, totalGasUsed, totalEthCost: totalEthCost.toFixed(8) };
+        _gasBreakdownCache = gasBreakdown;
+        _gasBreakdownCachedAt = now;
+        _gasBreakdownContractAddr = contractAddr;
+      } catch (e) {
+        console.warn("[gas] breakdown scan failed:", e.message);
+      }
+    }
+
     res.json({
       gasPriceGwei,
       operationCosts: Object.entries(GAS_COSTS).map(([key, { gas, label, icon }]) => ({
@@ -322,6 +408,7 @@ router.get("/gas", async (req, res) => {
         estimatedCostGwei: (gas * Number(currentGasPrice) / 1e9).toFixed(0),
       })),
       eventCosts,
+      gasBreakdown,
       summary: {
         actualCreationCost:       actualCreationCost.toFixed(8),
         estimatedConfirmCost:     estimatedConfirmCost.toFixed(8),
