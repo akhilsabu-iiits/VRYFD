@@ -1508,60 +1508,6 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
 
               return (
                 <>
-                  {/* ══ 1. HERO ══════════════════════════════════════════════════ */}
-                  <div style={{
-                    position: "relative", overflow: "hidden",
-                    background: "linear-gradient(135deg, rgba(124,108,240,0.13) 0%, rgba(96,165,250,0.07) 60%, rgba(52,211,153,0.08) 100%)",
-                    border: "1px solid var(--border)", borderRadius: "var(--radius)",
-                    padding: "20px 24px", marginBottom: 14,
-                  }}>
-                    {/* subtle dot grid */}
-                    <div style={{
-                      position: "absolute", inset: 0, pointerEvents: "none", opacity: 0.06,
-                      backgroundImage: "radial-gradient(var(--text) 1px, transparent 1px)",
-                      backgroundSize: "24px 24px",
-                    }} />
-                    <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-                      {/* brand */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <div style={{
-                          width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-                          background: "linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%)",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 22, fontWeight: 900, color: "#fff",
-                          boxShadow: "0 4px 16px rgba(124,108,240,0.4)",
-                        }}>V</div>
-                        <div>
-                          <div style={{ fontWeight: 800, fontSize: 18, color: "var(--text)", letterSpacing: "-0.03em", lineHeight: 1 }}>VRYFD</div>
-                          <div style={{ fontSize: 11, color: "var(--text3)", letterSpacing: "0.07em", textTransform: "uppercase", marginTop: 3 }}>Admin Console</div>
-                        </div>
-                      </div>
-                      {/* right: status + meta */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                        {lastRefresh && (
-                          <span style={{ fontSize: 11, color: "var(--text3)", padding: "4px 10px", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20 }}>
-                            ↻ {lastRefresh.toLocaleTimeString()}
-                          </span>
-                        )}
-                        <span style={{ fontSize: 11, color: "var(--text3)", padding: "4px 10px", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20 }}>
-                          Sepolia #{relayer?.blockNumber ? numFmt(relayer.blockNumber) : "…"}
-                        </span>
-                        <div style={{
-                          display: "flex", alignItems: "center", gap: 8,
-                          padding: "8px 16px", borderRadius: "var(--radius)",
-                          background: statusMeta.gradient, border: `1px solid ${statusMeta.border}`,
-                        }}>
-                          <div style={{
-                            width: 9, height: 9, borderRadius: "50%", flexShrink: 0,
-                            background: statusMeta.color,
-                            boxShadow: `0 0 0 2px ${statusMeta.glow}, 0 0 8px ${statusMeta.glow}`,
-                          }} />
-                          <span style={{ fontWeight: 700, fontSize: 13, color: statusMeta.color }}>{statusMeta.label}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
                   {/* ══ 2. SYSTEM HEALTH ════════════════════════════════════════ */}
                   <div style={{
                     background: "var(--bg2)", borderRadius: "var(--radius)",
