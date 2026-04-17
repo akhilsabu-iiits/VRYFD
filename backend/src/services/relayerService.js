@@ -570,7 +570,7 @@ function buildProviderForUrl(url) {
   const _getFeeData = p.getFeeData.bind(p);
   p.getFeeData = async () => {
     const base = await _getFeeData();
-    const wantedTip = ethers.parseUnits("5", "gwei");
+    const wantedTip = ethers.parseUnits("15", "gwei");
     const baseMax = base.maxFeePerGas ?? ethers.parseUnits("50", "gwei");
     // maxFeePerGas must be >= maxPriorityFeePerGas — if Sepolia base fee is very low
     // the provider's maxFeePerGas can be less than our 5 gwei tip, causing a BAD_DATA error.
@@ -665,7 +665,7 @@ async function deployContracts() {
   const vryfFactory       = new ethers.ContractFactory(VRYFTokenABI.abi, VRYFTokenABI.bytecode, relayerWallet);
   const attendanceFactory = new ethers.ContractFactory(VryfdABI.abi, VryfdABI.bytecode, relayerWallet);
 
-  // Submit all 3 transactions simultaneously
+  // Submit all 3 transactions simultaneously with sequential nonces
   const [vryfToken, attendance, grantTx] = await Promise.all([
     vryfFactory.deploy({ nonce }),
     attendanceFactory.deploy("ipfs://", vryfAddress, { nonce: nonce + 1 }),
@@ -677,16 +677,20 @@ async function deployContracts() {
     }),
   ]);
 
-  // Wait for all 3 confirmations in parallel — same block, so this resolves together
+  // Wait only for the 2 deploy confirmations — grantRole mines in the same block (nonce+2)
+  // but we don't block the UI on it. Fire-and-forget so deploy-status becomes "ready" faster.
   await Promise.all([
     vryfToken.waitForDeployment(),
     attendance.waitForDeployment(),
-    grantTx.wait(1, 120_000),
   ]);
+  // grantRole tx is already in the mempool (nonce+2) — it mines right after the deploys.
+  // Log its result in the background without blocking the deploy-status response.
+  grantTx.wait(1, 120_000)
+    .then(() => console.log("[deploy] MINTER_ROLE grant confirmed"))
+    .catch((e) => console.warn("[deploy] MINTER_ROLE grant wait failed (tx still in mempool):", e.message));
 
   console.log(`[deploy] VRYFToken: ${vryfAddress}`);
   console.log(`[deploy] VryfdAttendance: ${attendanceAddress}`);
-  console.log("[deploy] MINTER_ROLE granted — all done in one block");
 
   // Rewire the relayer to point at new contracts
   contract = new ethers.Contract(attendanceAddress, VryfdABI.abi, relayerWallet);
