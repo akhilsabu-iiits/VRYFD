@@ -39,7 +39,9 @@ router.get("/relayer", async (req, res) => {
   try {
     const rpcUrl = process.env.ALCHEMY_URL || "https://ethereum-sepolia-rpc.publicnode.com";
     const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+    const rawKey = (process.env.PRIVATE_KEY || "").trim();
+    const normalizedKey = rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`;
+    const wallet = new ethers.Wallet(normalizedKey, provider);
     const [balWei, blockNumber] = await Promise.all([
       provider.getBalance(wallet.address),
       provider.getBlockNumber(),
