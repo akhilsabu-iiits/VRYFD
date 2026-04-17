@@ -22,7 +22,7 @@ interface AdminStats {
   totalEvents: number; totalConfirmed: number;
   totalPending: number; events: EventStat[];
 }
-interface ContractStats {
+interface ContractStatsData {
   totalCertificatesIssued: number | null;
   totalEventsCreatedOnChain: number | null;
   vryfDistributed: string | null;
@@ -49,8 +49,29 @@ interface GasData {
     eventsWithReceipts: number;
   };
 }
+interface ActivityEntry {
+  type: "confirmation" | "event_created";
+  eventName: string; eventEmoji: string; eventColor: string;
+  onChainId: string | number;
+  attendee: string | null; txHash: string | null; timestamp: number | null;
+}
+interface ActivityData {
+  activity: ActivityEntry[]; total: number;
+}
+interface SystemData {
+  uptime: number;
+  nodeVersion: string;
+  memoryMB: { rss: string; heapUsed: string; heapTotal: string };
+  env: {
+    nodeEnv: string; hasPrivateKey: boolean;
+    hasAlchemyUrl: boolean; hasMongoUri: boolean; port: number | string;
+  };
+}
 interface Attendee {
   address?: string; addr?: string; txHash?: string; timestamp?: number;
+}
+interface PendingAttendee {
+  attendee: string; ens: string | null;
 }
 type StatusFilter = "all" | "live" | "upcoming" | "ended";
 
@@ -69,6 +90,22 @@ function fmtAge(ts: number | null) {
   if (!ts) return null;
   const d = Math.floor((Date.now() - ts) / 86400000);
   return d === 0 ? "today" : `${d}d ago`;
+}
+function fmtUptime(seconds: number) {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m ${seconds % 60}s`;
+}
+function fmtTimeAgo(ts: number | null) {
+  if (!ts) return "—";
+  const diff = Math.floor((Date.now() / 1000) - ts);
+  if (diff < 60)  return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
 }
 function numFmt(n: number) { return n.toLocaleString(); }
 
@@ -127,6 +164,26 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     }}>
       {children}
     </h3>
+  );
+}
+
+function EnvBadge({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 6,
+      padding: "5px 12px",
+      background: ok ? "rgba(52,211,153,0.08)" : "rgba(248,113,113,0.08)",
+      border: `1px solid ${ok ? "rgba(52,211,153,0.2)" : "rgba(248,113,113,0.2)"}`,
+      borderRadius: "var(--radius-sm)", fontSize: 12,
+      color: ok ? "var(--green)" : "var(--coral)",
+    }}>
+      <span style={{
+        width: 6, height: 6, borderRadius: "50%",
+        background: ok ? "var(--green)" : "var(--coral)",
+        flexShrink: 0,
+      }} />
+      {label}
+    </div>
   );
 }
 
@@ -277,12 +334,103 @@ function RelayerCard({ relayer, copy, copied }: {
   );
 }
 
+// ─── System Health ────────────────────────────────────────────────────────────
+
+function SystemHealth({ secret }: { secret: string }) {
+  const [data, setData] = useState<SystemData | null>(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    fetch(`${API}/api/admin/system`, {
+      headers: { "x-admin-secret": secret }, signal: ctrl.signal,
+    })
+      .then(r => r.json())
+      .then(d => { if (!d.error) setData(d); })
+      .catch(() => {})
+      .finally(() => clearTimeout(t));
+  }, [secret]);
+
+  // Increment local uptime counter every second once we have data
+  useEffect(() => {
+    if (!data) return;
+    const t = setInterval(() => setTick(n => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [data]);
+
+  if (!data) return null;
+
+  const liveUptime = data.uptime + tick;
+  const memPct = Math.round((parseFloat(data.memoryMB.heapUsed) / parseFloat(data.memoryMB.heapTotal)) * 100);
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <SectionTitle>System Health</SectionTitle>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 24, alignItems: "flex-start" }}>
+
+        {/* Uptime */}
+        <div style={{ flex: "0 0 auto" }}>
+          <div style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
+            Server Uptime
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "var(--green)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+            {fmtUptime(liveUptime)}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>
+            Node {data.nodeVersion} · {data.env.nodeEnv}
+          </div>
+        </div>
+
+        {/* Memory */}
+        <div style={{ flex: "0 0 auto" }}>
+          <div style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
+            Heap Memory
+          </div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+            <span style={{ fontSize: 22, fontWeight: 700, color: "var(--accent2)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+              {data.memoryMB.heapUsed}
+            </span>
+            <span style={{ fontSize: 13, color: "var(--text3)" }}>/ {data.memoryMB.heapTotal} MB</span>
+          </div>
+          {/* Progress bar */}
+          <div style={{ marginTop: 8, width: 160, height: 4, background: "var(--bg4)", borderRadius: 4, overflow: "hidden" }}>
+            <div style={{
+              height: "100%", borderRadius: 4,
+              width: `${memPct}%`,
+              background: memPct > 80 ? "var(--coral)" : memPct > 60 ? "var(--amber)" : "var(--accent)",
+              transition: "width 0.5s",
+            }} />
+          </div>
+          <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 3 }}>
+            {memPct}% heap · RSS {data.memoryMB.rss} MB
+          </div>
+        </div>
+
+        {/* Env flags */}
+        <div style={{ flex: "1 1 260px" }}>
+          <div style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
+            Environment
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            <EnvBadge ok={data.env.hasPrivateKey} label="Private Key" />
+            <EnvBadge ok={data.env.hasAlchemyUrl} label="Alchemy RPC" />
+            <EnvBadge ok={data.env.hasMongoUri}   label="MongoDB" />
+            <EnvBadge ok={data.env.nodeEnv === "production"} label="Production" />
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 // ─── Contract Stats ───────────────────────────────────────────────────────────
 
 function ContractStats({ secret, copy, copied }: {
   secret: string; copy: (t: string, k: string) => void; copied: string | null;
 }) {
-  const [data, setData] = useState<ContractStats | null>(null);
+  const [data, setData] = useState<ContractStatsData | null>(null);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -345,6 +493,163 @@ function ContractStats({ secret, copy, copied }: {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Activity Feed ────────────────────────────────────────────────────────────
+
+function ActivityFeed({ secret }: { secret: string }) {
+  const [data, setData] = useState<ActivityData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [open, setOpen] = useState(false);
+
+  async function load() {
+    setLoading(true); setError("");
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      const res = await fetch(`${API}/api/admin/activity?limit=50`, {
+        headers: { "x-admin-secret": secret }, signal: ctrl.signal,
+      });
+      const d = await res.json();
+      if (d.error) throw new Error(d.error);
+      setData(d); setOpen(true);
+    } catch (e: unknown) {
+      const m = e instanceof Error ? e.message : String(e);
+      setError(m.includes("abort") ? "Timed out — try again" : m);
+    } finally { clearTimeout(t); setLoading(false); }
+  }
+
+  const typeLabel: Record<string, { icon: string; label: string; color: string }> = {
+    confirmation:  { icon: "✅", label: "Attendance confirmed", color: "var(--green)" },
+    event_created: { icon: "📅", label: "Event deployed",       color: "var(--accent2)" },
+  };
+
+  return (
+    <div className="card" style={{ marginBottom: 16, padding: 0, overflow: "hidden" }}>
+      {/* Header */}
+      <div style={{
+        padding: "16px 24px", display: "flex", alignItems: "center",
+        justifyContent: "space-between",
+        borderBottom: open ? "1px solid var(--border)" : "none",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: "var(--radius-sm)",
+            background: "rgba(124,108,240,0.12)", display: "flex",
+            alignItems: "center", justifyContent: "center", fontSize: 18,
+          }}>📋</div>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 15, color: "var(--text)" }}>Operation History</div>
+            <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
+              {data
+                ? `${data.total} total operations · showing latest ${data.activity.length}`
+                : "Confirmations, event deployments — newest first"}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {data && (
+            <button onClick={() => setOpen(o => !o)} className="btn btn-outline btn-sm">
+              {open ? "▴ Hide" : "▾ Show"}
+            </button>
+          )}
+          <button onClick={load} disabled={loading} className="btn btn-sm" style={{
+            background: loading ? "var(--bg3)" : "rgba(124,108,240,0.12)",
+            border: "1px solid var(--border2)",
+            color: loading ? "var(--text3)" : "var(--accent2)",
+          }}>
+            {loading
+              ? <><span className="spinner" style={{ borderTopColor: "var(--accent2)" }} /> Loading…</>
+              : data ? "↺ Refresh" : "Load History"}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ padding: "10px 24px", color: "var(--coral)", fontSize: 12 }}>⚠ {error}</div>
+      )}
+
+      {open && data && (
+        <div style={{ maxHeight: 480, overflowY: "auto" }}>
+          {data.activity.length === 0 ? (
+            <div style={{ padding: "40px 24px", textAlign: "center", color: "var(--text3)", fontSize: 13 }}>
+              No operations recorded yet.
+            </div>
+          ) : (
+            <div style={{ padding: "4px 0" }}>
+              {data.activity.map((entry, i) => {
+                const meta = typeLabel[entry.type] ?? { icon: "•", label: entry.type, color: "var(--text3)" };
+                return (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "flex-start", gap: 14,
+                    padding: "10px 24px",
+                    borderBottom: i < data.activity.length - 1 ? "1px solid var(--border)" : "none",
+                    transition: "background 0.15s",
+                  }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "var(--bg3)")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                  >
+                    {/* Timeline dot */}
+                    <div style={{
+                      marginTop: 4, width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                      background: `${meta.color === "var(--green)" ? "rgba(52,211,153" : "rgba(124,108,240"},0.12)`,
+                      border: `1px solid ${meta.color === "var(--green)" ? "rgba(52,211,153" : "rgba(124,108,240"},0.25)`,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13,
+                    }}>
+                      {meta.icon}
+                    </div>
+
+                    {/* Content */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 12, color: meta.color, fontWeight: 600 }}>
+                          {meta.label}
+                        </span>
+                        <span style={{
+                          fontSize: 11, color: "var(--text3)",
+                          background: "var(--bg3)", border: "1px solid var(--border)",
+                          borderRadius: 10, padding: "1px 7px",
+                        }}>
+                          {entry.eventEmoji} {entry.eventName}
+                        </span>
+                      </div>
+                      <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                        {entry.attendee && (
+                          <a href={`${ETHERSCAN}/address/${entry.attendee}`} target="_blank" rel="noreferrer"
+                            style={{ color: "var(--accent2)", fontSize: 11, textDecoration: "none", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                            {short(entry.attendee)}
+                          </a>
+                        )}
+                        {entry.txHash && (
+                          <a href={`${ETHERSCAN}/tx/${entry.txHash}`} target="_blank" rel="noreferrer"
+                            className="tx-link" style={{ fontSize: 11 }}>
+                            {short(entry.txHash)} ↗
+                          </a>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Timestamp */}
+                    <div style={{ flexShrink: 0, textAlign: "right" }}>
+                      <div style={{ fontSize: 11, color: "var(--text3)" }}>
+                        {fmtTimeAgo(entry.timestamp)}
+                      </div>
+                      {entry.timestamp && (
+                        <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 2 }}>
+                          {fmtDate(entry.timestamp)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -422,10 +727,10 @@ function GasSection({ secret }: { secret: string }) {
           {/* Summary stats */}
           <div className="grid grid-4" style={{ marginBottom: 20, marginTop: 0 }}>
             {[
-              { label: "Gas Price", value: `${data.gasPriceGwei} Gwei`, color: "var(--accent2)" },
+              { label: "Gas Price",              value: `${data.gasPriceGwei} Gwei`,              color: "var(--accent2)" },
               { label: "Creation Cost (actual)", value: `${data.summary.actualCreationCost} ETH`, color: "var(--text)" },
-              { label: "Confirmations (est.)", value: `${data.summary.estimatedConfirmCost} ETH`, color: "var(--amber)" },
-              { label: "Total Est. Spent", value: `${data.summary.estimatedTotalSpent} ETH`, color: "var(--green)" },
+              { label: "Confirmations (est.)",   value: `${data.summary.estimatedConfirmCost} ETH`, color: "var(--amber)" },
+              { label: "Total Est. Spent",       value: `${data.summary.estimatedTotalSpent} ETH`, color: "var(--green)" },
             ].map(s => (
               <div key={s.label} className="card stat-card" style={{ margin: 0, padding: "14px 16px" }}>
                 <div className="stat-label" style={{ marginBottom: 6 }}>{s.label}</div>
@@ -528,9 +833,9 @@ function GasSection({ secret }: { secret: string }) {
   );
 }
 
-// ─── Attendee Drawer ──────────────────────────────────────────────────────────
+// ─── Attendee Drawer (confirmed) ──────────────────────────────────────────────
 
-function AttendeeDrawer({ onChainId, secret, copy, copied }: {
+function ConfirmedDrawer({ onChainId, secret, copy, copied }: {
   onChainId: string | number; secret: string;
   copy: (t: string, k: string) => void; copied: string | null;
 }) {
@@ -555,7 +860,9 @@ function AttendeeDrawer({ onChainId, secret, copy, copied }: {
     </div>
   );
   if (!attendees?.length) return (
-    <div style={{ padding: "14px 20px", color: "var(--text3)", fontSize: 13 }}>No confirmed attendees yet.</div>
+    <div style={{ padding: "14px 20px", color: "var(--text3)", fontSize: 13 }}>
+      No confirmed attendees yet.
+    </div>
   );
 
   return (
@@ -570,7 +877,7 @@ function AttendeeDrawer({ onChainId, secret, copy, copied }: {
       <tbody>
         {attendees.map((a, i) => {
           const addr = a.address || a.addr || "";
-          const tx = a.txHash || "";
+          const tx   = a.txHash || "";
           return (
             <tr key={i}>
               <td style={{ paddingLeft: 20 }}>
@@ -605,23 +912,101 @@ function AttendeeDrawer({ onChainId, secret, copy, copied }: {
   );
 }
 
+// ─── Pending Drawer ───────────────────────────────────────────────────────────
+
+function PendingDrawer({ onChainId, secret, copy, copied }: {
+  onChainId: string | number; secret: string;
+  copy: (t: string, k: string) => void; copied: string | null;
+}) {
+  const [pending, setPending] = useState<PendingAttendee[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 10000);
+    fetch(`${API}/api/admin/events/${onChainId}/pending`, {
+      headers: { "x-admin-secret": secret }, signal: ctrl.signal,
+    })
+      .then(r => r.json())
+      .then(d => { setPending(d.pending || []); })
+      .catch(() => setPending([]))
+      .finally(() => { clearTimeout(t); setLoading(false); });
+  }, [onChainId, secret]);
+
+  if (loading) return (
+    <div style={{ padding: "14px 20px", display: "flex", alignItems: "center", gap: 8, color: "var(--text3)", fontSize: 13 }}>
+      <span className="spinner" /> Loading pending…
+    </div>
+  );
+  if (!pending?.length) return (
+    <div style={{ padding: "14px 20px", color: "var(--text3)", fontSize: 13 }}>
+      No pending attendees — queue is clear.
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{
+        padding: "10px 20px",
+        background: "rgba(251,191,36,0.06)",
+        borderBottom: "1px solid rgba(251,191,36,0.15)",
+        fontSize: 12, color: "var(--amber)",
+      }}>
+        ⚠ {pending.length} attendee{pending.length !== 1 ? "s" : ""} entered the join code and are awaiting on-chain confirmation by the organizer.
+      </div>
+      <table className="cert-history-table" style={{ width: "100%" }}>
+        <thead>
+          <tr>
+            <th style={{ paddingLeft: 20 }}>#</th>
+            <th>Address</th>
+            <th>ENS</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pending.map((p, i) => (
+            <tr key={i}>
+              <td style={{ paddingLeft: 20, color: "var(--text3)", fontSize: 12 }}>{i + 1}</td>
+              <td>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <a href={`${ETHERSCAN}/address/${p.attendee}`} target="_blank" rel="noreferrer"
+                    className="tx-link" style={{ fontSize: 12 }}>
+                    {short(p.attendee)}
+                  </a>
+                  <CopyBtn text={p.attendee} id={`p-${i}`} copy={copy} copied={copied} />
+                </div>
+                <div style={{ fontSize: 10, color: "var(--text3)", fontFamily: "var(--font-space-mono),'Space Mono',monospace", marginTop: 2 }}>
+                  {p.attendee}
+                </div>
+              </td>
+              <td style={{ color: "var(--text2)", fontSize: 12 }}>
+                {p.ens || <span style={{ color: "var(--text3)" }}>—</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ─── Event Card ───────────────────────────────────────────────────────────────
 
 function EventCard({ ev, secret, copy, copied }: {
   ev: EventStat; secret: string;
   copy: (t: string, k: string) => void; copied: string | null;
 }) {
-  const [open, setOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<"confirmed" | "pending" | null>(null);
   const total = ev.confirmedAttendees + ev.pendingAttendees;
 
   return (
     <div className="card" style={{
       padding: 0, overflow: "hidden",
       borderLeft: `3px solid ${ev.color || "var(--accent)"}`,
-      boxShadow: open ? `0 0 24px ${ev.color || "var(--accent)"}18` : undefined,
+      boxShadow: drawerTab ? `0 0 24px ${ev.color || "var(--accent)"}18` : undefined,
     }}>
       <div style={{ padding: "16px 20px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+
           {/* Left side */}
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
@@ -710,23 +1095,45 @@ function EventCard({ ev, secret, copy, copied }: {
           </div>
         </div>
 
-        {/* Expand */}
-        <button onClick={() => setOpen(o => !o)} className="btn btn-outline btn-sm" style={{ marginTop: 12 }}>
-          {open ? "▴ Hide" : "▾ View"} attendees
-          {ev.confirmedAttendees > 0 && (
-            <span style={{
-              background: "rgba(124,108,240,0.15)", color: "var(--accent2)",
-              borderRadius: 10, padding: "1px 7px", fontSize: 10, marginLeft: 4,
-            }}>
-              {ev.confirmedAttendees}
-            </span>
-          )}
-        </button>
+        {/* Expand buttons */}
+        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <button
+            onClick={() => setDrawerTab(drawerTab === "confirmed" ? null : "confirmed")}
+            className="btn btn-outline btn-sm"
+          >
+            {drawerTab === "confirmed" ? "▴ Hide" : "▾ Confirmed"}
+            {ev.confirmedAttendees > 0 && (
+              <span style={{
+                background: "rgba(52,211,153,0.15)", color: "var(--green)",
+                borderRadius: 10, padding: "1px 7px", fontSize: 10, marginLeft: 4,
+              }}>
+                {ev.confirmedAttendees}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setDrawerTab(drawerTab === "pending" ? null : "pending")}
+            className="btn btn-outline btn-sm"
+          >
+            {drawerTab === "pending" ? "▴ Hide" : "▾ Pending"}
+            {ev.pendingAttendees > 0 && (
+              <span style={{
+                background: "rgba(251,191,36,0.15)", color: "var(--amber)",
+                borderRadius: 10, padding: "1px 7px", fontSize: 10, marginLeft: 4,
+              }}>
+                {ev.pendingAttendees}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
-      {open && (
+      {drawerTab && (
         <div style={{ borderTop: "1px solid var(--border)", background: "var(--bg3)" }}>
-          <AttendeeDrawer onChainId={ev.onChainId} secret={secret} copy={copy} copied={copied} />
+          {drawerTab === "confirmed"
+            ? <ConfirmedDrawer onChainId={ev.onChainId} secret={secret} copy={copy} copied={copied} />
+            : <PendingDrawer   onChainId={ev.onChainId} secret={secret} copy={copy} copied={copied} />
+          }
         </div>
       )}
     </div>
@@ -745,16 +1152,15 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
   const [search, setSearch] = useState("");
   const { copy, copied } = useCopy();
 
-  const headers = { "x-admin-secret": secret };
-
   const refresh = useCallback(async () => {
     setError("");
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 15000);
     try {
+      const hdrs = { "x-admin-secret": secret };
       const [rr, sr] = await Promise.all([
-        fetch(`${API}/api/admin/relayer`, { headers, signal: ctrl.signal }),
-        fetch(`${API}/api/admin/stats`,   { headers, signal: ctrl.signal }),
+        fetch(`${API}/api/admin/relayer`, { headers: hdrs, signal: ctrl.signal }),
+        fetch(`${API}/api/admin/stats`,   { headers: hdrs, signal: ctrl.signal }),
       ]);
       if (rr.status === 401 || sr.status === 401) { onLogout(); return; }
       const [rd, sd] = await Promise.all([rr.json(), sr.json()]);
@@ -766,7 +1172,7 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
       const m = e instanceof Error ? e.message : String(e);
       setError(m.includes("abort") ? "Request timed out — try refreshing" : m);
     } finally { clearTimeout(timer); setLoading(false); }
-  }, [secret]);
+  }, [secret, onLogout]);
 
   useEffect(() => {
     refresh();
@@ -788,7 +1194,7 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
 
   return (
     <div style={{ minHeight: "100vh" }}>
-      {/* Navbar — matches app's .nav exactly */}
+      {/* Navbar */}
       <nav className="nav">
         <div className="nav-left">
           <span className="nav-brand">VRYFD</span>
@@ -817,7 +1223,6 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
       </nav>
 
       <div className="container">
-        {/* Error */}
         {error && (
           <div className="toast show error" style={{
             position: "relative", transform: "none", bottom: "auto", right: "auto",
@@ -840,16 +1245,25 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
           </div>
         ) : (
           <div className="fade-up">
-            {relayer && <RelayerCard relayer={relayer} copy={copy} copied={copied} />}
+            {/* Row 1: Relayer + System side by side on wide screens */}
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 0 }}>
+              <div style={{ flex: "1 1 340px" }}>
+                {relayer && <RelayerCard relayer={relayer} copy={copy} copied={copied} />}
+              </div>
+              <div style={{ flex: "1 1 300px" }}>
+                <SystemHealth secret={secret} />
+              </div>
+            </div>
+
             <ContractStats secret={secret} copy={copy} copied={copied} />
 
-            {/* System stats */}
+            {/* Summary stat cards */}
             {stats && (
               <div className="grid grid-3" style={{ marginTop: 0, marginBottom: 16 }}>
                 {[
-                  { label: "Deployed Events", value: stats.totalEvents, icon: "📅", sub: `${counts.live} live`, iconBg: "rgba(124,108,240,0.12)", color: "var(--accent2)" },
-                  { label: "Confirmed On-Chain", value: stats.totalConfirmed, icon: "✅", sub: "total attendees", iconBg: "rgba(52,211,153,0.12)", color: "var(--green)" },
-                  { label: "Pending Confirmation", value: stats.totalPending, icon: "⏳", sub: "need organizer action", iconBg: "rgba(251,191,36,0.12)", color: "var(--amber)" },
+                  { label: "Deployed Events",      value: stats.totalEvents,   icon: "📅", sub: `${counts.live} live`,              iconBg: "rgba(124,108,240,0.12)", color: "var(--accent2)" },
+                  { label: "Confirmed On-Chain",    value: stats.totalConfirmed, icon: "✅", sub: "total attendees",                  iconBg: "rgba(52,211,153,0.12)",  color: "var(--green)" },
+                  { label: "Pending Confirmation",  value: stats.totalPending,  icon: "⏳", sub: "need organizer action",            iconBg: "rgba(251,191,36,0.12)",  color: "var(--amber)" },
                 ].map(s => (
                   <div key={s.label} className="card stat-card">
                     <div className="stat-icon" style={{ background: s.iconBg }}>{s.icon}</div>
@@ -861,10 +1275,11 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
               </div>
             )}
 
-            {/* Gas */}
+            {/* Activity + Gas — collapsible panels */}
+            <ActivityFeed secret={secret} />
             <GasSection secret={secret} />
 
-            {/* Events */}
+            {/* Events list */}
             {stats && (
               <>
                 <div className="section-header" style={{ marginBottom: 12 }}>
