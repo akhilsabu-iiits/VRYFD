@@ -14,7 +14,7 @@ const certificateRoutes = require("./routes/certificates");
 const verifyRoutes = require("./routes/verify");
 const metadataRoutes = require("./routes/metadata");
 const adminRoutes = require("./routes/admin");
-const { initRelayer, setMilestoneURIs, getContract } = require("./services/relayerService");
+const { initRelayer, setMilestoneURIs, getContract, restoreContractStateFromDB } = require("./services/relayerService");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -109,7 +109,11 @@ async function start() {
   const mongoUri = (process.env.MONGODB_URI || "").trim();
   if (mongoUri) {
     mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 10000 })
-      .then(() => console.log("Connected to MongoDB"))
+      .then(async () => {
+        console.log("Connected to MongoDB");
+        // Restore contract addresses from DB in case Railway wiped contractState.json
+        await restoreContractStateFromDB();
+      })
       .catch((e) => console.error("MongoDB connection failed (non-fatal):", e.message));
   } else {
     console.log("⚠️  No MONGODB_URI set — running without database");

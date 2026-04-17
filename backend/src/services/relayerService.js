@@ -1,9 +1,24 @@
 const { ethers } = require("ethers");
 const fs = require("fs");
 const path = require("path");
+const mongoose = require("mongoose");
 const VryfdABI = require("../abis/VryfdAttendance.json");
 const VRYFTokenABI = require("../abis/VRYFToken.json");
 const { getENSOverride } = require("./ensOverrides");
+
+// ─── MongoDB contract state — persists addresses across Railway restarts ──────
+const _contractStateSchema = new mongoose.Schema(
+  { contractAddress: String, vryfTokenAddress: String, deployedAt: Number },
+  { _id: false, id: false }
+);
+// Use a fixed doc id "singleton" so there is always at most one record
+const ContractStateDoc = mongoose.model(
+  "ContractState",
+  new mongoose.Schema(
+    { _id: { type: String, default: "singleton" }, contractAddress: String, vryfTokenAddress: String, deployedAt: Number },
+    { _id: false }
+  )
+);
 
 // ─── Sleep helper — used to throttle RPC calls and avoid Alchemy 429s ────────
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -728,6 +743,18 @@ async function deployContracts() {
     console.warn(`[deploy] could not save contractState.json: ${e.message}`);
   }
 
+  // Persist to MongoDB — survives Railway ephemeral filesystem wipes
+  try {
+    await ContractStateDoc.findByIdAndUpdate(
+      "singleton",
+      { _id: "singleton", contractAddress: attendanceAddress, vryfTokenAddress: vryfAddress, deployedAt: Date.now() },
+      { upsert: true, new: true }
+    );
+    console.log(`[deploy] addresses saved to MongoDB`);
+  } catch (e) {
+    console.warn(`[deploy] could not save to MongoDB: ${e.message}`);
+  }
+
   return { attendanceAddress, vryfAddress };
 }
 
@@ -836,6 +863,36 @@ function initRelayer() {
   console.log(`Relayer wallet: ${relayerWallet.address}`);
   console.log(`Using RPC: ${rpcUrls[0]}`);
   console.log(`Join codes loaded: ${JSON.stringify(Object.fromEntries(customCodeStore))}`);
+}
+
+/**
+ * Restore contract addresses from MongoDB after a Railway restart wipes contractState.json.
+ * Call this once after mongoose.connect() resolves. No-op if contract already points to
+ * the correct address (i.e. contractState.json was still present on this boot).
+ */
+async function restoreContractStateFromDB() {
+  if (!relayerWallet) return; // relayer not initialized — nothing to restore
+  try {
+    const doc = await ContractStateDoc.findById("singleton").lean();
+    if (!doc?.contractAddress?.startsWith("0x")) return; // nothing saved yet
+
+    // If initRelayer already loaded from contractState.json, the addresses match — skip
+    if (contract && contract.target.toLowerCase() === doc.contractAddress.toLowerCase()) {
+      console.log(`[relayer] contract address already correct (from contractState.json)`);
+      // Still sync vryfTokenAddress into deployState so getVryfTokenAddress() works
+      if (!deployState.vryfTokenAddress && doc.vryfTokenAddress) {
+        deployState = { ...deployState, vryfTokenAddress: doc.vryfTokenAddress };
+      }
+      return;
+    }
+
+    // Rewire contract to the MongoDB-persisted address
+    contract = new ethers.Contract(doc.contractAddress, VryfdABI.abi, relayerWallet);
+    deployState = { status: "ready", contractAddress: doc.contractAddress, vryfTokenAddress: doc.vryfTokenAddress, error: null };
+    console.log(`[relayer] restored from MongoDB — contract: ${doc.contractAddress} vryfToken: ${doc.vryfTokenAddress}`);
+  } catch (e) {
+    console.warn(`[relayer] restoreContractStateFromDB failed: ${e.message}`);
+  }
 }
 
 function getContract() {
@@ -1699,4 +1756,5 @@ module.exports = {
   getContract,
   getProvider,
   getVryfTokenAddress,
+  restoreContractStateFromDB,
 };
