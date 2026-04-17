@@ -4,11 +4,12 @@ const { ethers } = require("ethers");
 const fs = require("fs");
 const path = require("path");
 const adminAuth = require("../middleware/adminAuth");
-const {
-  getEventAttendees,
-} = require("../services/relayerService");
+const { getContract, getProvider, getEventAttendees } = require("../services/relayerService");
 
 const DATA_DIR = path.join(__dirname, "../../data");
+const VRYFTokenABI = require("../abis/VRYFToken.json");
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function readJSON(file) {
   try {
@@ -19,15 +20,22 @@ function readJSON(file) {
   }
 }
 
+function vryfAddress() {
+  return (
+    process.env.NEXT_PUBLIC_VRYF_TOKEN_ADDRESS ||
+    readJSON("contractState.json")?.vryfTokenAddress ||
+    null
+  );
+}
+
 // All admin routes require x-admin-secret header
 router.use(adminAuth);
 
-// GET /api/admin/relayer — relayer wallet address + live ETH balance
+// ─── GET /api/admin/relayer ───────────────────────────────────────────────────
+// Relayer wallet address, ETH balance, latest block
 router.get("/relayer", async (req, res) => {
   try {
-    const rpcUrl =
-      process.env.ALCHEMY_URL ||
-      "https://ethereum-sepolia-rpc.publicnode.com";
+    const rpcUrl = process.env.ALCHEMY_URL || "https://ethereum-sepolia-rpc.publicnode.com";
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
     const [balWei, blockNumber] = await Promise.all([
@@ -48,7 +56,8 @@ router.get("/relayer", async (req, res) => {
   }
 });
 
-// GET /api/admin/stats — system-wide stats + per-event breakdown
+// ─── GET /api/admin/stats ─────────────────────────────────────────────────────
+// System-wide counts from persisted JSON — no chain queries
 router.get("/stats", async (req, res) => {
   try {
     const deployedEvents = readJSON("deployedEvents.json") || {};
@@ -58,15 +67,10 @@ router.get("/stats", async (req, res) => {
     let totalConfirmed = 0;
     let totalPending = 0;
 
-    // Build event list from persisted JSON — no chain queries, instant response
     const eventList = Object.entries(deployedEvents).map(([localId, data]) => {
       const onChainId = data.onChainId;
-      const meta =
-        allEvents.find(
-          (e) => String(e.onChainId) === String(onChainId)
-        ) || {};
+      const meta = allEvents.find((e) => String(e.onChainId) === String(onChainId)) || {};
 
-      // confirmedCount is persisted to deployedEvents.json by syncMissingAttendeeCounts on startup
       const confirmed =
         typeof data.confirmedCount === "number"
           ? data.confirmedCount
@@ -74,9 +78,10 @@ router.get("/stats", async (req, res) => {
           ? data.confirmedAttendees.length
           : 0;
 
-      const pendingCount = Object.keys(
-        pending[String(onChainId)] || {}
-      ).length;
+      const pendingCount = Object.keys(pending[String(onChainId)] || {}).length;
+
+      totalConfirmed += confirmed;
+      totalPending += pendingCount;
 
       return {
         localId,
@@ -94,23 +99,162 @@ router.get("/stats", async (req, res) => {
       };
     });
 
-    eventList.forEach((e) => {
-      totalConfirmed += e.confirmedAttendees;
-      totalPending += e.pendingAttendees;
-    });
+    res.json({ totalEvents: eventList.length, totalConfirmed, totalPending, events: eventList });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/admin/contract-stats ───────────────────────────────────────────
+// On-chain view function reads: certificate count, VRYF supply, contract age
+router.get("/contract-stats", async (req, res) => {
+  try {
+    const contract = getContract();
+    const provider = getProvider();
+
+    // Read contract counters (auto-generated public getters)
+    const results = await Promise.allSettled([
+      contract.nextCertificateId(),
+      contract.nextEventId(),
+    ]);
+
+    const totalCerts = results[0].status === "fulfilled" ? Number(results[0].value) : null;
+    const nextEventId = results[1].status === "fulfilled" ? Number(results[1].value) : null;
+
+    // VRYF total supply
+    let vryfDistributed = null;
+    const vryfAddr = vryfAddress();
+    if (vryfAddr) {
+      try {
+        const vryf = new ethers.Contract(vryfAddr, VRYFTokenABI.abi, provider);
+        const supply = await vryf.totalSupply();
+        vryfDistributed = Math.floor(parseFloat(ethers.formatEther(supply))).toLocaleString();
+      } catch {}
+    }
+
+    // Contract deployed at
+    const contractState = readJSON("contractState.json");
+    const deployedAt = contractState?.deployedAt || null;
 
     res.json({
-      totalEvents: eventList.length,
-      totalConfirmed,
-      totalPending,
-      events: eventList,
+      totalCertificatesIssued: totalCerts,
+      totalEventsCreatedOnChain: nextEventId !== null ? Math.max(0, nextEventId - 1) : null,
+      vryfDistributed,
+      contractDeployedAt: deployedAt,
+      vryfTokenAddress: vryfAddr,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/admin/events/:onChainId/attendees — confirmed attendee list for an event
+// ─── GET /api/admin/gas ───────────────────────────────────────────────────────
+// Gas analysis: event creation receipts + estimates for each operation type
+router.get("/gas", async (req, res) => {
+  try {
+    const provider = getProvider();
+    const deployedEvents = readJSON("deployedEvents.json") || {};
+    const allEvents = readJSON("events.json") || [];
+
+    // Current network gas price
+    let currentGasPrice = 1_000_000_000n; // 1 gwei fallback
+    try {
+      const feeData = await provider.getFeeData();
+      currentGasPrice = feeData.gasPrice ?? feeData.maxFeePerGas ?? currentGasPrice;
+    } catch {}
+    const gasPriceGwei = (Number(currentGasPrice) / 1e9).toFixed(3);
+
+    // Known gas costs per operation (from empirical contract analysis)
+    const GAS_COSTS = {
+      createEvent:     { gas: 280000, label: "Create Event",       icon: "📅" },
+      checkInFor:      { gas: 85000,  label: "Confirm Check-in",   icon: "✅" },
+      claimBadge:      { gas: 135000, label: "Mint POAP Badge",    icon: "🏅" },
+      issueCertificate:{ gas: 160000, label: "Issue Certificate",  icon: "📜" },
+      milestoneReward: { gas: 210000, label: "Milestone Reward",   icon: "🏆" },
+    };
+
+    function estimateCost(gasUnits) {
+      const wei = BigInt(gasUnits) * currentGasPrice;
+      return parseFloat(ethers.formatEther(wei));
+    }
+
+    // Fetch event creation tx receipts (real data)
+    const eventEntries = Object.entries(deployedEvents);
+    const receiptResults = await Promise.allSettled(
+      eventEntries.map(async ([localId, data]) => {
+        if (!data.txHash) return null;
+        const [receipt, tx] = await Promise.all([
+          provider.getTransactionReceipt(data.txHash),
+          provider.getTransaction(data.txHash),
+        ]);
+        if (!receipt) return null;
+
+        const gasPrice = receipt.gasPrice ?? tx?.gasPrice ?? currentGasPrice;
+        const gasUsed = Number(receipt.gasUsed);
+        const ethCost = parseFloat(ethers.formatEther(receipt.gasUsed * gasPrice));
+        const meta = allEvents.find((e) => String(e.onChainId) === String(data.onChainId)) || {};
+
+        const confirmed =
+          typeof data.confirmedCount === "number"
+            ? data.confirmedCount
+            : Array.isArray(data.confirmedAttendees)
+            ? data.confirmedAttendees.length
+            : 0;
+
+        return {
+          localId,
+          onChainId: data.onChainId,
+          eventName: meta.name || `Event #${data.onChainId}`,
+          txHash: data.txHash,
+          blockNumber: receipt.blockNumber,
+          gasUsed,
+          gasPriceGwei: (Number(gasPrice) / 1e9).toFixed(3),
+          ethCost: ethCost.toFixed(8),
+          confirmedAttendees: confirmed,
+          estimatedCheckInCost: estimateCost(GAS_COSTS.checkInFor.gas * confirmed).toFixed(8),
+        };
+      })
+    );
+
+    const eventCosts = receiptResults
+      .filter((r) => r.status === "fulfilled" && r.value !== null)
+      .map((r) => r.value);
+
+    // Total confirmed across all events (for estimate)
+    const totalConfirmed = eventEntries.reduce((sum, [, data]) => {
+      return sum + (typeof data.confirmedCount === "number"
+        ? data.confirmedCount
+        : Array.isArray(data.confirmedAttendees) ? data.confirmedAttendees.length : 0);
+    }, 0);
+
+    const actualCreationCost = eventCosts.reduce((s, e) => s + parseFloat(e.ethCost), 0);
+    const estimatedConfirmCost = estimateCost(GAS_COSTS.checkInFor.gas * totalConfirmed);
+
+    res.json({
+      gasPriceGwei,
+      operationCosts: Object.entries(GAS_COSTS).map(([key, { gas, label, icon }]) => ({
+        key,
+        label,
+        icon,
+        estimatedGas: gas,
+        estimatedCostEth: estimateCost(gas).toFixed(8),
+        estimatedCostGwei: (gas * Number(currentGasPrice) / 1e9).toFixed(0),
+      })),
+      eventCosts,
+      summary: {
+        actualCreationCost: actualCreationCost.toFixed(8),
+        estimatedConfirmCost: estimatedConfirmCost.toFixed(8),
+        estimatedTotalSpent: (actualCreationCost + estimatedConfirmCost).toFixed(8),
+        totalConfirmedAttendees: totalConfirmed,
+        eventsWithReceipts: eventCosts.length,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/admin/events/:onChainId/attendees ───────────────────────────────
 router.get("/events/:onChainId/attendees", async (req, res) => {
   try {
     const attendees = await getEventAttendees(req.params.onChainId);
