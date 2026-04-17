@@ -15,11 +15,16 @@ const ContractStateDoc = mongoose.model(
   )
 );
 
-// Stores the full deployedEvents.json as a single MongoDB document
+// Stores the full deployedEvents.json alongside the contract address it belongs to.
+// On restore, the contract address is checked — stale data from old contracts is ignored.
 const DeployedEventsDoc = mongoose.model(
   "DeployedEvents",
   new mongoose.Schema(
-    { _id: { type: String, default: "singleton" }, data: { type: mongoose.Schema.Types.Mixed, default: {} } },
+    {
+      _id: { type: String, default: "singleton" },
+      contractAddress: String,
+      data: { type: mongoose.Schema.Types.Mixed, default: {} },
+    },
     { _id: false }
   )
 );
@@ -410,11 +415,13 @@ async function confirmAllAttendees(onChainEventId) {
 const STORE_PATH = path.join(__dirname, "../../data/deployedEvents.json");
 
 // Sync deployedEvents store to MongoDB so it survives Railway filesystem wipes.
+// Also stores the current contract address so stale data from old contracts is never restored.
 // Fire-and-forget — never blocks the caller.
 function syncDeployedEventsToDB(store) {
+  const contractAddress = contract ? contract.target : null;
   DeployedEventsDoc.findByIdAndUpdate(
     "singleton",
-    { _id: "singleton", data: store },
+    { _id: "singleton", contractAddress, data: store },
     { upsert: true, new: true }
   ).catch((e) => console.warn("[store] MongoDB sync failed:", e.message));
 }
@@ -918,9 +925,13 @@ async function restoreContractStateFromDB() {
     const localStore = loadDeployedEvents();
     if (Object.keys(localStore).length === 0) {
       const evDoc = await DeployedEventsDoc.findById("singleton").lean();
-      if (evDoc?.data && Object.keys(evDoc.data).length > 0) {
+      const currentContract = contract ? contract.target.toLowerCase() : null;
+      const storedContract = evDoc?.contractAddress?.toLowerCase();
+
+      // Only restore if the stored events belong to the current contract.
+      // Stale data from old contracts must never bleed into a fresh deployment.
+      if (evDoc?.data && Object.keys(evDoc.data).length > 0 && currentContract && storedContract === currentContract) {
         atomicWriteJSON(STORE_PATH, evDoc.data);
-        // Re-load custom codes and meta from restored store
         for (const info of Object.values(evDoc.data)) {
           if (info.joinCode && info.onChainId != null) setCustomCode(info.onChainId, info.joinCode);
           if (info.startTime != null && info.endTime != null && info.onChainId != null) setEventMeta(info.onChainId, info.startTime, info.endTime);
@@ -930,6 +941,8 @@ async function restoreContractStateFromDB() {
           }
         }
         console.log(`[relayer] restored deployedEvents from MongoDB (${Object.keys(evDoc.data).length} events)`);
+      } else if (evDoc?.data && storedContract !== currentContract) {
+        console.log(`[relayer] skipping stale deployedEvents from MongoDB — stored contract ${storedContract} ≠ current ${currentContract}`);
       }
     }
   } catch (e) {
