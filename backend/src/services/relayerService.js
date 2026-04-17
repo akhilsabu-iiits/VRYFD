@@ -239,10 +239,26 @@ async function confirmAttendee(onChainEventId, attendee) {
   return withRpcFallback(async () => {
     const c = getContract();
 
+    // Fetch nonce + fee data in parallel — eliminates 2 sequential RPC round-trips (~500ms saved).
+    // Explicit nonce avoids eth_getTransactionCount; cached feeData avoids eth_feeHistory;
+    // explicit gasLimit below avoids eth_estimateGas. Total: 1 parallel fetch + sendRawTransaction.
+    const [nonce, feeData] = await Promise.all([
+      provider.getTransactionCount(relayerWallet.address, "pending"),
+      getCachedFeeData(),
+    ]);
+    const overrides = {
+      nonce,
+      gasLimit: 150_000n, // safe upper-bound for checkInFor — skips eth_estimateGas
+      ...(feeData?.maxFeePerGas ? {
+        maxFeePerGas: feeData.maxFeePerGas,
+        maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+      } : {}),
+    };
+
     // Submit the tx — if the contract reverts (already checked in), catch it here
     let tx;
     try {
-      tx = await c.checkInFor(attendee, BigInt(onChainEventId));
+      tx = await c.checkInFor(attendee, BigInt(onChainEventId), overrides);
     } catch (err) {
       const msg = (err.message || "").toLowerCase();
       if (msg.includes("already") || msg.includes("checked in") || msg.includes("confirmed")) {
@@ -281,10 +297,16 @@ async function confirmAllAttendees(onChainEventId) {
 
   const results = [];
 
-  // Get starting nonce once before the loop — never inside a retry lambda
+  // Fetch starting nonce + fee data once before the loop — never inside a retry lambda.
+  // Fee data is cached so rapid sequential calls reuse the same value (saves N RPC calls).
+  // Explicit nonce + gasLimit + feeData eliminates 3 RPC calls per tx in the loop.
   let nonce;
+  let feeData;
   try {
-    nonce = await provider.getTransactionCount(relayerWallet.address, "pending");
+    [nonce, feeData] = await Promise.all([
+      provider.getTransactionCount(relayerWallet.address, "pending"),
+      getCachedFeeData(),
+    ]);
   } catch (err) {
     console.warn("[confirmAllAttendees] could not get nonce, falling back to sequential:", err.message);
     for (const { attendee } of pending) {
@@ -300,11 +322,19 @@ async function confirmAllAttendees(onChainEventId) {
 
   for (const { attendee } of pending) {
     const txNonce = nonce;
+    const overrides = {
+      nonce: txNonce,
+      gasLimit: 150_000n,
+      ...(feeData?.maxFeePerGas ? {
+        maxFeePerGas: feeData.maxFeePerGas,
+        maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+      } : {}),
+    };
     try {
       const c = getContract();
       let tx;
       try {
-        tx = await withRpcFallback(() => c.checkInFor(attendee, BigInt(onChainEventId), { nonce: txNonce }));
+        tx = await withRpcFallback(() => c.checkInFor(attendee, BigInt(onChainEventId), overrides));
       } catch (err) {
         const msg = (err.message || "").toLowerCase();
         if (msg.includes("already") || msg.includes("checked in") || msg.includes("confirmed")) {
@@ -492,6 +522,23 @@ let relayerWallet;
 let contract;
 let cachedChainId = null;
 
+// ─── Fee data cache ────────────────────────────────────────────────────────────
+// Sepolia basefee changes once per ~12s block; reusing fee data across rapid
+// sequential confirmations eliminates one RPC round-trip per tx (~250ms saved).
+let _feeDataCache = null;
+let _feeDataCacheAt = 0;
+const FEE_DATA_CACHE_MS = 3_000; // safe to reuse for 3 seconds
+
+async function getCachedFeeData() {
+  const now = Date.now();
+  if (_feeDataCache && now - _feeDataCacheAt < FEE_DATA_CACHE_MS) return _feeDataCache;
+  try {
+    _feeDataCache = await provider.getFeeData();
+    _feeDataCacheAt = now;
+    return _feeDataCache;
+  } catch { return null; }
+}
+
 
 const SEPOLIA_NETWORK = ethers.Network.from({ name: "sepolia", chainId: 11155111 });
 
@@ -539,6 +586,7 @@ function switchToFallbackRpc(reason) {
   const nextUrl = rpcUrls[rpcIndex];
   console.warn(`[RPC] ${reason} — switching to RPC #${rpcIndex}: ${nextUrl}`);
   provider = buildProviderForUrl(nextUrl);
+  _feeDataCache = null; // invalidate fee cache — new provider may return different values
   relayerWallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
   // Use current contract address (not env var) so RPC failover after a reset stays on the new contract
   const currentContractAddress = contract ? contract.target : process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
