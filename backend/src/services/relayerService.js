@@ -439,13 +439,8 @@ function saveAllEvents(events) {
   atomicWriteJSON(EVENTS_STORE_PATH, events);
 }
 
-// Default state: events 1 & 2 are pre-deployed on Sepolia (always live).
-// These values must match the actual on-chain IDs in deployedEvents.json.
-// Run: node -e "console.log(require('./data/deployedEvents.json'))" to verify.
-const INITIAL_DEPLOYED_EVENTS = {
-  "1": { txHash: "0xf235ead355af6b55ea855f1cb56882480d90d4f7681a792211ea5915ab415524", onChainId: "15", joinCode: "HK7P2T" },
-  "2": { txHash: "0x0757989ad76ca232eb664bba986a365bf099cf2e1e80d0fd884efdb5d0ef2289", onChainId: "16", joinCode: "W5NX4M" },
-};
+// INITIAL_DEPLOYED_EVENTS removed — was hardcoded to an old contract (onChainId 15 & 16).
+// MongoDB persistence now handles deployed events across Railway restarts.
 
 function loadDeployedEvents() {
   try { return JSON.parse(fs.readFileSync(STORE_PATH, "utf8")); } catch { return {}; }
@@ -488,31 +483,16 @@ function clearAllDeployedEvents() {
 }
 
 function resetDeployedEvents() {
-  // Build reset state: keep only events 1 & 2, strip confirmedCount/attendees
-  const current = loadDeployedEvents();
-  const resetState = {};
-  for (const [demoId, info] of Object.entries(current)) {
-    if (demoId === "1" || demoId === "2") {
-      resetState[demoId] = { txHash: info.txHash, onChainId: info.onChainId, joinCode: info.joinCode };
-    }
-  }
-  // Fallback to INITIAL_DEPLOYED_EVENTS only if current file is empty/missing entries
-  if (!resetState["1"] || !resetState["2"]) {
-    Object.assign(resetState, INITIAL_DEPLOYED_EVENTS);
-  }
-  fs.writeFileSync(STORE_PATH, JSON.stringify(resetState, null, 2));
+  // Wipe all deployed event state — no INITIAL_DEPLOYED_EVENTS fallback.
+  // Join codes and event data are fully managed via MongoDB + frontend creation flow.
+  fs.writeFileSync(STORE_PATH, JSON.stringify({}, null, 2));
+  syncDeployedEventsToDB({});
   customCodeStore.clear();
-  for (const info of Object.values(resetState)) {
-    if (info.joinCode && info.onChainId !== undefined && info.onChainId !== null) {
-      customCodeStore.set(String(info.onChainId), info.joinCode.toUpperCase());
-    }
-  }
   pendingStore.clear();
   savePendingStore();
   confirmedCountStore.clear();
   confirmedAttendeesStore.clear();
   confirmedAttendeesDetailStore.clear();
-  // Also clear the full events store so the page reloads to the initial state
   try { fs.unlinkSync(EVENTS_STORE_PATH); } catch {}
 }
 
@@ -543,15 +523,8 @@ function loadCustomCodesFromStore() {
       confirmedAttendeesDetailStore.set(key, detailMap);
     }
   }
-  // If no join codes were loaded from disk (e.g., Railway ephemeral filesystem on cold start),
-  // seed from INITIAL_DEPLOYED_EVENTS so check-in always works without manual redeploy.
-  if (customCodeStore.size === 0) {
-    for (const info of Object.values(INITIAL_DEPLOYED_EVENTS)) {
-      if (info.joinCode && info.onChainId !== undefined && info.onChainId !== null) {
-        customCodeStore.set(String(info.onChainId), info.joinCode.toUpperCase());
-      }
-    }
-  }
+  // Join codes are restored from MongoDB via restoreContractStateFromDB() after
+  // mongoose.connect() resolves. No hardcoded fallback needed.
   loadPendingStore();
   // Remove pending entries that are already confirmed — avoids stale entries after restart
   let pendingChanged = false;
@@ -943,6 +916,8 @@ async function restoreContractStateFromDB() {
         console.log(`[relayer] restored deployedEvents from MongoDB (${Object.keys(evDoc.data).length} events)`);
       } else if (evDoc?.data && storedContract !== currentContract) {
         console.log(`[relayer] skipping stale deployedEvents from MongoDB — stored contract ${storedContract} ≠ current ${currentContract}`);
+        // Wipe stale MongoDB data so it never gets restored again
+        DeployedEventsDoc.findByIdAndUpdate("singleton", { _id: "singleton", data: {}, contractAddress: null }, { upsert: true }).catch(() => {});
       }
     }
   } catch (e) {
