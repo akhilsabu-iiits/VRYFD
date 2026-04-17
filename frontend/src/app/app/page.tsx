@@ -191,6 +191,8 @@ export default function Home() {
   const syncedAddressRef = useRef<string | undefined>(undefined);
   // Set to true after reset — suppresses chain re-fetch until wallet reconnects
   const postResetRef = useRef(false);
+  // Always points to the latest events array — used by the post-reset auto-deploy
+  const eventsRef = useRef<VEvent[]>(INITIAL_EVENTS);
   // Start with defaults to avoid SSR/client hydration mismatch; load persisted counts after mount
   // Status is NOT stored — it is derived from deployedEventIds (deployed = live)
   const [events, setEvents] = useState<VEvent[]>(INITIAL_EVENTS);
@@ -502,7 +504,7 @@ export default function Home() {
   }, [publicClient]);
 
   // Poll for async contract deployment after reset — fires only when vryfd_deploying flag is set.
-  // On completion, stores new addresses in localStorage and reloads so wagmiConfig picks them up.
+  // On completion: auto-deploys all events to the new contract, then reloads.
   useEffect(() => {
     if (!isDeployingContracts) return;
     let attempts = 0;
@@ -512,19 +514,55 @@ export default function Home() {
       try {
         const res = await fetch(`${BACKEND}/api/relay/deploy-status`);
         if (!res.ok) return;
-        const data = await res.json();
+        const data = await res.json() as { status: string; contractAddress?: string; vryfTokenAddress?: string; error?: string };
         if (data.status === "ready") {
           clearInterval(id);
           localStorage.removeItem("vryfd_deploying");
           if (data.contractAddress) localStorage.setItem("vryfd_contract_address", data.contractAddress);
           if (data.vryfTokenAddress) localStorage.setItem("vryfd_vryf_token_address", data.vryfTokenAddress);
-          // Prompt MetaMask to watch the new VRYF token before reloading
-          if (data.vryfTokenAddress && typeof window !== "undefined" && (window as any).ethereum) {
-            (window as any).ethereum.request({
-              method: "wallet_watchAsset",
-              params: { type: "ERC20", options: { address: data.vryfTokenAddress, symbol: "VRYF", decimals: 18 } },
-            }).catch(() => {});
+          // Prompt MetaMask to watch the new VRYF token
+          if (data.vryfTokenAddress && typeof window !== "undefined" && (window as { ethereum?: { request: (a: unknown) => Promise<unknown> } }).ethereum) {
+            (window as { ethereum: { request: (a: unknown) => Promise<unknown> } }).ethereum
+              .request({ method: "wallet_watchAsset", params: { type: "ERC20", options: { address: data.vryfTokenAddress, symbol: "VRYF", decimals: 18 } } })
+              .catch(() => {});
           }
+
+          // Auto-deploy all events to the new contract — same fast path as deployEvent:
+          // backend URL for metadataURI, register+createEvent in parallel, no tx.wait().
+          const now = Math.floor(Date.now() / 1000);
+          const currentEvents = eventsRef.current;
+          try {
+            const results = await Promise.all(
+              currentEvents.map(async (ev) => {
+                try {
+                  const startTime = ev.startTime ?? Math.floor(new Date(`${ev.date} 00:00:00 UTC`).getTime() / 1000);
+                  const endTime   = ev.endTime   ?? (now + 10 * 365 * 86400);
+                  const deployStart = startTime > now ? now - 3600 : startTime;
+                  const metaURI = `${BACKEND}/api/metadata/badge/${ev.id}`;
+                  const [, chainRes] = await Promise.all([
+                    fetch(`${BACKEND}/api/metadata/badge/register`, {
+                      method: "POST", headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ id: ev.id, name: ev.name, date: ev.date, color: ev.color, emoji: ev.emoji }),
+                    }),
+                    fetch(`${BACKEND}/api/relay/createEvent`, {
+                      method: "POST", headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ name: ev.name, metadataURI: metaURI, startTime: deployStart, endTime, demoId: ev.id, joinCode: ev.joinCode }),
+                    }),
+                  ]);
+                  if (!chainRes.ok) return null;
+                  const d = await chainRes.json() as { eventId?: number; txHash?: string };
+                  return d.eventId != null ? { id: ev.id, onChainId: Number(d.eventId), txHash: d.txHash ?? "" } : null;
+                } catch { return null; }
+              })
+            );
+            // Persist onChainIds into localStorage so they're available immediately after reload
+            const updatedEvents = currentEvents.map((ev) => {
+              const r = results.find((x) => x?.id === ev.id);
+              return r ? { ...ev, onChainId: r.onChainId, deployTxHash: r.txHash, status: "live" as const } : ev;
+            });
+            localStorage.setItem("vryfd_all_events", JSON.stringify(updatedEvents));
+          } catch { /* non-fatal — reload anyway, organizer can deploy manually */ }
+
           window.location.reload();
         } else if (data.status === "error") {
           clearInterval(id);
@@ -542,6 +580,9 @@ export default function Home() {
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDeployingContracts]);
+
+  // Keep eventsRef in sync so post-reset auto-deploy always sees latest events
+  useEffect(() => { eventsRef.current = events; }, [events]);
 
   // Trigger chain sync (badge/attendance reconciliation + certificates) once per wallet per session
   useEffect(() => {
