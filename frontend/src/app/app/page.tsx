@@ -236,7 +236,8 @@ export default function Home() {
   // MetaMask treats them as user-initiated and shows popups. Without this, wallet_watchAsset
   // called inside a setTimeout (even delay=0) is outside the gesture context and MetaMask
   // may silently suppress the popup.
-  const handleAddToWallet = useCallback(async (eventId: number, tokenId: string, contractAddr: string, onSuccess: () => void) => {
+  const handleAddToWallet = useCallback(async (eventId: number, tokenId: string, contractAddr: string, onSuccess: () => void): Promise<void> => {
+    try {
     const eth = typeof window !== "undefined"
       ? (window as unknown as { ethereum?: { request: (a: { method: string; params?: unknown }) => Promise<unknown> } }).ethereum
       : undefined;
@@ -343,6 +344,10 @@ export default function Home() {
           "",
         );
         break;
+    }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToastRef.current(`Could not add to MetaMask: ${msg}`, "error");
     }
   }, [publicClient, onChainEventIds]);
 

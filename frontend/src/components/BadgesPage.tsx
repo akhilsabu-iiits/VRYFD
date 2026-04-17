@@ -15,15 +15,17 @@ interface BadgesPageProps {
   badgeContractAddrs?: Record<number, string>;
   milestoneNftIds?: Record<number, string>;
   milestoneContractAddrs?: Record<number, string>;
-  onAddToWallet?: (eventId: number, tokenId: string, contractAddr: string, onSuccess: () => void) => void;
+  onAddToWallet?: (eventId: number, tokenId: string, contractAddr: string, onSuccess: () => void) => Promise<void>;
 }
 
 export default function BadgesPage({
   events, userCheckins, userBadges, isConnected, claimedMilestones, isMilestoneLoading,
   onClaimMilestone, badgeTokenIds = {}, badgeContractAddrs = {}, milestoneNftIds = {}, milestoneContractAddrs = {}, onAddToWallet,
 }: BadgesPageProps) {
-  // Tracks eventIds/tokenIds that have been successfully added to MetaMask this session.
+  // Tracks keys that have been successfully added to MetaMask this session.
   const [addedToWallet, setAddedToWallet] = useState<Set<string>>(new Set());
+  // Tracks the key of the button currently awaiting MetaMask response.
+  const [loadingKey, setLoadingKey] = useState<string | null>(null);
 
   const markAdded = useCallback((key: string) => {
     setAddedToWallet((prev) => new Set([...prev, key]));
@@ -34,6 +36,7 @@ export default function BadgesPage({
   const AddButton = ({ eventId, tokenId, contractAddr, block }: { eventId: number; tokenId: string; contractAddr: string; block?: boolean }) => {
     const key = tokenId || String(eventId);
     const added = addedToWallet.has(key);
+    const isLoading = loadingKey === key;
     return (
       <button
         type="button"
@@ -41,10 +44,15 @@ export default function BadgesPage({
         style={block
           ? { marginTop: "8px", fontSize: "12px", padding: "6px 12px" }
           : { fontSize: "11px", padding: "4px 10px", marginLeft: "8px" }}
-        disabled={added || !onAddToWallet}
-        onClick={() => onAddToWallet?.(eventId, tokenId, contractAddr, () => markAdded(key))}
+        disabled={added || isLoading || !onAddToWallet}
+        onClick={() => {
+          if (!onAddToWallet || isLoading || added) return;
+          setLoadingKey(key);
+          onAddToWallet(eventId, tokenId, contractAddr, () => markAdded(key))
+            .finally(() => setLoadingKey(null));
+        }}
       >
-        {added ? "✓ Added" : block ? "+ Add to MetaMask" : "+ MetaMask"}
+        {added ? "✓ Added" : isLoading ? "Opening MetaMask…" : block ? "+ Add to MetaMask" : "+ MetaMask"}
       </button>
     );
   };
