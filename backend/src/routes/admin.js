@@ -121,7 +121,10 @@ router.get("/contract-stats", async (req, res) => {
       contract.nextEventId(),
     ]);
 
-    const totalCerts = results[0].status === "fulfilled" ? Number(results[0].value) : null;
+    const rawNextCertId = results[0].status === "fulfilled" ? Number(results[0].value) : null;
+    // nextCertificateId() returns the NEXT id — slot 0 is unused so a fresh contract returns 1.
+    // Subtract 1 to get actual issued count.
+    const totalCerts = rawNextCertId !== null ? Math.max(0, rawNextCertId - 1) : null;
     const nextEventId = results[1].status === "fulfilled" ? Number(results[1].value) : null;
 
     // VRYF total supply
