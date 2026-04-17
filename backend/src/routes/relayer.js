@@ -37,6 +37,7 @@ const {
   deployContractsAsync,
   getDeployState,
   clearAllDeployedEvents,
+  getVryfTokenAddress,
 } = require("../services/relayerService");
 
 const router = express.Router();
@@ -137,7 +138,8 @@ router.get("/checkin-nonce/:attendee", async (req, res) => {
 router.get("/contract-address", (req, res) => {
   try {
     const contractAddress = getContract().target;
-    res.json({ contractAddress });
+    const vryfTokenAddress = getVryfTokenAddress();
+    res.json({ contractAddress, vryfTokenAddress });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

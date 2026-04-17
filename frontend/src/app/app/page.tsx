@@ -157,17 +157,16 @@ export default function Home() {
   const [checkedInIds, setCheckedInIds] = useState<number[]>([]);
 
 
-  // Read VRYF token address at render time from localStorage (updated on reset),
-  // falling back to the module constant (env var). Reading localStorage here avoids
-  // the SSR stale-constant problem where VRYF_TOKEN_ADDRESS is set before the page
-  // reloads with the new address after a fresh contract deployment.
-  const vryfTokenAddress = useMemo((): `0x${string}` | undefined => {
+  // VRYF token address — initialised from localStorage/env at mount, then updated live
+  // from the backend /contract-address endpoint so it always tracks the current contract
+  // after a reset (the frozen module-level constant can't update mid-session).
+  const [vryfTokenAddress, setVryfTokenAddress] = useState<`0x${string}` | undefined>(() => {
     const stored = typeof window !== "undefined" ? localStorage.getItem("vryfd_vryf_token_address") : null;
     const addr = (stored && stored.startsWith("0x") ? stored : null)
       ?? (VRYF_TOKEN_ADDRESS !== "0x0000000000000000000000000000000000000000" ? VRYF_TOKEN_ADDRESS : null)
       ?? process.env.NEXT_PUBLIC_VRYF_TOKEN_ADDRESS;
     return addr && addr !== "0x0000000000000000000000000000000000000000" ? addr as `0x${string}` : undefined;
-  }, []);
+  });
   const { data: vryfOnChain, refetch: refetchVryf } = useReadContract({
     address: vryfTokenAddress,
     abi: VRYFTokenABI.abi,
@@ -621,8 +620,14 @@ export default function Home() {
         if (data.status === "ready") {
           clearInterval(id);
           localStorage.removeItem("vryfd_deploying");
-          if (data.contractAddress) localStorage.setItem("vryfd_contract_address", data.contractAddress);
-          if (data.vryfTokenAddress) localStorage.setItem("vryfd_vryf_token_address", data.vryfTokenAddress);
+          if (data.contractAddress) {
+            localStorage.setItem("vryfd_contract_address", data.contractAddress);
+            CONTRACT_ADDRESSES[11155111] = data.contractAddress as `0x${string}`;
+          }
+          if (data.vryfTokenAddress) {
+            localStorage.setItem("vryfd_vryf_token_address", data.vryfTokenAddress);
+            setVryfTokenAddress(data.vryfTokenAddress as `0x${string}`);
+          }
           // Prompt MetaMask to watch the new VRYF token
           if (data.vryfTokenAddress && typeof window !== "undefined" && (window as { ethereum?: { request: (a: unknown) => Promise<unknown> } }).ethereum) {
             (window as { ethereum: { request: (a: unknown) => Promise<unknown> } }).ethereum
@@ -800,7 +805,7 @@ export default function Home() {
       } catch {}
     })();
 
-    // Sync live contract address from backend — overrides env var and localStorage
+    // Sync live contract addresses from backend — overrides env var and localStorage
     // so every call (EIP-712 signing, writeContractAsync, readContract) always uses
     // the actual deployed contract address regardless of resets or env drift.
     fetch(`${BACKEND}/api/relay/contract-address`)
@@ -809,6 +814,10 @@ export default function Home() {
         if (data.contractAddress && data.contractAddress.startsWith("0x")) {
           CONTRACT_ADDRESSES[11155111] = data.contractAddress as `0x${string}`;
           localStorage.setItem("vryfd_contract_address", data.contractAddress);
+        }
+        if (data.vryfTokenAddress && data.vryfTokenAddress.startsWith("0x")) {
+          setVryfTokenAddress(data.vryfTokenAddress as `0x${string}`);
+          localStorage.setItem("vryfd_vryf_token_address", data.vryfTokenAddress);
         }
       })
       .catch(() => {});

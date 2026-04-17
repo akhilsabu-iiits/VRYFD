@@ -736,6 +736,17 @@ function getDeployState() {
   return deployState;
 }
 
+function getVryfTokenAddress() {
+  // Prefer live deployState (set after every deploy), fall back to persisted file.
+  if (deployState.vryfTokenAddress) return deployState.vryfTokenAddress;
+  try {
+    const contractStatePath = path.join(__dirname, "../../data/contractState.json");
+    const saved = JSON.parse(fs.readFileSync(contractStatePath, "utf8"));
+    if (saved.vryfTokenAddress && saved.vryfTokenAddress.startsWith("0x")) return saved.vryfTokenAddress;
+  } catch {}
+  return null;
+}
+
 async function deployContractsAsync() {
   deployState = { status: "deploying", contractAddress: null, vryfTokenAddress: null, error: null };
   try {
@@ -1008,14 +1019,16 @@ async function gaslessClaimBadge(attendee, onChainEventId, signature) {
   const sig = ethers.Signature.from(signature);
   const c = getContract();
 
-  // Parallel pre-checks: attendance record + signing nonce + next badge tokenId.
-  // Fetching all three at once saves ~400ms vs the old sequential approach.
+  // Parallel pre-checks: attendance record + signing nonce + badge tokenId for this event.
+  // Use eventBadgeToken(onChainEventId) — the token ID already assigned when the event was
+  // created. nextBadgeTokenId() is wrong here: it returns the NEXT id for a new event, not
+  // the id that will actually be minted when this attendee claims their badge.
   let onChainRecord, currentNonce, nextId;
   try {
     [onChainRecord, currentNonce, nextId] = await Promise.all([
       withRpcFallback(() => c.getAttendanceRecord(BigInt(onChainEventId), attendee)),
       withRpcFallback(() => c.nonces(attendee)),
-      withRpcFallback(() => c.nextBadgeTokenId()),
+      withRpcFallback(() => c.eventBadgeToken(BigInt(onChainEventId))),
     ]);
   } catch (e) {
     console.warn(`[gaslessClaimBadge] pre-checks failed: ${e.message} — proceeding`);
@@ -1681,4 +1694,5 @@ module.exports = {
   clearAllDeployedEvents,
   getContract,
   getProvider,
+  getVryfTokenAddress,
 };
