@@ -1,14 +1,13 @@
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import { sepolia, mainnet } from "wagmi/chains";
-import { http } from "wagmi";
+import { http, fallback } from "wagmi";
 
 // NOTE: NEXT_PUBLIC_ALCHEMY_API_KEY is intentionally NOT used here.
 // Embedding an Alchemy key in the browser bundle exposes it to anyone who
 // inspects the page source. All ENS lookups go through the backend proxy
 // (/api/relay/ens/:address) where the key stays server-side.
-// For Sepolia RPC we use the public endpoint — adequate for a testnet dApp.
-// If you need a private Sepolia RPC, add a Next.js API route that proxies
-// calls to Alchemy using a server-only env var (no NEXT_PUBLIC_ prefix).
+// For Sepolia we use multiple public RPCs in a fallback chain so a single
+// unreliable endpoint doesn't break readContract calls (badge tokenId lookup etc.).
 
 const walletConnectProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
 if (!walletConnectProjectId) {
@@ -22,7 +21,12 @@ export const config = getDefaultConfig({
   // resolution for the app goes through the backend proxy, not the client.
   chains: [sepolia, mainnet],
   transports: {
-    [sepolia.id]: http("https://rpc.sepolia.org"),
+    [sepolia.id]: fallback([
+      http("https://rpc.sepolia.org"),
+      http("https://ethereum-sepolia-rpc.publicnode.com"),
+      http("https://sepolia.drpc.org"),
+      http("https://rpc2.sepolia.org"),
+    ]),
     [mainnet.id]: http("https://eth.llamarpc.com"),
   },
   ssr: true,

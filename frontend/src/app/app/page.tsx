@@ -293,14 +293,19 @@ export default function Home() {
             setBadgeTokenIds((prev) => ({ ...prev, [eventId]: resolvedTokenId }));
             setBadgeContractAddrs((prev) => ({ ...prev, [eventId]: addr }));
           }
-        } catch {
-          showToastRef.current("Could not fetch NFT token ID — try again shortly", "error");
-          return;
+        } catch (fetchErr) {
+          // RPC failure — don't abort. Fall through to manual instructions below.
+          console.warn("[handleAddToWallet] eventBadgeToken lookup failed:", fetchErr instanceof Error ? fetchErr.message : fetchErr);
         }
       }
     }
     if (!resolvedTokenId || resolvedTokenId === "0") {
-      showToastRef.current(`NFT minted ✓  To add manually: MetaMask → NFTs tab → Import NFT → Contract: ${addr.slice(0, 8)}… Token ID: ${resolvedTokenId || "?"}`, "");
+      showToastRef.current(
+        `NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT` +
+        ` → Contract: ${addr} → Token ID: check Etherscan` +
+        ` | https://sepolia.etherscan.io/token/${addr}`,
+        "",
+      );
       return;
     }
 
