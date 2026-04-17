@@ -576,6 +576,7 @@ export default function Home() {
           let claimedList: number[] = [];
           if (highestMilestoneRaw !== null && highestMilestoneRaw !== undefined) {
             const highest = Number(highestMilestoneRaw as bigint);
+            console.log(`[sync] totalAttendance=${onChainCount} highestMilestoneClaimed=${highest} contract=${contractAddress}`);
             claimedList = MILESTONES.filter((m) => m.threshold <= highest).map((m) => m.threshold);
             setClaimedMilestones(claimedList);
           }
