@@ -199,22 +199,31 @@ export default function BadgesPage({
   };
 
   // Milestones the user is eligible to claim right now (unclaimed + count reached).
-  // The contract always mints ALL eligible tiers in one transaction — every claim button
-  // triggers this full set. We show this explicitly so users aren't surprised.
+  // The contract always mints ALL eligible tiers in one transaction, so only the
+  // LOWEST unclaimed eligible tier gets a claim button — higher tiers show a note
+  // explaining they will be included in that claim.
+  const MILESTONE_DEFS = [
+    { threshold: 5,  icon: "🏆", label: "Bronze" },
+    { threshold: 10, icon: "🌟", label: "Silver" },
+    { threshold: 20, icon: "👑", label: "Gold"   },
+  ] as const;
   const eligibleMilestones = isConnected
-    ? [
-        { threshold: 5,  icon: "🏆", label: "Bronze" },
-        { threshold: 10, icon: "🌟", label: "Silver" },
-        { threshold: 20, icon: "👑", label: "Gold"   },
-      ].filter((m) => userCheckins >= m.threshold && !claimedMilestones.includes(m.threshold))
+    ? MILESTONE_DEFS.filter((m) => userCheckins >= m.threshold && !claimedMilestones.includes(m.threshold))
     : [];
+  // The card that owns the claim button — always the lowest unclaimed eligible tier.
+  const claimHost = eligibleMilestones[0] ?? null;
 
-  function claimButtonLabel(threshold: number): string {
+  function claimButtonLabel(): string {
     if (isMilestoneLoading) return "Claiming...";
     if (eligibleMilestones.length <= 1) return "Claim NFT Reward";
-    // Multiple tiers will be claimed — list them all so the user knows what's happening
+    // Multiple tiers will be claimed together — list them all so the user knows
     const icons = eligibleMilestones.map((m) => m.icon).join(" ");
     return `Claim All Eligible NFTs ${icons}`;
+  }
+
+  function includedNote(threshold: number): string {
+    if (!claimHost || claimHost.threshold === threshold) return "";
+    return `Included in ${claimHost.icon} ${claimHost.label} claim`;
   }
 
   return (
@@ -293,10 +302,12 @@ export default function BadgesPage({
                   tokenId={milestoneNftIds[5] ?? ""}
                 />
               </div>
-            ) : userCheckins >= 5 ? (
+            ) : claimHost?.threshold === 5 ? (
               <button type="button" className="btn btn-block btn-claim-milestone" onClick={() => onClaimMilestone(5)} disabled={isMilestoneLoading}>
-                {claimButtonLabel(5)}
+                {claimButtonLabel()}
               </button>
+            ) : userCheckins >= 5 ? (
+              <div className="milestone-included-note">{includedNote(5)}</div>
             ) : null
           )}
         </div>
@@ -332,10 +343,12 @@ export default function BadgesPage({
                   tokenId={milestoneNftIds[10] ?? ""}
                 />
               </div>
-            ) : userCheckins >= 10 ? (
+            ) : claimHost?.threshold === 10 ? (
               <button type="button" className="btn btn-block btn-claim-milestone" onClick={() => onClaimMilestone(10)} disabled={isMilestoneLoading}>
-                {claimButtonLabel(10)}
+                {claimButtonLabel()}
               </button>
+            ) : userCheckins >= 10 ? (
+              <div className="milestone-included-note">{includedNote(10)}</div>
             ) : null
           )}
         </div>
@@ -371,10 +384,12 @@ export default function BadgesPage({
                   tokenId={milestoneNftIds[20] ?? ""}
                 />
               </div>
-            ) : userCheckins >= 20 ? (
+            ) : claimHost?.threshold === 20 ? (
               <button type="button" className="btn btn-block btn-claim-milestone" onClick={() => onClaimMilestone(20)} disabled={isMilestoneLoading}>
-                {claimButtonLabel(20)}
+                {claimButtonLabel()}
               </button>
+            ) : userCheckins >= 20 ? (
+              <div className="milestone-included-note">{includedNote(20)}</div>
             ) : null
           )}
         </div>
