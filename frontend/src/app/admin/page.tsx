@@ -1337,63 +1337,67 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
             {/* ── Overview ─────────────────────────────────────────────────── */}
             {activeTab === "overview" && (
               <>
-                <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                  <div style={{ flex: "1 1 340px" }}>
-                    {relayer && <RelayerCard relayer={relayer} copy={copy} copied={copied} />}
-                  </div>
-                  <div style={{ flex: "1 1 300px" }}>
-                    <SystemHealth secret={secret} />
-                  </div>
-                </div>
-
-                <ContractStats secret={secret} copy={copy} copied={copied} />
-
+                {/* Hero stat row — 4 across */}
                 {stats && (
-                  <div className="grid grid-3" style={{ marginTop: 0, marginBottom: 16 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 16 }}>
                     {[
-                      { label: "Deployed Events",     value: stats.totalEvents,    icon: "📅", sub: `${counts.live} live`,         iconBg: "rgba(124,108,240,0.12)", color: "var(--accent2)", tab: "events"  as AdminTab },
-                      { label: "Confirmed On-Chain",  value: stats.totalConfirmed, icon: "✅", sub: "total attendees",             iconBg: "rgba(52,211,153,0.12)",  color: "var(--green)",   tab: "events"  as AdminTab },
-                      { label: "Pending Confirmation",value: stats.totalPending,   icon: "⏳", sub: "need organizer action",       iconBg: "rgba(251,191,36,0.12)",  color: "var(--amber)",   tab: "events"  as AdminTab },
+                      { label: "Total Events",        value: stats.totalEvents,    icon: "📅", iconBg: "rgba(124,108,240,0.12)", color: "var(--accent2)", sub: `${counts.live} live · ${counts.upcoming} upcoming` },
+                      { label: "Confirmed On-Chain",  value: stats.totalConfirmed, icon: "✅", iconBg: "rgba(52,211,153,0.12)",  color: "var(--green)",   sub: "total attendees confirmed" },
+                      { label: "Pending Queue",       value: stats.totalPending,   icon: "⏳", iconBg: "rgba(251,191,36,0.12)",  color: "var(--amber)",   sub: stats.totalPending > 0 ? "awaiting organizer" : "queue is clear" },
+                      { label: "Live Now",            value: counts.live,          icon: "🔴", iconBg: "rgba(248,113,113,0.12)", color: "var(--coral)",   sub: `${counts.ended} ended · ${counts.upcoming} upcoming` },
                     ].map(s => (
-                      <div
-                        key={s.label}
-                        className="card stat-card"
-                        onClick={() => setActiveTab(s.tab)}
-                        style={{ cursor: "pointer" }}
-                      >
+                      <div key={s.label} className="card stat-card" style={{ cursor: "default" }}>
                         <div className="stat-icon" style={{ background: s.iconBg }}>{s.icon}</div>
-                        <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
+                        <div className="stat-value" style={{ color: s.color, fontSize: 32 }}>{s.value}</div>
                         <div className="stat-label">{s.label}</div>
-                        {s.sub && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{s.sub}</div>}
+                        <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{s.sub}</div>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* Quick-link cards to the other tabs */}
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-                  {[
-                    { tab: "events"  as AdminTab, icon: "📅", title: "Deployed Events",   desc: "View all events, join codes, attendees and pending queue", color: "var(--accent2)", bg: "rgba(124,108,240,0.08)" },
-                    { tab: "history" as AdminTab, icon: "📋", title: "Operation History", desc: "Full timeline of confirmations and event deployments",      color: "var(--green)",   bg: "rgba(52,211,153,0.08)"  },
-                    { tab: "gas"     as AdminTab, icon: "⛽", title: "Gas & Cost",        desc: "Per-operation gas estimates and real creation receipts",    color: "var(--amber)",   bg: "rgba(251,191,36,0.08)"  },
-                  ].map(q => (
-                    <div
+                {/* Relayer + System Health side by side */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, marginBottom: 0 }}>
+                  <div>{relayer && <RelayerCard relayer={relayer} copy={copy} copied={copied} />}</div>
+                  <div><SystemHealth secret={secret} /></div>
+                </div>
+
+                {/* On-chain contract stats */}
+                <ContractStats secret={secret} copy={copy} copied={copied} />
+
+                {/* Navigation strip to other tabs */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 16 }}>
+                  {([
+                    { tab: "events"  as AdminTab, icon: "📅", title: "Deployed Events",   desc: "Events, join codes, attendees, pending queue", color: "var(--accent2)", border: "rgba(124,108,240,0.3)" },
+                    { tab: "history" as AdminTab, icon: "📋", title: "Operation History", desc: "Confirmation timeline & deployment log",        color: "var(--green)",   border: "rgba(52,211,153,0.3)"  },
+                    { tab: "gas"     as AdminTab, icon: "⛽", title: "Gas & Cost",        desc: "Per-op estimates + real on-chain receipts",     color: "var(--amber)",   border: "rgba(251,191,36,0.3)"  },
+                  ] as const).map(q => (
+                    <button
                       key={q.tab}
                       onClick={() => setActiveTab(q.tab)}
-                      className="card"
                       style={{
-                        flex: "1 1 200px", cursor: "pointer", padding: "18px 20px",
-                        background: q.bg, borderTop: `2px solid ${q.color}`,
-                        transition: "transform 0.15s, box-shadow 0.15s",
+                        display: "flex", alignItems: "center", gap: 14,
+                        background: "var(--bg2)", border: `1px solid ${q.border}`,
+                        borderRadius: "var(--radius)", padding: "14px 18px",
+                        cursor: "pointer", textAlign: "left", width: "100%",
+                        transition: "background 0.15s, transform 0.15s",
                       }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = `0 8px 24px ${q.color}22`; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = "none"; (e.currentTarget as HTMLElement).style.boxShadow = "none"; }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--bg3)"; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "var(--bg2)"; (e.currentTarget as HTMLElement).style.transform = "none"; }}
                     >
-                      <div style={{ fontSize: 22, marginBottom: 8 }}>{q.icon}</div>
-                      <div style={{ fontWeight: 600, fontSize: 14, color: q.color, marginBottom: 6 }}>{q.title}</div>
-                      <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>{q.desc}</div>
-                      <div style={{ marginTop: 12, fontSize: 11, color: q.color }}>Open →</div>
-                    </div>
+                      <div style={{
+                        width: 40, height: 40, borderRadius: "var(--radius-sm)", flexShrink: 0,
+                        background: `${q.border.replace("0.3", "0.12")}`,
+                        display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
+                      }}>
+                        {q.icon}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: q.color, marginBottom: 3 }}>{q.title}</div>
+                        <div style={{ fontSize: 11, color: "var(--text3)", lineHeight: 1.4 }}>{q.desc}</div>
+                      </div>
+                      <span style={{ color: q.color, fontSize: 16, flexShrink: 0 }}>→</span>
+                    </button>
                   ))}
                 </div>
               </>
