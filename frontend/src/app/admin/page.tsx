@@ -1576,16 +1576,16 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                         bg: "rgba(124,108,240,0.08)", border: "rgba(124,108,240,0.3)",
                       },
                       {
+                        icon: "📅", label: "Events",
+                        value: contractData?.totalEventsCreatedOnChain != null ? numFmt(contractData.totalEventsCreatedOnChain) : "—", unit: "on-chain",
+                        color: "var(--accent2)",
+                        bg: "rgba(96,165,250,0.07)", border: "rgba(96,165,250,0.25)",
+                      },
+                      {
                         icon: "🏅", label: "POAP Badges",
                         value: stats ? numFmt(stats.totalConfirmed) : "—", unit: "ERC-1155",
                         color: "rgba(168,85,247,0.9)",
                         bg: "rgba(168,85,247,0.07)", border: "rgba(168,85,247,0.25)",
-                      },
-                      {
-                        icon: "📜", label: "Certificates",
-                        value: contractData?.totalCertificatesIssued != null ? numFmt(contractData.totalCertificatesIssued) : "—", unit: "ERC-721",
-                        color: "var(--green)",
-                        bg: "rgba(52,211,153,0.07)", border: "rgba(52,211,153,0.25)",
                       },
                       {
                         icon: "🪙", label: "VRYF Tokens",
@@ -1594,10 +1594,10 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                         bg: "rgba(251,191,36,0.07)", border: "rgba(251,191,36,0.25)",
                       },
                       {
-                        icon: "📅", label: "Events",
-                        value: contractData?.totalEventsCreatedOnChain != null ? numFmt(contractData.totalEventsCreatedOnChain) : "—", unit: "on-chain",
-                        color: "var(--accent2)",
-                        bg: "rgba(96,165,250,0.07)", border: "rgba(96,165,250,0.25)",
+                        icon: "📜", label: "Certificates",
+                        value: contractData?.totalCertificatesIssued != null ? numFmt(contractData.totalCertificatesIssued) : "—", unit: "ERC-721",
+                        color: "var(--green)",
+                        bg: "rgba(52,211,153,0.07)", border: "rgba(52,211,153,0.25)",
                       },
                     ].map((m, i) => (
                       <div key={i} style={{
@@ -1616,7 +1616,7 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                   {/* ══ 4. TWO-COLUMN DETAIL GRID ═══════════════════════════════ */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
 
-                    {/* ── LEFT COL: Relayer + Contract stacked ── */}
+                    {/* ── LEFT COL: Relayer + VRYF stacked ── */}
                     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
                       {/* Relayer Wallet */}
@@ -1669,6 +1669,45 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                         ) : <div style={{ color: "var(--text3)", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}><span className="spinner" /> Fetching…</div>}
                       </div>
 
+                      {/* VRYF Token */}
+                      <div style={{
+                        background: "var(--bg2)", borderRadius: "var(--radius)",
+                        border: "1px solid var(--border)", borderLeft: "3px solid rgba(251,191,36,0.7)",
+                        padding: "14px 16px", flex: 1,
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
+                          <span style={{ fontSize: 14 }}>🪙</span>
+                          <span style={{ fontWeight: 700, fontSize: 11, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.06em" }}>VRYF Token</span>
+                          <span style={{ marginLeft: "auto", fontSize: 9, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 6px" }}>ERC-20</span>
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--text3)", marginBottom: 10 }}>Soulbound reward token — non-transferable proof of participation.</div>
+                        {contractData?.vryfTokenAddress ? (
+                          <>
+                            <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.06em", marginBottom: 3 }}>TOKEN ADDRESS</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 10 }}>
+                              <a href={`${ETHERSCAN}/token/${contractData.vryfTokenAddress}`} target="_blank" rel="noreferrer"
+                                style={{ color: "var(--accent2)", fontSize: 10, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
+                                {short(contractData.vryfTokenAddress, 16)}
+                              </a>
+                              <CopyBtn text={contractData.vryfTokenAddress} id="ov-vryf" copy={copy} copied={copied} />
+                              <ELink href={`${ETHERSCAN}/token/${contractData.vryfTokenAddress}`} label="↗" />
+                            </div>
+                            <div style={{ background: "linear-gradient(120deg, rgba(251,191,36,0.1) 0%, rgba(251,191,36,0.04) 100%)", borderRadius: 8, border: "1px solid rgba(251,191,36,0.2)", padding: "10px 14px" }}>
+                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 4 }}>TOTAL DISTRIBUTED</div>
+                              <div style={{ fontSize: 28, fontWeight: 800, color: "var(--amber)", fontFamily: "var(--font-space-mono),'Space Mono',monospace", lineHeight: 1 }}>
+                                {contractData.vryfDistributed ?? "—"}
+                                <span style={{ fontSize: 13, fontWeight: 500, marginLeft: 6, color: "var(--text3)" }}>VRYF</span>
+                              </div>
+                            </div>
+                            <div style={{ fontSize: 9, color: "var(--text3)", marginTop: 7 }}>Soulbound · Non-transferable · Sepolia</div>
+                          </>
+                        ) : <div style={{ color: "var(--text3)", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}><span className="spinner" /> Fetching…</div>}
+                      </div>
+                    </div>
+
+                    {/* ── RIGHT COL: Smart Contract + NFT Collection stacked ── */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
                       {/* Smart Contract */}
                       <div style={{
                         background: "var(--bg2)", borderRadius: "var(--radius)",
@@ -1711,45 +1750,6 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                                 Deployed {fmtDate(contractData.contractDeployedAt / 1000)} · {fmtAge(contractData.contractDeployedAt)} ago
                               </div>
                             )}
-                          </>
-                        ) : <div style={{ color: "var(--text3)", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}><span className="spinner" /> Fetching…</div>}
-                      </div>
-                    </div>
-
-                    {/* ── RIGHT COL: VRYF Token + NFT Collection stacked ── */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-
-                      {/* VRYF Token */}
-                      <div style={{
-                        background: "var(--bg2)", borderRadius: "var(--radius)",
-                        border: "1px solid var(--border)", borderLeft: "3px solid rgba(251,191,36,0.7)",
-                        padding: "14px 16px", flex: 1,
-                      }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
-                          <span style={{ fontSize: 14 }}>🪙</span>
-                          <span style={{ fontWeight: 700, fontSize: 11, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.06em" }}>VRYF Token</span>
-                          <span style={{ marginLeft: "auto", fontSize: 9, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 6px" }}>ERC-20</span>
-                        </div>
-                        <div style={{ fontSize: 10, color: "var(--text3)", marginBottom: 10 }}>Soulbound reward token — non-transferable proof of participation.</div>
-                        {contractData?.vryfTokenAddress ? (
-                          <>
-                            <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.06em", marginBottom: 3 }}>TOKEN ADDRESS</div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 10 }}>
-                              <a href={`${ETHERSCAN}/token/${contractData.vryfTokenAddress}`} target="_blank" rel="noreferrer"
-                                style={{ color: "var(--accent2)", fontSize: 10, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
-                                {short(contractData.vryfTokenAddress, 16)}
-                              </a>
-                              <CopyBtn text={contractData.vryfTokenAddress} id="ov-vryf" copy={copy} copied={copied} />
-                              <ELink href={`${ETHERSCAN}/token/${contractData.vryfTokenAddress}`} label="↗" />
-                            </div>
-                            <div style={{ background: "linear-gradient(120deg, rgba(251,191,36,0.1) 0%, rgba(251,191,36,0.04) 100%)", borderRadius: 8, border: "1px solid rgba(251,191,36,0.2)", padding: "10px 14px" }}>
-                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 4 }}>TOTAL DISTRIBUTED</div>
-                              <div style={{ fontSize: 28, fontWeight: 800, color: "var(--amber)", fontFamily: "var(--font-space-mono),'Space Mono',monospace", lineHeight: 1 }}>
-                                {contractData.vryfDistributed ?? "—"}
-                                <span style={{ fontSize: 13, fontWeight: 500, marginLeft: 6, color: "var(--text3)" }}>VRYF</span>
-                              </div>
-                            </div>
-                            <div style={{ fontSize: 9, color: "var(--text3)", marginTop: 7 }}>Soulbound · Non-transferable · Sepolia</div>
                           </>
                         ) : <div style={{ color: "var(--text3)", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}><span className="spinner" /> Fetching…</div>}
                       </div>
