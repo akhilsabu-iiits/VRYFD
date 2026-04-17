@@ -1,1 +1,23 @@
-{}
+{
+  "903": [
+    {
+      "attendee": "0x9abe8f2a4f8b9990d0fa73a383936141e7964632",
+      "signature": "0x2afde9d2a3401e2a18dfc866530104ec35f08c7d0f92fd3c8d41f42796ee9e5e0774d44fa5af8ae4652e77367a704984fbe08d5f8fa72cbc56873be6c2aa16101c",
+      "ens": null
+    }
+  ],
+  "904": [
+    {
+      "attendee": "0x7c8f12f4649e428549caae27b4f7070839f8eb25",
+      "signature": "0x8f50093f61ffdd2f10f9152ad385a4c5ddaafe66cddb909394fdc17bbb8249d36f2d6d0e99e5037eb4e227ff1ec6bbafc8851f59769fd4bc27781ae0d84bfab51b",
+      "ens": null
+    }
+  ],
+  "905": [
+    {
+      "attendee": "0x01db578c60598faeeacdd982f2c7aa7799322873",
+      "signature": "0xbe87dcede6df7742abd7ceda5ee14d6fb3c2242ca786a6b6a35e23250d2e2d6136c488b70d5a65f8b65fa383876b2e6d1caa5190d64ddf66da8b3261be684ed41c",
+      "ens": null
+    }
+  ]
+}
