@@ -1506,417 +1506,302 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
 
               return (
                 <>
-                  {/* ── Hero Banner ─────────────────────────────────────────── */}
+                  {/* ── 1. Hero Banner ───────────────────────────────────────── */}
                   <div style={{
                     background: "linear-gradient(135deg, rgba(124,108,240,0.12) 0%, rgba(124,108,240,0.04) 50%, rgba(52,211,153,0.06) 100%)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius)",
-                    padding: "24px 28px",
-                    marginBottom: 20,
-                    position: "relative",
-                    overflow: "hidden",
+                    border: "1px solid var(--border)", borderRadius: "var(--radius)",
+                    padding: "22px 26px", marginBottom: 16, position: "relative", overflow: "hidden",
                   }}>
-                    {/* background grid lines */}
                     <div style={{
                       position: "absolute", inset: 0, opacity: 0.04,
                       backgroundImage: "linear-gradient(var(--text) 1px, transparent 1px), linear-gradient(90deg, var(--text) 1px, transparent 1px)",
-                      backgroundSize: "40px 40px",
-                      pointerEvents: "none",
+                      backgroundSize: "40px 40px", pointerEvents: "none",
                     }} />
-                    <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
-                      {/* Left: brand + subtitle */}
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                          <div style={{
-                            width: 38, height: 38, borderRadius: 10,
-                            background: "linear-gradient(135deg, var(--accent), var(--accent2))",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            fontSize: 18, boxShadow: "0 4px 12px rgba(124,108,240,0.3)",
-                          }}>V</div>
-                          <div>
-                            <div style={{ fontWeight: 800, fontSize: 18, color: "var(--text)", letterSpacing: "-0.02em" }}>VRYFD</div>
-                            <div style={{ fontSize: 11, color: "var(--text3)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Admin Console</div>
-                          </div>
-                        </div>
-                        {lastRefresh && (
-                          <div style={{ fontSize: 11, color: "var(--text3)" }}>
-                            Last synced {lastRefresh.toLocaleTimeString()} · Sepolia Testnet
-                          </div>
-                        )}
-                      </div>
-                      {/* Right: status pill */}
-                      <div style={{
-                        display: "flex", alignItems: "center", gap: 12,
-                        padding: "12px 20px", borderRadius: "var(--radius)",
-                        background: statusMeta.gradient,
-                        border: `1px solid ${statusMeta.border}`,
-                        backdropFilter: "blur(8px)",
-                      }}>
-                        <div style={{ position: "relative", flexShrink: 0 }}>
-                          <div style={{
-                            width: 12, height: 12, borderRadius: "50%",
-                            background: statusMeta.color,
-                            boxShadow: `0 0 0 3px ${statusMeta.glow}, 0 0 12px ${statusMeta.glow}`,
-                          }} />
-                        </div>
+                    <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{
+                          width: 40, height: 40, borderRadius: 10,
+                          background: "linear-gradient(135deg, var(--accent), var(--accent2))",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 20, fontWeight: 800, color: "#fff",
+                          boxShadow: "0 4px 14px rgba(124,108,240,0.35)",
+                        }}>V</div>
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: 14, color: statusMeta.color, letterSpacing: "0.02em" }}>
-                            {statusMeta.label}
+                          <div style={{ fontWeight: 800, fontSize: 17, color: "var(--text)", letterSpacing: "-0.02em" }}>VRYFD Admin</div>
+                          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 1 }}>
+                            {lastRefresh ? `Last synced ${lastRefresh.toLocaleTimeString()} · ` : ""}Sepolia Testnet
                           </div>
-                          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 1 }}>{statusMeta.sub}</div>
+                        </div>
+                      </div>
+                      <div style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        padding: "10px 18px", borderRadius: "var(--radius)",
+                        background: statusMeta.gradient, border: `1px solid ${statusMeta.border}`,
+                      }}>
+                        <div style={{
+                          width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
+                          background: statusMeta.color,
+                          boxShadow: `0 0 0 3px ${statusMeta.glow}, 0 0 10px ${statusMeta.glow}`,
+                        }} />
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: statusMeta.color }}>{statusMeta.label}</div>
+                          <div style={{ fontSize: 11, color: "var(--text3)" }}>{statusMeta.sub}</div>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* ── Key Metrics Row ──────────────────────────────────────── */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 20 }}>
+                  {/* ── 2. System Health (full-width, top priority) ──────────── */}
+                  <div style={{
+                    background: "var(--bg2)",
+                    border: "1px solid var(--border)",
+                    borderTop: `3px solid ${overallStatus === "healthy" ? "var(--green)" : overallStatus === "degraded" ? "var(--amber)" : overallStatus === "critical" ? "var(--coral)" : "var(--border2)"}`,
+                    borderRadius: "var(--radius)",
+                    padding: "18px 22px",
+                    marginBottom: 16,
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                      <span style={{ fontSize: 16 }}>🖥</span>
+                      <span style={{ fontWeight: 700, fontSize: 13, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>System Health</span>
+                      <span style={{ fontSize: 12, color: "var(--text3)", marginLeft: 4 }}>— Backend server uptime, memory &amp; environment config</span>
+                    </div>
+                    {systemData ? (
+                      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                        {/* Stat boxes */}
+                        <div style={{ display: "flex", gap: 10, flex: "1 1 320px" }}>
+                          {[
+                            { label: "UPTIME",       value: fmtUptime(liveUptime!),          color: "var(--green)" },
+                            { label: "NODE",         value: systemData.nodeVersion,           color: "var(--text2)" },
+                            { label: "ENVIRONMENT",  value: systemData.env.nodeEnv.toUpperCase(), color: systemData.env.nodeEnv === "production" ? "var(--green)" : "var(--amber)" },
+                          ].map((s, i) => (
+                            <div key={i} style={{ flex: 1, background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "10px 12px" }}>
+                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", marginBottom: 5 }}>{s.label}</div>
+                              <div style={{ fontSize: 15, fontWeight: 700, color: s.color, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>{s.value}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Memory + badges */}
+                        <div style={{ flex: "1 1 280px", display: "flex", flexDirection: "column", gap: 10, justifyContent: "center" }}>
+                          <div>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                              <span style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.06em" }}>HEAP MEMORY</span>
+                              <span style={{ fontSize: 10, fontWeight: 600, color: memPct > 80 ? "var(--coral)" : "var(--text3)" }}>
+                                {systemData.memoryMB.heapUsed}/{systemData.memoryMB.heapTotal} MB · {memPct}%
+                              </span>
+                            </div>
+                            <div style={{ height: 6, background: "var(--bg4)", borderRadius: 99, overflow: "hidden" }}>
+                              <div style={{
+                                height: "100%", borderRadius: 99, transition: "width 0.6s ease", width: `${memPct}%`,
+                                background: memPct > 80 ? "linear-gradient(90deg, var(--coral), #ff8a80)" : memPct > 60 ? "linear-gradient(90deg, var(--amber), #ffd54f)" : "linear-gradient(90deg, var(--accent), var(--accent2))",
+                              }} />
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                            <EnvBadge ok={systemData.env.hasPrivateKey} label="Private Key" />
+                            <EnvBadge ok={systemData.env.hasAlchemyUrl} label="RPC URL" />
+                            <EnvBadge ok={systemData.env.hasMongoUri}   label="Database" />
+                            <EnvBadge ok={systemData.env.nodeEnv === "production"} label="Production" />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ color: "var(--text3)", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+                        <span className="spinner" /> Fetching…
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── 3. Key Metrics Strip ─────────────────────────────────── */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 16 }}>
                     {[
-                      {
-                        label: "ETH Balance",
-                        value: relayer ? relayer.balanceEth : "—",
-                        unit: "ETH",
-                        color: bal === null ? "var(--text2)" : bal < 0.05 ? "var(--coral)" : bal < 0.1 ? "var(--amber)" : "var(--green)",
-                        icon: "◈",
-                        accent: "rgba(124,108,240,0.15)",
-                        accentBorder: "rgba(124,108,240,0.4)",
-                      },
-                      {
-                        label: "Certificates",
-                        value: contractData?.totalCertificatesIssued !== null && contractData?.totalCertificatesIssued !== undefined ? numFmt(contractData.totalCertificatesIssued) : "—",
-                        unit: "issued",
-                        color: "var(--green)",
-                        icon: "◎",
-                        accent: "rgba(52,211,153,0.12)",
-                        accentBorder: "rgba(52,211,153,0.35)",
-                      },
-                      {
-                        label: "VRYF Tokens",
-                        value: contractData?.vryfDistributed ?? "—",
-                        unit: "distributed",
-                        color: "var(--amber)",
-                        icon: "◉",
-                        accent: "rgba(251,191,36,0.12)",
-                        accentBorder: "rgba(251,191,36,0.35)",
-                      },
-                      {
-                        label: "Server Uptime",
-                        value: liveUptime !== null ? fmtUptime(liveUptime) : "—",
-                        unit: "",
-                        color: "var(--accent2)",
-                        icon: "◐",
-                        accent: "rgba(96,165,250,0.12)",
-                        accentBorder: "rgba(96,165,250,0.35)",
-                      },
+                      { label: "ETH Balance",  value: relayer ? relayer.balanceEth : "—",  unit: "ETH",         color: bal === null ? "var(--text2)" : bal < 0.05 ? "var(--coral)" : bal < 0.1 ? "var(--amber)" : "var(--green)", accentBorder: "rgba(124,108,240,0.5)" },
+                      { label: "Certificates", value: contractData?.totalCertificatesIssued != null ? numFmt(contractData.totalCertificatesIssued) : "—", unit: "issued",      color: "var(--green)",  accentBorder: "rgba(52,211,153,0.5)" },
+                      { label: "VRYF Tokens",  value: contractData?.vryfDistributed ?? "—", unit: "distributed", color: "var(--amber)",  accentBorder: "rgba(251,191,36,0.5)" },
+                      { label: "Events",       value: contractData?.totalEventsCreatedOnChain != null ? numFmt(contractData.totalEventsCreatedOnChain) : "—", unit: "on-chain",    color: "var(--accent2)", accentBorder: "rgba(96,165,250,0.5)" },
                     ].map((m, i) => (
                       <div key={i} style={{
-                        background: "var(--bg2)",
-                        border: `1px solid var(--border)`,
-                        borderTop: `3px solid ${m.accentBorder}`,
-                        borderRadius: "var(--radius)",
-                        padding: "16px 18px",
-                        position: "relative",
-                        overflow: "hidden",
+                        background: "var(--bg2)", border: "1px solid var(--border)",
+                        borderTop: `2px solid ${m.accentBorder}`,
+                        borderRadius: "var(--radius)", padding: "14px 16px",
                       }}>
-                        <div style={{
-                          position: "absolute", top: 0, right: 0, width: 60, height: 60,
-                          background: m.accent, borderRadius: "0 0 0 60px",
-                          display: "flex", alignItems: "flex-start", justifyContent: "flex-end",
-                          padding: "6px 8px", fontSize: 16, color: m.color, opacity: 0.7,
-                        }}>{m.icon}</div>
-                        <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>{m.label}</div>
-                        <div style={{
-                          fontSize: 26, fontWeight: 800, color: m.color,
-                          fontFamily: "var(--font-space-mono),'Space Mono',monospace",
-                          lineHeight: 1, marginBottom: 4, letterSpacing: "-0.02em",
-                        }}>{m.value}</div>
-                        {m.unit && <div style={{ fontSize: 11, color: "var(--text3)" }}>{m.unit}</div>}
+                        <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>{m.label}</div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: m.color, fontFamily: "var(--font-space-mono),'Space Mono',monospace", lineHeight: 1, marginBottom: 3 }}>{m.value}</div>
+                        <div style={{ fontSize: 11, color: "var(--text3)" }}>{m.unit}</div>
                       </div>
                     ))}
                   </div>
 
-                  {/* ── Detail Cards Grid ────────────────────────────────────── */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 14, marginBottom: 16 }}>
-
-                    {/* ── System Health — full-width top card with distinctive style ── */}
-                    <div style={{
-                      gridColumn: "1 / -1",
-                      background: "linear-gradient(120deg, rgba(124,108,240,0.1) 0%, rgba(96,165,250,0.07) 50%, rgba(52,211,153,0.06) 100%)",
-                      borderRadius: "var(--radius)",
-                      border: "1px solid var(--border)",
-                      borderTop: `3px solid ${overallStatus === "healthy" ? "var(--green)" : overallStatus === "degraded" ? "var(--amber)" : overallStatus === "critical" ? "var(--coral)" : "var(--border2)"}`,
-                      padding: "20px 24px",
-                    }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-                        {/* Left: title + description */}
-                        <div style={{ flex: "0 0 220px" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                            <span style={{ fontSize: 18 }}>🖥</span>
-                            <span style={{ fontWeight: 700, fontSize: 14, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>System Health</span>
-                          </div>
-                          <p style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.6, margin: 0 }}>
-                            Backend server uptime, memory &amp; environment config at a glance.
-                          </p>
-                        </div>
-                        {/* Right: stats */}
-                        {systemData ? (
-                          <div style={{ flex: 1, minWidth: 260, display: "flex", flexDirection: "column", gap: 12 }}>
-                            <div style={{ display: "flex", gap: 10 }}>
-                              <div style={{ flex: 1, background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "10px 14px" }}>
-                                <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", marginBottom: 4 }}>UPTIME</div>
-                                <div style={{ fontSize: 18, fontWeight: 700, color: "var(--green)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
-                                  {fmtUptime(liveUptime!)}
-                                </div>
-                              </div>
-                              <div style={{ flex: 1, background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "10px 14px" }}>
-                                <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", marginBottom: 4 }}>NODE VERSION</div>
-                                <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text2)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
-                                  {systemData.nodeVersion}
-                                </div>
-                              </div>
-                              <div style={{ flex: 1, background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "10px 14px" }}>
-                                <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", marginBottom: 4 }}>ENVIRONMENT</div>
-                                <div style={{ fontSize: 13, fontWeight: 700, color: systemData.env.nodeEnv === "production" ? "var(--green)" : "var(--amber)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
-                                  {systemData.env.nodeEnv.toUpperCase()}
-                                </div>
-                              </div>
-                            </div>
-                            <div>
-                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                                <span style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.06em" }}>HEAP MEMORY</span>
-                                <span style={{ fontSize: 10, fontWeight: 600, color: memPct > 80 ? "var(--coral)" : "var(--text3)" }}>
-                                  {systemData.memoryMB.heapUsed} / {systemData.memoryMB.heapTotal} MB ({memPct}%)
-                                </span>
-                              </div>
-                              <div style={{ height: 6, background: "var(--bg4)", borderRadius: 99, overflow: "hidden" }}>
-                                <div style={{
-                                  height: "100%", borderRadius: 99, transition: "width 0.6s ease",
-                                  width: `${memPct}%`,
-                                  background: memPct > 80
-                                    ? "linear-gradient(90deg, var(--coral), #ff8a80)"
-                                    : memPct > 60
-                                    ? "linear-gradient(90deg, var(--amber), #ffd54f)"
-                                    : "linear-gradient(90deg, var(--accent), var(--accent2))",
-                                }} />
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                              <EnvBadge ok={systemData.env.hasPrivateKey} label="Private Key" />
-                              <EnvBadge ok={systemData.env.hasAlchemyUrl} label="RPC URL" />
-                              <EnvBadge ok={systemData.env.hasMongoUri}   label="Database" />
-                              <EnvBadge ok={systemData.env.nodeEnv === "production"} label="Production" />
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{ color: "var(--text3)", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
-                            <span className="spinner" /> Fetching…
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                  {/* ── 4. Blockchain Detail Cards ───────────────────────────── */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(270px, 1fr))", gap: 12, marginBottom: 16 }}>
 
                     {/* Relayer Wallet */}
                     <div style={{
                       background: "var(--bg2)", borderRadius: "var(--radius)",
                       border: "1px solid var(--border)",
                       borderLeft: `4px solid ${bal === null ? "var(--border2)" : bal < 0.05 ? "var(--coral)" : bal < 0.1 ? "var(--amber)" : "var(--green)"}`,
-                      padding: "18px 20px",
+                      padding: "16px 18px",
                     }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                        <span style={{ fontSize: 16 }}>🔑</span>
-                        <span style={{ fontWeight: 700, fontSize: 13, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Relayer Wallet</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 15 }}>🔑</span>
+                        <span style={{ fontWeight: 700, fontSize: 12, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Relayer Wallet</span>
                         {relayer && (
                           <span style={{
                             marginLeft: "auto", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
                             background: bal! < 0.05 ? "rgba(248,113,113,0.15)" : bal! < 0.1 ? "rgba(251,191,36,0.15)" : "rgba(52,211,153,0.15)",
                             color: bal! < 0.05 ? "var(--coral)" : bal! < 0.1 ? "var(--amber)" : "var(--green)",
-                            letterSpacing: "0.06em",
                           }}>
-                            {bal! < 0.05 ? "⚠ CRITICAL" : bal! < 0.1 ? "⚡ LOW" : "✓ HEALTHY"}
+                            {bal! < 0.05 ? "⚠ CRITICAL" : bal! < 0.1 ? "⚡ LOW" : "✓ OK"}
                           </span>
                         )}
                       </div>
-                      <p style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5, margin: "0 0 14px 0" }}>
-                        Pays gas fees so attendees get free gasless check-ins and NFT minting.
-                      </p>
+                      <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 12 }}>Pays gas so attendees get free gasless check-ins.</div>
                       {relayer ? (
                         <>
-                          <div style={{ marginBottom: 12 }}>
-                            <div style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 4 }}>ADDRESS</div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <a href={`${ETHERSCAN}/address/${relayer.address}`} target="_blank" rel="noreferrer"
-                                style={{ color: "var(--accent2)", fontSize: 12, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
-                                {short(relayer.address, 14)}
-                              </a>
-                              <CopyBtn text={relayer.address} id="ov-wallet" copy={copy} copied={copied} />
-                            </div>
+                          <div style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.06em", marginBottom: 3 }}>ADDRESS</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+                            <a href={`${ETHERSCAN}/address/${relayer.address}`} target="_blank" rel="noreferrer"
+                              style={{ color: "var(--accent2)", fontSize: 11, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
+                              {short(relayer.address, 14)}
+                            </a>
+                            <CopyBtn text={relayer.address} id="ov-wallet" copy={copy} copied={copied} />
                           </div>
                           <div style={{ display: "flex", gap: 0, background: "var(--bg3)", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
-                            <div style={{ flex: 1, padding: "10px 14px", borderRight: "1px solid var(--border)" }}>
-                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", marginBottom: 4 }}>BALANCE</div>
-                              <div style={{
-                                fontSize: 20, fontWeight: 800, fontFamily: "var(--font-space-mono),'Space Mono',monospace",
-                                color: bal! < 0.05 ? "var(--coral)" : bal! < 0.1 ? "var(--amber)" : "var(--green)",
-                              }}>
-                                {relayer.balanceEth}
-                                <span style={{ fontSize: 11, fontWeight: 500, marginLeft: 5, color: "var(--text3)" }}>ETH</span>
+                            <div style={{ flex: 1, padding: "9px 12px", borderRight: "1px solid var(--border)" }}>
+                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>BALANCE</div>
+                              <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-space-mono),'Space Mono',monospace", color: bal! < 0.05 ? "var(--coral)" : bal! < 0.1 ? "var(--amber)" : "var(--green)" }}>
+                                {relayer.balanceEth} <span style={{ fontSize: 10, color: "var(--text3)" }}>ETH</span>
                               </div>
                             </div>
-                            <div style={{ flex: 1, padding: "10px 14px" }}>
-                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", marginBottom: 4 }}>LATEST BLOCK</div>
-                              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                            <div style={{ flex: 1, padding: "9px 12px" }}>
+                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>LATEST BLOCK</div>
+                              <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
                                 {relayer.blockNumber ? `#${numFmt(relayer.blockNumber)}` : "—"}
                               </div>
                             </div>
                           </div>
-                          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 10 }}>
-                            {relayer.chain} · Chain ID {relayer.chainId}
-                          </div>
+                          <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 8 }}>{relayer.chain} · Chain {relayer.chainId}</div>
                         </>
-                      ) : (
-                        <div style={{ color: "var(--text3)", fontSize: 13, display: "flex", alignItems: "center", gap: 8, padding: "8px 0" }}>
-                          <span className="spinner" /> Fetching…
-                        </div>
-                      )}
+                      ) : <div style={{ color: "var(--text3)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}><span className="spinner" /> Fetching…</div>}
                     </div>
 
                     {/* Smart Contract */}
                     <div style={{
                       background: "var(--bg2)", borderRadius: "var(--radius)",
                       border: "1px solid var(--border)", borderLeft: "4px solid rgba(52,211,153,0.6)",
-                      padding: "18px 20px",
+                      padding: "16px 18px",
                     }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                        <span style={{ fontSize: 16 }}>📜</span>
-                        <span style={{ fontWeight: 700, fontSize: 13, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Smart Contract</span>
-                        <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 8px" }}>Sepolia</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 15 }}>📜</span>
+                        <span style={{ fontWeight: 700, fontSize: 12, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Smart Contract</span>
+                        <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 7px" }}>Sepolia</span>
                       </div>
-                      <p style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5, margin: "0 0 14px 0" }}>
-                        Manages events, attendance, badge minting &amp; certificates on Ethereum Sepolia.
-                      </p>
+                      <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 12 }}>Manages events, badges &amp; certificates on-chain.</div>
                       {relayer?.contractAddress ? (
                         <>
-                          <div style={{ marginBottom: 12 }}>
-                            <div style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 4 }}>CONTRACT ADDRESS</div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <a href={`${ETHERSCAN}/address/${relayer.contractAddress}`} target="_blank" rel="noreferrer"
-                                style={{ color: "var(--accent2)", fontSize: 12, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
-                                {short(relayer.contractAddress, 14)}
-                              </a>
-                              <CopyBtn text={relayer.contractAddress} id="ov-contract" copy={copy} copied={copied} />
-                              <ELink href={`${ETHERSCAN}/address/${relayer.contractAddress}`} label="↗" />
-                            </div>
+                          <div style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.06em", marginBottom: 3 }}>CONTRACT ADDRESS</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+                            <a href={`${ETHERSCAN}/address/${relayer.contractAddress}`} target="_blank" rel="noreferrer"
+                              style={{ color: "var(--accent2)", fontSize: 11, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
+                              {short(relayer.contractAddress, 14)}
+                            </a>
+                            <CopyBtn text={relayer.contractAddress} id="ov-contract" copy={copy} copied={copied} />
+                            <ELink href={`${ETHERSCAN}/address/${relayer.contractAddress}`} label="↗" />
                           </div>
                           <div style={{ display: "flex", gap: 0, background: "var(--bg3)", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
-                            <div style={{ flex: 1, padding: "10px 14px", borderRight: "1px solid var(--border)" }}>
-                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", marginBottom: 4 }}>CERTIFICATES</div>
-                              <div style={{ fontSize: 20, fontWeight: 800, color: "var(--green)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
-                                {contractData?.totalCertificatesIssued !== null && contractData?.totalCertificatesIssued !== undefined ? numFmt(contractData.totalCertificatesIssued) : "—"}
+                            <div style={{ flex: 1, padding: "9px 12px", borderRight: "1px solid var(--border)" }}>
+                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>CERTIFICATES</div>
+                              <div style={{ fontSize: 18, fontWeight: 800, color: "var(--green)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                                {contractData?.totalCertificatesIssued != null ? numFmt(contractData.totalCertificatesIssued) : "—"}
                               </div>
                             </div>
-                            <div style={{ flex: 1, padding: "10px 14px" }}>
-                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", marginBottom: 4 }}>EVENTS ON-CHAIN</div>
-                              <div style={{ fontSize: 20, fontWeight: 800, color: "var(--accent2)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
-                                {contractData?.totalEventsCreatedOnChain !== null && contractData?.totalEventsCreatedOnChain !== undefined ? numFmt(contractData.totalEventsCreatedOnChain) : "—"}
+                            <div style={{ flex: 1, padding: "9px 12px" }}>
+                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>EVENTS ON-CHAIN</div>
+                              <div style={{ fontSize: 18, fontWeight: 800, color: "var(--accent2)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                                {contractData?.totalEventsCreatedOnChain != null ? numFmt(contractData.totalEventsCreatedOnChain) : "—"}
                               </div>
                             </div>
                           </div>
                           {contractData?.contractDeployedAt && (
-                            <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 10 }}>
+                            <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 8 }}>
                               Deployed {fmtDate(contractData.contractDeployedAt / 1000)} · {fmtAge(contractData.contractDeployedAt)} ago
                             </div>
                           )}
                         </>
-                      ) : (
-                        <div style={{ color: "var(--text3)", fontSize: 13, display: "flex", alignItems: "center", gap: 8, padding: "8px 0" }}>
-                          <span className="spinner" /> Fetching…
-                        </div>
-                      )}
+                      ) : <div style={{ color: "var(--text3)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}><span className="spinner" /> Fetching…</div>}
                     </div>
 
                     {/* VRYF Token */}
                     <div style={{
                       background: "var(--bg2)", borderRadius: "var(--radius)",
                       border: "1px solid var(--border)", borderLeft: "4px solid rgba(251,191,36,0.6)",
-                      padding: "18px 20px",
+                      padding: "16px 18px",
                     }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                        <span style={{ fontSize: 16 }}>🪙</span>
-                        <span style={{ fontWeight: 700, fontSize: 13, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>VRYF Token</span>
-                        <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 8px" }}>ERC-20</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 15 }}>🪙</span>
+                        <span style={{ fontWeight: 700, fontSize: 12, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>VRYF Token</span>
+                        <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 7px" }}>ERC-20</span>
                       </div>
-                      <p style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5, margin: "0 0 14px 0" }}>
-                        Soulbound reward token given to attendees — non-transferable proof of participation.
-                      </p>
+                      <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 12 }}>Soulbound reward token — non-transferable proof of participation.</div>
                       {contractData?.vryfTokenAddress ? (
                         <>
-                          <div style={{ marginBottom: 12 }}>
-                            <div style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 4 }}>TOKEN ADDRESS</div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <a href={`${ETHERSCAN}/token/${contractData.vryfTokenAddress}`} target="_blank" rel="noreferrer"
-                                style={{ color: "var(--accent2)", fontSize: 12, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
-                                {short(contractData.vryfTokenAddress, 14)}
-                              </a>
-                              <CopyBtn text={contractData.vryfTokenAddress} id="ov-vryf" copy={copy} copied={copied} />
-                              <ELink href={`${ETHERSCAN}/token/${contractData.vryfTokenAddress}`} label="↗" />
-                            </div>
+                          <div style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.06em", marginBottom: 3 }}>TOKEN ADDRESS</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+                            <a href={`${ETHERSCAN}/token/${contractData.vryfTokenAddress}`} target="_blank" rel="noreferrer"
+                              style={{ color: "var(--accent2)", fontSize: 11, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
+                              {short(contractData.vryfTokenAddress, 14)}
+                            </a>
+                            <CopyBtn text={contractData.vryfTokenAddress} id="ov-vryf" copy={copy} copied={copied} />
+                            <ELink href={`${ETHERSCAN}/token/${contractData.vryfTokenAddress}`} label="↗" />
                           </div>
-                          <div style={{ background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "10px 14px", marginBottom: 8 }}>
-                            <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", marginBottom: 4 }}>TOTAL SUPPLY DISTRIBUTED</div>
-                            <div style={{ fontSize: 24, fontWeight: 800, color: "var(--amber)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                          <div style={{ background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "9px 12px" }}>
+                            <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>TOTAL DISTRIBUTED</div>
+                            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--amber)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
                               {contractData.vryfDistributed ?? "—"}
-                              <span style={{ fontSize: 13, fontWeight: 500, marginLeft: 6, color: "var(--text3)" }}>VRYF</span>
+                              <span style={{ fontSize: 12, fontWeight: 500, marginLeft: 5, color: "var(--text3)" }}>VRYF</span>
                             </div>
                           </div>
-                          <div style={{ fontSize: 11, color: "var(--text3)" }}>Soulbound · Non-transferable · Sepolia Testnet</div>
+                          <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 8 }}>Soulbound · Non-transferable · Sepolia</div>
                         </>
-                      ) : (
-                        <div style={{ color: "var(--text3)", fontSize: 13, display: "flex", alignItems: "center", gap: 8, padding: "8px 0" }}>
-                          <span className="spinner" /> Fetching…
-                        </div>
-                      )}
+                      ) : <div style={{ color: "var(--text3)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}><span className="spinner" /> Fetching…</div>}
                     </div>
                   </div>
 
-                  {/* ── Funding Calculator (only if pending > 0) ─────────────── */}
+                  {/* ── 5. Gas Funding (only if pending > 0) ─────────────────── */}
                   {stats && relayer && stats.totalPending > 0 && (
                     <div style={{
                       background: fundingOk ? "rgba(52,211,153,0.05)" : "rgba(248,113,113,0.06)",
                       border: `1px solid ${fundingOk ? "rgba(52,211,153,0.25)" : "rgba(248,113,113,0.3)"}`,
                       borderLeft: `4px solid ${fundingOk ? "var(--green)" : "var(--coral)"}`,
-                      borderRadius: "var(--radius)",
-                      padding: "16px 20px",
-                      marginBottom: 16,
+                      borderRadius: "var(--radius)", padding: "14px 18px", marginBottom: 16,
                     }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-                        <span style={{ fontSize: 16 }}>💰</span>
-                        <span style={{ fontWeight: 700, fontSize: 13, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Gas Funding</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                        <span style={{ fontSize: 15 }}>💰</span>
+                        <span style={{ fontWeight: 700, fontSize: 12, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Gas Funding</span>
                         <span style={{
-                          marginLeft: "auto", fontSize: 11, fontWeight: 700, padding: "3px 12px", borderRadius: 20,
+                          marginLeft: "auto", fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 20,
                           background: fundingOk ? "rgba(52,211,153,0.15)" : "rgba(248,113,113,0.15)",
                           border: `1px solid ${fundingOk ? "rgba(52,211,153,0.4)" : "rgba(248,113,113,0.4)"}`,
                           color: fundingOk ? "var(--green)" : "var(--coral)",
-                          letterSpacing: "0.04em",
                         }}>
                           {fundingOk ? "✓ Sufficient" : "⚠ Shortfall"}
                         </span>
                       </div>
                       <div style={{ display: "flex", gap: 0, borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)", background: "var(--bg3)" }}>
                         {[
-                          { label: "Pending",       value: `${stats.totalPending}`,                                             sub: "confirmations queued",  color: "var(--text)" },
-                          { label: "Est. Cost",      value: `~${pendingCostEth.toFixed(6)}`,                                    sub: `ETH @ ${GAS_GWEI} Gwei`, color: "var(--amber)" },
-                          { label: "Balance",        value: relayer.balanceEth,                                                 sub: "ETH available",          color: fundingOk ? "var(--green)" : "var(--coral)" },
-                          { label: "Net",            value: `${fundingOk ? "+" : ""}${(bal! - pendingCostEth).toFixed(6)}`,    sub: "ETH surplus/shortfall",  color: fundingOk ? "var(--green)" : "var(--coral)" },
+                          { label: "Pending",   value: `${stats.totalPending}`,                                          sub: "confirmations queued",  color: "var(--text)" },
+                          { label: "Est. Cost", value: `~${pendingCostEth.toFixed(6)}`,                                  sub: `ETH @ ${GAS_GWEI} Gwei`, color: "var(--amber)" },
+                          { label: "Balance",   value: relayer.balanceEth,                                               sub: "ETH available",          color: fundingOk ? "var(--green)" : "var(--coral)" },
+                          { label: "Net",       value: `${fundingOk ? "+" : ""}${(bal! - pendingCostEth).toFixed(6)}`,  sub: "surplus/shortfall",      color: fundingOk ? "var(--green)" : "var(--coral)" },
                         ].map((item, i) => (
-                          <div key={i} style={{ flex: 1, padding: "12px 14px", borderRight: i < 3 ? "1px solid var(--border)" : "none" }}>
-                            <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 5 }}>{item.label}</div>
-                            <div style={{ fontSize: 18, fontWeight: 800, color: item.color, fontFamily: "var(--font-space-mono),'Space Mono',monospace", lineHeight: 1 }}>{item.value}</div>
-                            <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 4 }}>{item.sub}</div>
+                          <div key={i} style={{ flex: 1, padding: "10px 12px", borderRight: i < 3 ? "1px solid var(--border)" : "none" }}>
+                            <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 4 }}>{item.label}</div>
+                            <div style={{ fontSize: 16, fontWeight: 800, color: item.color, fontFamily: "var(--font-space-mono),'Space Mono',monospace", lineHeight: 1 }}>{item.value}</div>
+                            <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 3 }}>{item.sub}</div>
                           </div>
                         ))}
                       </div>
-                      <div style={{ marginTop: 8, fontSize: 11, color: "var(--text3)" }}>
-                        ℹ Estimate at {GAS_GWEI} Gwei · {numFmt(CHECKIN_GAS)} gas per confirmation. Check Gas tab for live prices.
+                      <div style={{ marginTop: 7, fontSize: 11, color: "var(--text3)" }}>
+                        ℹ Estimate at {GAS_GWEI} Gwei · {numFmt(CHECKIN_GAS)} gas/confirmation. Check Gas tab for live prices.
                       </div>
                     </div>
                   )}
