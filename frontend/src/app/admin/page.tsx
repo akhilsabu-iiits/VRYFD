@@ -1504,99 +1504,108 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
               const pendingCostEth = stats ? stats.totalPending * CHECKIN_GAS * GAS_GWEI * 1e-9 : 0;
               const fundingOk = bal !== null ? bal >= pendingCostEth : true;
 
+              const totalNfts = (stats?.totalConfirmed ?? 0) + (contractData?.totalCertificatesIssued ?? 0);
+
               return (
                 <>
-                  {/* ── 1. Hero Banner ───────────────────────────────────────── */}
+                  {/* ══ 1. HERO ══════════════════════════════════════════════════ */}
                   <div style={{
-                    background: "linear-gradient(135deg, rgba(124,108,240,0.12) 0%, rgba(124,108,240,0.04) 50%, rgba(52,211,153,0.06) 100%)",
+                    position: "relative", overflow: "hidden",
+                    background: "linear-gradient(135deg, rgba(124,108,240,0.13) 0%, rgba(96,165,250,0.07) 60%, rgba(52,211,153,0.08) 100%)",
                     border: "1px solid var(--border)", borderRadius: "var(--radius)",
-                    padding: "22px 26px", marginBottom: 16, position: "relative", overflow: "hidden",
+                    padding: "20px 24px", marginBottom: 14,
                   }}>
+                    {/* subtle dot grid */}
                     <div style={{
-                      position: "absolute", inset: 0, opacity: 0.04,
-                      backgroundImage: "linear-gradient(var(--text) 1px, transparent 1px), linear-gradient(90deg, var(--text) 1px, transparent 1px)",
-                      backgroundSize: "40px 40px", pointerEvents: "none",
+                      position: "absolute", inset: 0, pointerEvents: "none", opacity: 0.06,
+                      backgroundImage: "radial-gradient(var(--text) 1px, transparent 1px)",
+                      backgroundSize: "24px 24px",
                     }} />
-                    <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
+                    <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                      {/* brand */}
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <div style={{
-                          width: 40, height: 40, borderRadius: 10,
-                          background: "linear-gradient(135deg, var(--accent), var(--accent2))",
+                          width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+                          background: "linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%)",
                           display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 20, fontWeight: 800, color: "#fff",
-                          boxShadow: "0 4px 14px rgba(124,108,240,0.35)",
+                          fontSize: 22, fontWeight: 900, color: "#fff",
+                          boxShadow: "0 4px 16px rgba(124,108,240,0.4)",
                         }}>V</div>
                         <div>
-                          <div style={{ fontWeight: 800, fontSize: 17, color: "var(--text)", letterSpacing: "-0.02em" }}>VRYFD Admin</div>
-                          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 1 }}>
-                            {lastRefresh ? `Last synced ${lastRefresh.toLocaleTimeString()} · ` : ""}Sepolia Testnet
-                          </div>
+                          <div style={{ fontWeight: 800, fontSize: 18, color: "var(--text)", letterSpacing: "-0.03em", lineHeight: 1 }}>VRYFD</div>
+                          <div style={{ fontSize: 11, color: "var(--text3)", letterSpacing: "0.07em", textTransform: "uppercase", marginTop: 3 }}>Admin Console</div>
                         </div>
                       </div>
-                      <div style={{
-                        display: "flex", alignItems: "center", gap: 10,
-                        padding: "10px 18px", borderRadius: "var(--radius)",
-                        background: statusMeta.gradient, border: `1px solid ${statusMeta.border}`,
-                      }}>
+                      {/* right: status + meta */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        {lastRefresh && (
+                          <span style={{ fontSize: 11, color: "var(--text3)", padding: "4px 10px", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20 }}>
+                            ↻ {lastRefresh.toLocaleTimeString()}
+                          </span>
+                        )}
+                        <span style={{ fontSize: 11, color: "var(--text3)", padding: "4px 10px", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20 }}>
+                          Sepolia #{relayer?.blockNumber ? numFmt(relayer.blockNumber) : "…"}
+                        </span>
                         <div style={{
-                          width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
-                          background: statusMeta.color,
-                          boxShadow: `0 0 0 3px ${statusMeta.glow}, 0 0 10px ${statusMeta.glow}`,
-                        }} />
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: 13, color: statusMeta.color }}>{statusMeta.label}</div>
-                          <div style={{ fontSize: 11, color: "var(--text3)" }}>{statusMeta.sub}</div>
+                          display: "flex", alignItems: "center", gap: 8,
+                          padding: "8px 16px", borderRadius: "var(--radius)",
+                          background: statusMeta.gradient, border: `1px solid ${statusMeta.border}`,
+                        }}>
+                          <div style={{
+                            width: 9, height: 9, borderRadius: "50%", flexShrink: 0,
+                            background: statusMeta.color,
+                            boxShadow: `0 0 0 2px ${statusMeta.glow}, 0 0 8px ${statusMeta.glow}`,
+                          }} />
+                          <span style={{ fontWeight: 700, fontSize: 13, color: statusMeta.color }}>{statusMeta.label}</span>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* ── 2. System Health (full-width, top priority) ──────────── */}
+                  {/* ══ 2. SYSTEM HEALTH ════════════════════════════════════════ */}
                   <div style={{
-                    background: "var(--bg2)",
+                    background: "var(--bg2)", borderRadius: "var(--radius)",
                     border: "1px solid var(--border)",
                     borderTop: `3px solid ${overallStatus === "healthy" ? "var(--green)" : overallStatus === "degraded" ? "var(--amber)" : overallStatus === "critical" ? "var(--coral)" : "var(--border2)"}`,
-                    borderRadius: "var(--radius)",
-                    padding: "18px 22px",
-                    marginBottom: 16,
+                    padding: "16px 20px", marginBottom: 14,
                   }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-                      <span style={{ fontSize: 16 }}>🖥</span>
-                      <span style={{ fontWeight: 700, fontSize: 13, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>System Health</span>
-                      <span style={{ fontSize: 12, color: "var(--text3)", marginLeft: 4 }}>— Backend server uptime, memory &amp; environment config</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                      <span style={{ fontSize: 15 }}>🖥</span>
+                      <span style={{ fontWeight: 700, fontSize: 12, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.06em" }}>System Health</span>
+                      <span style={{ fontSize: 11, color: "var(--text3)" }}>— Backend server &amp; environment</span>
                     </div>
                     {systemData ? (
-                      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-                        {/* Stat boxes */}
-                        <div style={{ display: "flex", gap: 10, flex: "1 1 320px" }}>
+                      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                        {/* 3 stat tiles */}
+                        <div style={{ display: "flex", gap: 8, flex: "1 1 300px" }}>
                           {[
-                            { label: "UPTIME",       value: fmtUptime(liveUptime!),          color: "var(--green)" },
-                            { label: "NODE",         value: systemData.nodeVersion,           color: "var(--text2)" },
-                            { label: "ENVIRONMENT",  value: systemData.env.nodeEnv.toUpperCase(), color: systemData.env.nodeEnv === "production" ? "var(--green)" : "var(--amber)" },
+                            { label: "UPTIME",      value: fmtUptime(liveUptime!),              color: "var(--green)" },
+                            { label: "NODE",        value: systemData.nodeVersion,               color: "var(--text2)" },
+                            { label: "MODE",        value: systemData.env.nodeEnv.toUpperCase(), color: systemData.env.nodeEnv === "production" ? "var(--green)" : "var(--amber)" },
                           ].map((s, i) => (
-                            <div key={i} style={{ flex: 1, background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "10px 12px" }}>
-                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", marginBottom: 5 }}>{s.label}</div>
-                              <div style={{ fontSize: 15, fontWeight: 700, color: s.color, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>{s.value}</div>
+                            <div key={i} style={{ flex: 1, background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "9px 11px" }}>
+                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.08em", marginBottom: 4 }}>{s.label}</div>
+                              <div style={{ fontSize: 14, fontWeight: 700, color: s.color, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>{s.value}</div>
                             </div>
                           ))}
                         </div>
-                        {/* Memory + badges */}
-                        <div style={{ flex: "1 1 280px", display: "flex", flexDirection: "column", gap: 10, justifyContent: "center" }}>
+                        {/* memory bar + env badges */}
+                        <div style={{ flex: "1 1 260px", display: "flex", flexDirection: "column", gap: 9, justifyContent: "center" }}>
                           <div>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                              <span style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.06em" }}>HEAP MEMORY</span>
-                              <span style={{ fontSize: 10, fontWeight: 600, color: memPct > 80 ? "var(--coral)" : "var(--text3)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                              <span style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em" }}>HEAP MEMORY</span>
+                              <span style={{ fontSize: 9, fontWeight: 600, color: memPct > 80 ? "var(--coral)" : "var(--text3)" }}>
                                 {systemData.memoryMB.heapUsed}/{systemData.memoryMB.heapTotal} MB · {memPct}%
                               </span>
                             </div>
-                            <div style={{ height: 6, background: "var(--bg4)", borderRadius: 99, overflow: "hidden" }}>
+                            <div style={{ height: 5, background: "var(--bg4)", borderRadius: 99, overflow: "hidden" }}>
                               <div style={{
-                                height: "100%", borderRadius: 99, transition: "width 0.6s ease", width: `${memPct}%`,
-                                background: memPct > 80 ? "linear-gradient(90deg, var(--coral), #ff8a80)" : memPct > 60 ? "linear-gradient(90deg, var(--amber), #ffd54f)" : "linear-gradient(90deg, var(--accent), var(--accent2))",
+                                height: "100%", borderRadius: 99, transition: "width 0.6s", width: `${memPct}%`,
+                                background: memPct > 80 ? "var(--coral)" : memPct > 60 ? "var(--amber)" : "linear-gradient(90deg, var(--accent), var(--accent2))",
                               }} />
                             </div>
                           </div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                             <EnvBadge ok={systemData.env.hasPrivateKey} label="Private Key" />
                             <EnvBadge ok={systemData.env.hasAlchemyUrl} label="RPC URL" />
                             <EnvBadge ok={systemData.env.hasMongoUri}   label="Database" />
@@ -1605,229 +1614,249 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                         </div>
                       </div>
                     ) : (
-                      <div style={{ color: "var(--text3)", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ color: "var(--text3)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
                         <span className="spinner" /> Fetching…
                       </div>
                     )}
                   </div>
 
-                  {/* ── 3. Key Metrics Strip ─────────────────────────────────── */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 16 }}>
+                  {/* ══ 3. PLATFORM STATS STRIP ════════════════════════════════ */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginBottom: 14 }}>
                     {[
-                      { label: "ETH Balance",  value: relayer ? relayer.balanceEth : "—",  unit: "ETH",         color: bal === null ? "var(--text2)" : bal < 0.05 ? "var(--coral)" : bal < 0.1 ? "var(--amber)" : "var(--green)", accentBorder: "rgba(124,108,240,0.5)" },
-                      { label: "Certificates", value: contractData?.totalCertificatesIssued != null ? numFmt(contractData.totalCertificatesIssued) : "—", unit: "issued",      color: "var(--green)",  accentBorder: "rgba(52,211,153,0.5)" },
-                      { label: "VRYF Tokens",  value: contractData?.vryfDistributed ?? "—", unit: "distributed", color: "var(--amber)",  accentBorder: "rgba(251,191,36,0.5)" },
-                      { label: "Events",       value: contractData?.totalEventsCreatedOnChain != null ? numFmt(contractData.totalEventsCreatedOnChain) : "—", unit: "on-chain",    color: "var(--accent2)", accentBorder: "rgba(96,165,250,0.5)" },
+                      {
+                        icon: "⛽", label: "ETH Balance",
+                        value: relayer ? relayer.balanceEth : "—", unit: "ETH",
+                        color: bal === null ? "var(--text2)" : bal < 0.05 ? "var(--coral)" : bal < 0.1 ? "var(--amber)" : "var(--green)",
+                        bg: "rgba(124,108,240,0.08)", border: "rgba(124,108,240,0.3)",
+                      },
+                      {
+                        icon: "🏅", label: "POAP Badges",
+                        value: stats ? numFmt(stats.totalConfirmed) : "—", unit: "ERC-1155",
+                        color: "rgba(168,85,247,0.9)",
+                        bg: "rgba(168,85,247,0.07)", border: "rgba(168,85,247,0.25)",
+                      },
+                      {
+                        icon: "📜", label: "Certificates",
+                        value: contractData?.totalCertificatesIssued != null ? numFmt(contractData.totalCertificatesIssued) : "—", unit: "ERC-721",
+                        color: "var(--green)",
+                        bg: "rgba(52,211,153,0.07)", border: "rgba(52,211,153,0.25)",
+                      },
+                      {
+                        icon: "🪙", label: "VRYF Tokens",
+                        value: contractData?.vryfDistributed ?? "—", unit: "distributed",
+                        color: "var(--amber)",
+                        bg: "rgba(251,191,36,0.07)", border: "rgba(251,191,36,0.25)",
+                      },
+                      {
+                        icon: "📅", label: "Events",
+                        value: contractData?.totalEventsCreatedOnChain != null ? numFmt(contractData.totalEventsCreatedOnChain) : "—", unit: "on-chain",
+                        color: "var(--accent2)",
+                        bg: "rgba(96,165,250,0.07)", border: "rgba(96,165,250,0.25)",
+                      },
                     ].map((m, i) => (
                       <div key={i} style={{
-                        background: "var(--bg2)", border: "1px solid var(--border)",
-                        borderTop: `2px solid ${m.accentBorder}`,
-                        borderRadius: "var(--radius)", padding: "14px 16px",
+                        background: m.bg, borderRadius: "var(--radius)",
+                        border: `1px solid ${m.border}`, padding: "14px 14px 12px",
+                        textAlign: "center",
                       }}>
-                        <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>{m.label}</div>
-                        <div style={{ fontSize: 24, fontWeight: 800, color: m.color, fontFamily: "var(--font-space-mono),'Space Mono',monospace", lineHeight: 1, marginBottom: 3 }}>{m.value}</div>
-                        <div style={{ fontSize: 11, color: "var(--text3)" }}>{m.unit}</div>
+                        <div style={{ fontSize: 20, marginBottom: 6 }}>{m.icon}</div>
+                        <div style={{ fontSize: 22, fontWeight: 800, color: m.color, fontFamily: "var(--font-space-mono),'Space Mono',monospace", lineHeight: 1, marginBottom: 4 }}>{m.value}</div>
+                        <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 1 }}>{m.label}</div>
+                        <div style={{ fontSize: 9, color: "var(--text3)", opacity: 0.7 }}>{m.unit}</div>
                       </div>
                     ))}
                   </div>
 
-                  {/* ── 4. Blockchain Detail Cards ───────────────────────────── */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(270px, 1fr))", gap: 12, marginBottom: 16 }}>
+                  {/* ══ 4. TWO-COLUMN DETAIL GRID ═══════════════════════════════ */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
 
-                    {/* Relayer Wallet */}
-                    <div style={{
-                      background: "var(--bg2)", borderRadius: "var(--radius)",
-                      border: "1px solid var(--border)",
-                      borderLeft: `4px solid ${bal === null ? "var(--border2)" : bal < 0.05 ? "var(--coral)" : bal < 0.1 ? "var(--amber)" : "var(--green)"}`,
-                      padding: "16px 18px",
-                    }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                        <span style={{ fontSize: 15 }}>🔑</span>
-                        <span style={{ fontWeight: 700, fontSize: 12, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Relayer Wallet</span>
-                        {relayer && (
-                          <span style={{
-                            marginLeft: "auto", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
-                            background: bal! < 0.05 ? "rgba(248,113,113,0.15)" : bal! < 0.1 ? "rgba(251,191,36,0.15)" : "rgba(52,211,153,0.15)",
-                            color: bal! < 0.05 ? "var(--coral)" : bal! < 0.1 ? "var(--amber)" : "var(--green)",
-                          }}>
-                            {bal! < 0.05 ? "⚠ CRITICAL" : bal! < 0.1 ? "⚡ LOW" : "✓ OK"}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 12 }}>Pays gas so attendees get free gasless check-ins.</div>
-                      {relayer ? (
-                        <>
-                          <div style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.06em", marginBottom: 3 }}>ADDRESS</div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
-                            <a href={`${ETHERSCAN}/address/${relayer.address}`} target="_blank" rel="noreferrer"
-                              style={{ color: "var(--accent2)", fontSize: 11, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
-                              {short(relayer.address, 14)}
-                            </a>
-                            <CopyBtn text={relayer.address} id="ov-wallet" copy={copy} copied={copied} />
-                          </div>
-                          <div style={{ display: "flex", gap: 0, background: "var(--bg3)", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
-                            <div style={{ flex: 1, padding: "9px 12px", borderRight: "1px solid var(--border)" }}>
-                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>BALANCE</div>
-                              <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-space-mono),'Space Mono',monospace", color: bal! < 0.05 ? "var(--coral)" : bal! < 0.1 ? "var(--amber)" : "var(--green)" }}>
-                                {relayer.balanceEth} <span style={{ fontSize: 10, color: "var(--text3)" }}>ETH</span>
-                              </div>
-                            </div>
-                            <div style={{ flex: 1, padding: "9px 12px" }}>
-                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>LATEST BLOCK</div>
-                              <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
-                                {relayer.blockNumber ? `#${numFmt(relayer.blockNumber)}` : "—"}
-                              </div>
-                            </div>
-                          </div>
-                          <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 8 }}>{relayer.chain} · Chain {relayer.chainId}</div>
-                        </>
-                      ) : <div style={{ color: "var(--text3)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}><span className="spinner" /> Fetching…</div>}
-                    </div>
+                    {/* ── LEFT COL: Relayer + Contract stacked ── */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-                    {/* Smart Contract */}
-                    <div style={{
-                      background: "var(--bg2)", borderRadius: "var(--radius)",
-                      border: "1px solid var(--border)", borderLeft: "4px solid rgba(52,211,153,0.6)",
-                      padding: "16px 18px",
-                    }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                        <span style={{ fontSize: 15 }}>📜</span>
-                        <span style={{ fontWeight: 700, fontSize: 12, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Smart Contract</span>
-                        <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 7px" }}>Sepolia</span>
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 12 }}>Manages events, badges &amp; certificates on-chain.</div>
-                      {relayer?.contractAddress ? (
-                        <>
-                          <div style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.06em", marginBottom: 3 }}>CONTRACT ADDRESS</div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
-                            <a href={`${ETHERSCAN}/address/${relayer.contractAddress}`} target="_blank" rel="noreferrer"
-                              style={{ color: "var(--accent2)", fontSize: 11, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
-                              {short(relayer.contractAddress, 14)}
-                            </a>
-                            <CopyBtn text={relayer.contractAddress} id="ov-contract" copy={copy} copied={copied} />
-                            <ELink href={`${ETHERSCAN}/address/${relayer.contractAddress}`} label="↗" />
-                          </div>
-                          <div style={{ display: "flex", gap: 0, background: "var(--bg3)", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
-                            <div style={{ flex: 1, padding: "9px 12px", borderRight: "1px solid var(--border)" }}>
-                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>CERTIFICATES</div>
-                              <div style={{ fontSize: 18, fontWeight: 800, color: "var(--green)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
-                                {contractData?.totalCertificatesIssued != null ? numFmt(contractData.totalCertificatesIssued) : "—"}
-                              </div>
-                            </div>
-                            <div style={{ flex: 1, padding: "9px 12px" }}>
-                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>EVENTS ON-CHAIN</div>
-                              <div style={{ fontSize: 18, fontWeight: 800, color: "var(--accent2)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
-                                {contractData?.totalEventsCreatedOnChain != null ? numFmt(contractData.totalEventsCreatedOnChain) : "—"}
-                              </div>
-                            </div>
-                          </div>
-                          {contractData?.contractDeployedAt && (
-                            <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 8 }}>
-                              Deployed {fmtDate(contractData.contractDeployedAt / 1000)} · {fmtAge(contractData.contractDeployedAt)} ago
-                            </div>
+                      {/* Relayer Wallet */}
+                      <div style={{
+                        background: "var(--bg2)", borderRadius: "var(--radius)",
+                        border: "1px solid var(--border)",
+                        borderLeft: `3px solid ${bal === null ? "var(--border2)" : bal < 0.05 ? "var(--coral)" : bal < 0.1 ? "var(--amber)" : "var(--green)"}`,
+                        padding: "14px 16px", flex: 1,
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
+                          <span style={{ fontSize: 14 }}>🔑</span>
+                          <span style={{ fontWeight: 700, fontSize: 11, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Relayer Wallet</span>
+                          {relayer && (
+                            <span style={{
+                              marginLeft: "auto", fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20,
+                              background: bal! < 0.05 ? "rgba(248,113,113,0.15)" : bal! < 0.1 ? "rgba(251,191,36,0.15)" : "rgba(52,211,153,0.15)",
+                              color: bal! < 0.05 ? "var(--coral)" : bal! < 0.1 ? "var(--amber)" : "var(--green)",
+                            }}>
+                              {bal! < 0.05 ? "⚠ CRITICAL" : bal! < 0.1 ? "⚡ LOW" : "✓ OK"}
+                            </span>
                           )}
-                        </>
-                      ) : <div style={{ color: "var(--text3)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}><span className="spinner" /> Fetching…</div>}
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--text3)", marginBottom: 10 }}>Pays gas so attendees get free gasless check-ins.</div>
+                        {relayer ? (
+                          <>
+                            <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.06em", marginBottom: 3 }}>ADDRESS</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 10 }}>
+                              <a href={`${ETHERSCAN}/address/${relayer.address}`} target="_blank" rel="noreferrer"
+                                style={{ color: "var(--accent2)", fontSize: 10, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
+                                {short(relayer.address, 16)}
+                              </a>
+                              <CopyBtn text={relayer.address} id="ov-wallet" copy={copy} copied={copied} />
+                            </div>
+                            <div style={{ display: "flex", gap: 0, background: "var(--bg3)", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+                              <div style={{ flex: 1, padding: "8px 11px", borderRight: "1px solid var(--border)" }}>
+                                <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>BALANCE</div>
+                                <div style={{ fontSize: 17, fontWeight: 800, fontFamily: "var(--font-space-mono),'Space Mono',monospace", color: bal! < 0.05 ? "var(--coral)" : bal! < 0.1 ? "var(--amber)" : "var(--green)" }}>
+                                  {relayer.balanceEth} <span style={{ fontSize: 10, color: "var(--text3)", fontWeight: 400 }}>ETH</span>
+                                </div>
+                              </div>
+                              <div style={{ flex: 1, padding: "8px 11px" }}>
+                                <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>LATEST BLOCK</div>
+                                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                                  {relayer.blockNumber ? `#${numFmt(relayer.blockNumber)}` : "—"}
+                                </div>
+                              </div>
+                            </div>
+                            <div style={{ fontSize: 9, color: "var(--text3)", marginTop: 7 }}>{relayer.chain} · Chain ID {relayer.chainId}</div>
+                          </>
+                        ) : <div style={{ color: "var(--text3)", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}><span className="spinner" /> Fetching…</div>}
+                      </div>
+
+                      {/* Smart Contract */}
+                      <div style={{
+                        background: "var(--bg2)", borderRadius: "var(--radius)",
+                        border: "1px solid var(--border)", borderLeft: "3px solid rgba(52,211,153,0.7)",
+                        padding: "14px 16px", flex: 1,
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
+                          <span style={{ fontSize: 14 }}>📜</span>
+                          <span style={{ fontWeight: 700, fontSize: 11, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Smart Contract</span>
+                          <span style={{ marginLeft: "auto", fontSize: 9, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 6px" }}>Sepolia</span>
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--text3)", marginBottom: 10 }}>Manages events, badges &amp; certificates on-chain.</div>
+                        {relayer?.contractAddress ? (
+                          <>
+                            <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.06em", marginBottom: 3 }}>CONTRACT ADDRESS</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 10 }}>
+                              <a href={`${ETHERSCAN}/address/${relayer.contractAddress}`} target="_blank" rel="noreferrer"
+                                style={{ color: "var(--accent2)", fontSize: 10, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
+                                {short(relayer.contractAddress, 16)}
+                              </a>
+                              <CopyBtn text={relayer.contractAddress} id="ov-contract" copy={copy} copied={copied} />
+                              <ELink href={`${ETHERSCAN}/address/${relayer.contractAddress}`} label="↗" />
+                            </div>
+                            <div style={{ display: "flex", gap: 0, background: "var(--bg3)", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+                              <div style={{ flex: 1, padding: "8px 11px", borderRight: "1px solid var(--border)" }}>
+                                <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>CERTIFICATES</div>
+                                <div style={{ fontSize: 17, fontWeight: 800, color: "var(--green)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                                  {contractData?.totalCertificatesIssued != null ? numFmt(contractData.totalCertificatesIssued) : "—"}
+                                </div>
+                              </div>
+                              <div style={{ flex: 1, padding: "8px 11px" }}>
+                                <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>EVENTS ON-CHAIN</div>
+                                <div style={{ fontSize: 17, fontWeight: 800, color: "var(--accent2)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                                  {contractData?.totalEventsCreatedOnChain != null ? numFmt(contractData.totalEventsCreatedOnChain) : "—"}
+                                </div>
+                              </div>
+                            </div>
+                            {contractData?.contractDeployedAt && (
+                              <div style={{ fontSize: 9, color: "var(--text3)", marginTop: 7 }}>
+                                Deployed {fmtDate(contractData.contractDeployedAt / 1000)} · {fmtAge(contractData.contractDeployedAt)} ago
+                              </div>
+                            )}
+                          </>
+                        ) : <div style={{ color: "var(--text3)", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}><span className="spinner" /> Fetching…</div>}
+                      </div>
                     </div>
 
-                    {/* VRYF Token */}
-                    <div style={{
-                      background: "var(--bg2)", borderRadius: "var(--radius)",
-                      border: "1px solid var(--border)", borderLeft: "4px solid rgba(251,191,36,0.6)",
-                      padding: "16px 18px",
-                    }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                        <span style={{ fontSize: 15 }}>🪙</span>
-                        <span style={{ fontWeight: 700, fontSize: 12, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>VRYF Token</span>
-                        <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 7px" }}>ERC-20</span>
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 12 }}>Soulbound reward token — non-transferable proof of participation.</div>
-                      {contractData?.vryfTokenAddress ? (
-                        <>
-                          <div style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.06em", marginBottom: 3 }}>TOKEN ADDRESS</div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
-                            <a href={`${ETHERSCAN}/token/${contractData.vryfTokenAddress}`} target="_blank" rel="noreferrer"
-                              style={{ color: "var(--accent2)", fontSize: 11, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
-                              {short(contractData.vryfTokenAddress, 14)}
-                            </a>
-                            <CopyBtn text={contractData.vryfTokenAddress} id="ov-vryf" copy={copy} copied={copied} />
-                            <ELink href={`${ETHERSCAN}/token/${contractData.vryfTokenAddress}`} label="↗" />
-                          </div>
-                          <div style={{ background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "9px 12px" }}>
-                            <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>TOTAL DISTRIBUTED</div>
-                            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--amber)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
-                              {contractData.vryfDistributed ?? "—"}
-                              <span style={{ fontSize: 12, fontWeight: 500, marginLeft: 5, color: "var(--text3)" }}>VRYF</span>
-                            </div>
-                          </div>
-                          <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 8 }}>Soulbound · Non-transferable · Sepolia</div>
-                        </>
-                      ) : <div style={{ color: "var(--text3)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}><span className="spinner" /> Fetching…</div>}
-                    </div>
+                    {/* ── RIGHT COL: VRYF Token + NFT Collection stacked ── */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-                    {/* NFT Collection */}
-                    <div style={{
-                      background: "var(--bg2)", borderRadius: "var(--radius)",
-                      border: "1px solid var(--border)", borderLeft: "4px solid rgba(168,85,247,0.6)",
-                      padding: "16px 18px",
-                    }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                        <span style={{ fontSize: 15 }}>🏅</span>
-                        <span style={{ fontWeight: 700, fontSize: 12, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>NFT Collection</span>
-                        <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 7px" }}>On-Chain</span>
+                      {/* VRYF Token */}
+                      <div style={{
+                        background: "var(--bg2)", borderRadius: "var(--radius)",
+                        border: "1px solid var(--border)", borderLeft: "3px solid rgba(251,191,36,0.7)",
+                        padding: "14px 16px", flex: 1,
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
+                          <span style={{ fontSize: 14 }}>🪙</span>
+                          <span style={{ fontWeight: 700, fontSize: 11, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.06em" }}>VRYF Token</span>
+                          <span style={{ marginLeft: "auto", fontSize: 9, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 6px" }}>ERC-20</span>
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--text3)", marginBottom: 10 }}>Soulbound reward token — non-transferable proof of participation.</div>
+                        {contractData?.vryfTokenAddress ? (
+                          <>
+                            <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.06em", marginBottom: 3 }}>TOKEN ADDRESS</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 10 }}>
+                              <a href={`${ETHERSCAN}/token/${contractData.vryfTokenAddress}`} target="_blank" rel="noreferrer"
+                                style={{ color: "var(--accent2)", fontSize: 10, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
+                                {short(contractData.vryfTokenAddress, 16)}
+                              </a>
+                              <CopyBtn text={contractData.vryfTokenAddress} id="ov-vryf" copy={copy} copied={copied} />
+                              <ELink href={`${ETHERSCAN}/token/${contractData.vryfTokenAddress}`} label="↗" />
+                            </div>
+                            <div style={{ background: "linear-gradient(120deg, rgba(251,191,36,0.1) 0%, rgba(251,191,36,0.04) 100%)", borderRadius: 8, border: "1px solid rgba(251,191,36,0.2)", padding: "10px 14px" }}>
+                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 4 }}>TOTAL DISTRIBUTED</div>
+                              <div style={{ fontSize: 28, fontWeight: 800, color: "var(--amber)", fontFamily: "var(--font-space-mono),'Space Mono',monospace", lineHeight: 1 }}>
+                                {contractData.vryfDistributed ?? "—"}
+                                <span style={{ fontSize: 13, fontWeight: 500, marginLeft: 6, color: "var(--text3)" }}>VRYF</span>
+                              </div>
+                            </div>
+                            <div style={{ fontSize: 9, color: "var(--text3)", marginTop: 7 }}>Soulbound · Non-transferable · Sepolia</div>
+                          </>
+                        ) : <div style={{ color: "var(--text3)", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}><span className="spinner" /> Fetching…</div>}
                       </div>
-                      <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 12 }}>All NFTs minted by the platform — badges, certificates &amp; milestone rewards.</div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        {/* POAP Badges */}
-                        <div style={{ background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "9px 12px" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div>
-                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>POAP BADGES</div>
-                              <div style={{ fontSize: 10, color: "var(--text3)" }}>ERC-1155 · Soulbound · 1 per check-in</div>
-                            </div>
-                            <div style={{ fontSize: 22, fontWeight: 800, color: "rgba(168,85,247,0.9)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
-                              {stats ? numFmt(stats.totalConfirmed) : "—"}
-                            </div>
-                          </div>
+
+                      {/* NFT Collection */}
+                      <div style={{
+                        background: "var(--bg2)", borderRadius: "var(--radius)",
+                        border: "1px solid var(--border)", borderLeft: "3px solid rgba(168,85,247,0.7)",
+                        padding: "14px 16px", flex: 1,
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
+                          <span style={{ fontSize: 14 }}>🏅</span>
+                          <span style={{ fontWeight: 700, fontSize: 11, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.06em" }}>NFT Collection</span>
+                          <span style={{ marginLeft: "auto", fontSize: 9, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 6px" }}>On-Chain</span>
                         </div>
-                        {/* Certificates */}
-                        <div style={{ background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "9px 12px" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div>
-                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>CERTIFICATES</div>
-                              <div style={{ fontSize: 10, color: "var(--text3)" }}>ERC-721 · Verifiable credential</div>
+                        <div style={{ fontSize: 10, color: "var(--text3)", marginBottom: 10 }}>All NFTs minted by the platform — badges &amp; certificates.</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {[
+                            { label: "POAP BADGES", sub: "ERC-1155 · 1 per check-in", value: stats ? numFmt(stats.totalConfirmed) : "—", color: "rgba(168,85,247,0.9)" },
+                            { label: "CERTIFICATES", sub: "ERC-721 · Verifiable credential", value: contractData?.totalCertificatesIssued != null ? numFmt(contractData.totalCertificatesIssued) : "—", color: "var(--green)" },
+                          ].map((row, i) => (
+                            <div key={i} style={{ background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "8px 11px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              <div>
+                                <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 2 }}>{row.label}</div>
+                                <div style={{ fontSize: 9, color: "var(--text3)", opacity: 0.7 }}>{row.sub}</div>
+                              </div>
+                              <div style={{ fontSize: 20, fontWeight: 800, color: row.color, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>{row.value}</div>
                             </div>
-                            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--green)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
-                              {contractData?.totalCertificatesIssued != null ? numFmt(contractData.totalCertificatesIssued) : "—"}
-                            </div>
+                          ))}
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 2px 0" }}>
+                            <span style={{ fontSize: 10, color: "var(--text3)" }}>Total NFTs on-chain</span>
+                            <span style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                              {totalNfts > 0 ? numFmt(totalNfts) : "—"}
+                            </span>
                           </div>
-                        </div>
-                        {/* Total */}
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 4 }}>
-                          <span style={{ fontSize: 11, color: "var(--text3)" }}>Total NFTs minted</span>
-                          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
-                            {stats && contractData?.totalCertificatesIssued != null
-                              ? numFmt(stats.totalConfirmed + contractData.totalCertificatesIssued)
-                              : "—"}
-                          </span>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* ── 5. Gas Funding (only if pending > 0) ─────────────────── */}
+                  {/* ══ 5. GAS FUNDING (conditional) ════════════════════════════ */}
                   {stats && relayer && stats.totalPending > 0 && (
                     <div style={{
                       background: fundingOk ? "rgba(52,211,153,0.05)" : "rgba(248,113,113,0.06)",
                       border: `1px solid ${fundingOk ? "rgba(52,211,153,0.25)" : "rgba(248,113,113,0.3)"}`,
-                      borderLeft: `4px solid ${fundingOk ? "var(--green)" : "var(--coral)"}`,
-                      borderRadius: "var(--radius)", padding: "14px 18px", marginBottom: 16,
+                      borderLeft: `3px solid ${fundingOk ? "var(--green)" : "var(--coral)"}`,
+                      borderRadius: "var(--radius)", padding: "13px 16px", marginBottom: 14,
                     }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                        <span style={{ fontSize: 15 }}>💰</span>
-                        <span style={{ fontWeight: 700, fontSize: 12, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Gas Funding</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+                        <span style={{ fontSize: 14 }}>💰</span>
+                        <span style={{ fontWeight: 700, fontSize: 11, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Gas Funding</span>
                         <span style={{
-                          marginLeft: "auto", fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 20,
+                          marginLeft: "auto", fontSize: 10, fontWeight: 700, padding: "2px 9px", borderRadius: 20,
                           background: fundingOk ? "rgba(52,211,153,0.15)" : "rgba(248,113,113,0.15)",
                           border: `1px solid ${fundingOk ? "rgba(52,211,153,0.4)" : "rgba(248,113,113,0.4)"}`,
                           color: fundingOk ? "var(--green)" : "var(--coral)",
@@ -1837,20 +1866,20 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                       </div>
                       <div style={{ display: "flex", gap: 0, borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)", background: "var(--bg3)" }}>
                         {[
-                          { label: "Pending",   value: `${stats.totalPending}`,                                          sub: "confirmations queued",  color: "var(--text)" },
-                          { label: "Est. Cost", value: `~${pendingCostEth.toFixed(6)}`,                                  sub: `ETH @ ${GAS_GWEI} Gwei`, color: "var(--amber)" },
-                          { label: "Balance",   value: relayer.balanceEth,                                               sub: "ETH available",          color: fundingOk ? "var(--green)" : "var(--coral)" },
-                          { label: "Net",       value: `${fundingOk ? "+" : ""}${(bal! - pendingCostEth).toFixed(6)}`,  sub: "surplus/shortfall",      color: fundingOk ? "var(--green)" : "var(--coral)" },
+                          { label: "Pending",   value: `${stats.totalPending}`,                                         sub: "queued",             color: "var(--text)" },
+                          { label: "Est. Cost", value: `~${pendingCostEth.toFixed(6)}`,                                 sub: `ETH @${GAS_GWEI}Gwei`, color: "var(--amber)" },
+                          { label: "Balance",   value: relayer.balanceEth,                                              sub: "ETH available",       color: fundingOk ? "var(--green)" : "var(--coral)" },
+                          { label: "Net",       value: `${fundingOk?"+":""}${(bal!-pendingCostEth).toFixed(6)}`,        sub: "surplus/shortfall",   color: fundingOk ? "var(--green)" : "var(--coral)" },
                         ].map((item, i) => (
-                          <div key={i} style={{ flex: 1, padding: "10px 12px", borderRight: i < 3 ? "1px solid var(--border)" : "none" }}>
+                          <div key={i} style={{ flex: 1, padding: "9px 11px", borderRight: i < 3 ? "1px solid var(--border)" : "none" }}>
                             <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 4 }}>{item.label}</div>
-                            <div style={{ fontSize: 16, fontWeight: 800, color: item.color, fontFamily: "var(--font-space-mono),'Space Mono',monospace", lineHeight: 1 }}>{item.value}</div>
-                            <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 3 }}>{item.sub}</div>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: item.color, fontFamily: "var(--font-space-mono),'Space Mono',monospace", lineHeight: 1 }}>{item.value}</div>
+                            <div style={{ fontSize: 9, color: "var(--text3)", marginTop: 3 }}>{item.sub}</div>
                           </div>
                         ))}
                       </div>
-                      <div style={{ marginTop: 7, fontSize: 11, color: "var(--text3)" }}>
-                        ℹ Estimate at {GAS_GWEI} Gwei · {numFmt(CHECKIN_GAS)} gas/confirmation. Check Gas tab for live prices.
+                      <div style={{ marginTop: 6, fontSize: 10, color: "var(--text3)" }}>
+                        ℹ {numFmt(CHECKIN_GAS)} gas × {GAS_GWEI} Gwei per confirmation · See Gas tab for live prices.
                       </div>
                     </div>
                   )}
