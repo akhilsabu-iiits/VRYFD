@@ -6,16 +6,20 @@ const VryfdABI = require("../abis/VryfdAttendance.json");
 const VRYFTokenABI = require("../abis/VRYFToken.json");
 const { getENSOverride } = require("./ensOverrides");
 
-// ─── MongoDB contract state — persists addresses across Railway restarts ──────
-const _contractStateSchema = new mongoose.Schema(
-  { contractAddress: String, vryfTokenAddress: String, deployedAt: Number },
-  { _id: false, id: false }
-);
-// Use a fixed doc id "singleton" so there is always at most one record
+// ─── MongoDB models — persist state across Railway ephemeral filesystem wipes ─
 const ContractStateDoc = mongoose.model(
   "ContractState",
   new mongoose.Schema(
     { _id: { type: String, default: "singleton" }, contractAddress: String, vryfTokenAddress: String, deployedAt: Number },
+    { _id: false }
+  )
+);
+
+// Stores the full deployedEvents.json as a single MongoDB document
+const DeployedEventsDoc = mongoose.model(
+  "DeployedEvents",
+  new mongoose.Schema(
+    { _id: { type: String, default: "singleton" }, data: { type: mongoose.Schema.Types.Mixed, default: {} } },
     { _id: false }
   )
 );
@@ -250,6 +254,7 @@ function incrementConfirmedCount(onChainEventId, attendee) {
       }
     }
     atomicWriteJSON(STORE_PATH, store);
+    syncDeployedEventsToDB(store);
   } catch (e) {
     console.error("[store] incrementConfirmedCount persist failed:", e.message);
   }
@@ -403,6 +408,16 @@ async function confirmAllAttendees(onChainEventId) {
 
 // ─── Persistent event store (backend/data/deployedEvents.json) ────────────
 const STORE_PATH = path.join(__dirname, "../../data/deployedEvents.json");
+
+// Sync deployedEvents store to MongoDB so it survives Railway filesystem wipes.
+// Fire-and-forget — never blocks the caller.
+function syncDeployedEventsToDB(store) {
+  DeployedEventsDoc.findByIdAndUpdate(
+    "singleton",
+    { _id: "singleton", data: store },
+    { upsert: true, new: true }
+  ).catch((e) => console.warn("[store] MongoDB sync failed:", e.message));
+}
 const EVENTS_STORE_PATH = path.join(__dirname, "../../data/events.json");
 
 // Full event list persistence — source of truth for all frontend events
@@ -439,6 +454,7 @@ function saveDeployedEvent(demoId, txHash, onChainId, joinCode, startTime = null
     ...(endTime != null ? { endTime: Number(endTime) } : {}),
   };
   atomicWriteJSON(STORE_PATH, store);
+  syncDeployedEventsToDB(store);
 }
 
 function getDeployedEvents() {
@@ -453,6 +469,7 @@ function clearAllDeployedEvents() {
   // Fully wipe all deployed event state — used after new contract deployment
   // so stale join codes / on-chain IDs from the old contract don't bleed through.
   fs.writeFileSync(STORE_PATH, JSON.stringify({}, null, 2));
+  DeployedEventsDoc.findByIdAndUpdate("singleton", { _id: "singleton", data: {} }, { upsert: true }).catch(() => {});
   try { fs.unlinkSync(path.join(__dirname, "../../data/contractState.json")); } catch {}
   customCodeStore.clear();
   pendingStore.clear();
@@ -876,26 +893,47 @@ function initRelayer() {
  */
 async function restoreContractStateFromDB() {
   if (!relayerWallet) return; // relayer not initialized — nothing to restore
+
+  // ── Restore contract addresses ────────────────────────────────────────────
   try {
     const doc = await ContractStateDoc.findById("singleton").lean();
-    if (!doc?.contractAddress?.startsWith("0x")) return; // nothing saved yet
-
-    // If initRelayer already loaded from contractState.json, the addresses match — skip
-    if (contract && contract.target.toLowerCase() === doc.contractAddress.toLowerCase()) {
-      console.log(`[relayer] contract address already correct (from contractState.json)`);
-      // Still sync vryfTokenAddress into deployState so getVryfTokenAddress() works
-      if (!deployState.vryfTokenAddress && doc.vryfTokenAddress) {
-        deployState = { ...deployState, vryfTokenAddress: doc.vryfTokenAddress };
+    if (doc?.contractAddress?.startsWith("0x")) {
+      if (contract && contract.target.toLowerCase() === doc.contractAddress.toLowerCase()) {
+        console.log(`[relayer] contract address already correct (from contractState.json)`);
+        if (!deployState.vryfTokenAddress && doc.vryfTokenAddress) {
+          deployState = { ...deployState, vryfTokenAddress: doc.vryfTokenAddress };
+        }
+      } else {
+        contract = new ethers.Contract(doc.contractAddress, VryfdABI.abi, relayerWallet);
+        deployState = { status: "ready", contractAddress: doc.contractAddress, vryfTokenAddress: doc.vryfTokenAddress, error: null };
+        console.log(`[relayer] restored contract from MongoDB — ${doc.contractAddress}`);
       }
-      return;
     }
-
-    // Rewire contract to the MongoDB-persisted address
-    contract = new ethers.Contract(doc.contractAddress, VryfdABI.abi, relayerWallet);
-    deployState = { status: "ready", contractAddress: doc.contractAddress, vryfTokenAddress: doc.vryfTokenAddress, error: null };
-    console.log(`[relayer] restored from MongoDB — contract: ${doc.contractAddress} vryfToken: ${doc.vryfTokenAddress}`);
   } catch (e) {
     console.warn(`[relayer] restoreContractStateFromDB failed: ${e.message}`);
+  }
+
+  // ── Restore deployedEvents.json from MongoDB if local file is empty/missing ─
+  try {
+    const localStore = loadDeployedEvents();
+    if (Object.keys(localStore).length === 0) {
+      const evDoc = await DeployedEventsDoc.findById("singleton").lean();
+      if (evDoc?.data && Object.keys(evDoc.data).length > 0) {
+        atomicWriteJSON(STORE_PATH, evDoc.data);
+        // Re-load custom codes and meta from restored store
+        for (const info of Object.values(evDoc.data)) {
+          if (info.joinCode && info.onChainId != null) setCustomCode(info.onChainId, info.joinCode);
+          if (info.startTime != null && info.endTime != null && info.onChainId != null) setEventMeta(info.onChainId, info.startTime, info.endTime);
+          if (info.confirmedCount && info.onChainId != null) confirmedCountStore.set(String(info.onChainId), info.confirmedCount);
+          if (Array.isArray(info.confirmedAttendees) && info.onChainId != null) {
+            confirmedAttendeesStore.set(String(info.onChainId), new Set(info.confirmedAttendees));
+          }
+        }
+        console.log(`[relayer] restored deployedEvents from MongoDB (${Object.keys(evDoc.data).length} events)`);
+      }
+    }
+  } catch (e) {
+    console.warn(`[relayer] restoreDeployedEventsFromDB failed: ${e.message}`);
   }
 }
 
@@ -1330,6 +1368,7 @@ async function enrichAttendeesWithTxHash(onChainEventId) {
         }
       }
       atomicWriteJSON(STORE_PATH, store);
+      syncDeployedEventsToDB(store);
     } catch (e) {
       console.error("[store] enrichAttendeesWithTxHash persist failed:", e.message);
     }
@@ -1712,7 +1751,7 @@ async function syncMissingAttendeeCounts() {
         console.warn(`[sync] could not scan logs for onChainId=${onChainId}:`, err.message);
       }
     }
-    if (updated) atomicWriteJSON(STORE_PATH, store);
+    if (updated) { atomicWriteJSON(STORE_PATH, store); syncDeployedEventsToDB(store); }
   } catch (err) {
     console.warn("[sync] attendee count sync failed:", err.message);
   }
