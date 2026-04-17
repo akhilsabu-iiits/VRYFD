@@ -30,7 +30,10 @@ router.get("/relayer", async (req, res) => {
       "https://ethereum-sepolia-rpc.publicnode.com";
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
-    const balWei = await provider.getBalance(wallet.address);
+    const [balWei, blockNumber] = await Promise.all([
+      provider.getBalance(wallet.address),
+      provider.getBlockNumber(),
+    ]);
     res.json({
       address: wallet.address,
       balanceEth: parseFloat(ethers.formatEther(balWei)).toFixed(6),
@@ -38,6 +41,7 @@ router.get("/relayer", async (req, res) => {
       chain: "Sepolia",
       chainId: 11155111,
       contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || null,
+      blockNumber,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
