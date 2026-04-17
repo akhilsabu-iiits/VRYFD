@@ -1471,7 +1471,8 @@ export default function Home() {
 
       if (!res.ok) throw new Error(data.error || "Join code check-in failed");
 
-      // New flow: join code accepted → pending (no chain write yet)
+      // Backend now auto-confirms on-chain immediately (checkInFor) and returns txHash.
+      // Legacy pending path kept in case the response ever includes { pending: true }.
       if (data.pending) {
         if (currentEventId !== null) {
           setPendingRegistrationIds((prev) => prev.includes(currentEventId) ? prev : [...prev, currentEventId]);
@@ -1481,7 +1482,6 @@ export default function Home() {
         return;
       }
 
-      // Fallback: direct on-chain confirmation (backwards compat)
       const txHash: string = data.txHash;
       setLastCheckinTxHash(txHash);
       const newCheckins = userCheckins + 1;
@@ -1511,7 +1511,7 @@ export default function Home() {
         )
       );
       await refetchVryf();
-      showToast(`Attendance confirmed! Tx: ${txHash.slice(0, 10)}...`, "success");
+      showToast(`Checked in on Sepolia! Tx: ${txHash.slice(0, 10)}...`, "success");
       if (milestone) {
         setTimeout(() => {
           showToast(`${milestone.icon} ${milestone.label} unlocked! +${milestone.bonus} VRYF bonus!`, "success");

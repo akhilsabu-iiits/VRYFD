@@ -114,8 +114,9 @@ function getPendingEntry(onChainEventId, attendee) {
   return pendingStore.get(String(onChainEventId))?.get(attendee.toLowerCase());
 }
 
-// Join code → pending registration (organizer confirms later via checkInFor — no sig needed on-chain)
-function joinCodeCheckin(onChainEventId, attendee, code, signature, ens = null, demoId = null) {
+// Join code check-in — verifies code + personal_sign then immediately calls checkInFor
+// (relayer pays gas, no organizer action required). Returns { txHash } on success.
+async function joinCodeCheckin(onChainEventId, attendee, code, signature, ens = null, demoId = null) {
   // 1. Verify code — use customCodeStore if available, else fall back to DEMO_JOIN_CODES by demoId
   let expected;
   const stored = customCodeStore.get(String(onChainEventId));
@@ -130,19 +131,11 @@ function joinCodeCheckin(onChainEventId, attendee, code, signature, ens = null, 
   if (code.toUpperCase().trim() !== expected) throw new Error("Incorrect join code");
 
   // 2. Verify personal_sign signature — proves the request came from the attendee's wallet.
-  //    Uses eth_sign / personal_sign (not EIP-712) to avoid domain-separator mismatches
-  //    caused by contract address drift after resets. Anti-replay is handled by the
-  //    pending-queue dedup below (isPending) and the on-chain confirmed check above.
   {
     const message = `VRYFD check-in\nEvent: ${onChainEventId}\nAttendee: ${attendee}`;
     const recovered = ethers.verifyMessage(message, signature);
     if (recovered.toLowerCase() !== attendee.toLowerCase())
       throw new Error(`Signature does not match: expected ${attendee} got ${recovered}`);
-  }
-
-  // 2. Already confirmed? — use in-memory store (no RPC needed)
-  if (confirmedAttendeesStore.get(String(onChainEventId))?.has(attendee.toLowerCase())) {
-    throw new Error("Already confirmed on-chain");
   }
 
   // 3. Event time window — use cached metadata if available (set at deploy time)
@@ -152,16 +145,19 @@ function joinCodeCheckin(onChainEventId, attendee, code, signature, ens = null, 
     if (now < meta.startTime) throw new Error("Event has not started yet");
     if (now > meta.endTime) throw new Error("Event has ended");
   }
-  // No meta cached (e.g. pre-seeded INITIAL_DEPLOYED_EVENTS) — skip time check, join code is sufficient auth
+  // No meta cached — skip time check, join code is sufficient auth
 
-  // 4. Already in pending queue?
-  if (isPending(onChainEventId, attendee)) {
-    throw new Error("Already registered — awaiting organizer confirmation");
+  // 4. Auto-confirm on-chain immediately — calls checkInFor (ORGANIZER_ROLE, relayer pays gas).
+  //    confirmAttendee handles the "already confirmed" case by catching the contract revert.
+  //    After Railway restart, confirmedAttendeesStore is empty so we may attempt a duplicate
+  //    checkInFor — the contract rejects it with "Already checked in" and we surface that as
+  //    alreadyConfirmed so the frontend can advance to the badge-claim step.
+  const result = await confirmAttendee(onChainEventId, attendee);
+  if (result.alreadyConfirmed) {
+    throw new Error("Already confirmed on-chain");
   }
-
-  // 5. Add to pending — organizer calls checkInFor on their behalf
-  addPending(onChainEventId, attendee, signature, ens);
-  return { pending: true };
+  console.log(`[joinCodeCheckin] confirmed attendee=${attendee} event=${onChainEventId} tx=${result.txHash}`);
+  return { txHash: result.txHash };
 }
 
 // Organizer confirms a single pending attendee → calls checkInFor (ORGANIZER_ROLE, no user sig needed).
