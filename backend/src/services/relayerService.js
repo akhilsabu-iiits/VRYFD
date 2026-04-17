@@ -635,6 +635,8 @@ function isRateLimitError(err) {
   try {
     const s = JSON.stringify(err);
     if (s.includes('"code":429') || s.includes('"code": 429') || s.includes('compute units')) return true;
+    // Alchemy monthly capacity exhausted — treat same as rate limit so we fall back to public RPCs
+    if (s.includes('capacity limit') || s.includes('Monthly capacity') || s.includes('exceeded its compute')) return true;
   } catch {}
   // eth_call throttled — Alchemy returns empty response, ethers throws CALL_EXCEPTION data=null
   if (err?.code === "CALL_EXCEPTION" && err?.data === null) return true;
@@ -826,13 +828,15 @@ function initRelayer() {
 
   const alchemyUrl = process.env.SEPOLIA_RPC;
   // Multiple public Sepolia RPCs as fallbacks — tried in order on 429
+  // Public RPCs listed first — no API key, no monthly limit, no sign-up required.
+  // Alchemy added last as a bonus fallback when it has quota remaining.
   rpcUrls = [
-    ...(alchemyUrl ? [alchemyUrl] : []),
     "https://ethereum-sepolia-rpc.publicnode.com",
-    "https://rpc.sepolia.org",
     "https://sepolia.drpc.org",
+    "https://rpc.sepolia.org",
     "https://rpc2.sepolia.org",
     "https://sepolia.gateway.tenderly.co",
+    ...(alchemyUrl ? [alchemyUrl] : []),
   ];
   rpcIndex = 0;
   provider = buildProviderForUrl(rpcUrls[0]);
