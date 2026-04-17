@@ -565,10 +565,12 @@ function Dashboard({
 
   const refresh = useCallback(async () => {
     setError("");
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
     try {
       const [relayerRes, statsRes] = await Promise.all([
-        fetch(`${API}/api/admin/relayer`, { headers }),
-        fetch(`${API}/api/admin/stats`, { headers }),
+        fetch(`${API}/api/admin/relayer`, { headers, signal: ctrl.signal }),
+        fetch(`${API}/api/admin/stats`, { headers, signal: ctrl.signal }),
       ]);
 
       if (relayerRes.status === 401 || statsRes.status === 401) {
@@ -588,8 +590,10 @@ function Dashboard({
       setStats(statsData);
       setLastRefresh(new Date());
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg.includes("abort") ? "Request timed out — backend is slow, try again" : msg);
     } finally {
+      clearTimeout(timer);
       setLoading(false);
     }
   }, [secret]);

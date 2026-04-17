@@ -5,7 +5,6 @@ const fs = require("fs");
 const path = require("path");
 const adminAuth = require("../middleware/adminAuth");
 const {
-  getOnChainAttendeeCount,
   getEventAttendees,
 } = require("../services/relayerService");
 
@@ -55,45 +54,41 @@ router.get("/stats", async (req, res) => {
     let totalConfirmed = 0;
     let totalPending = 0;
 
-    // Resolve all event counts in parallel
-    const entries = Object.entries(deployedEvents);
-    const results = await Promise.allSettled(
-      entries.map(async ([localId, data]) => {
-        const onChainId = data.onChainId;
-        const meta =
-          allEvents.find(
-            (e) => String(e.onChainId) === String(onChainId)
-          ) || {};
+    // Build event list from persisted JSON — no chain queries, instant response
+    const eventList = Object.entries(deployedEvents).map(([localId, data]) => {
+      const onChainId = data.onChainId;
+      const meta =
+        allEvents.find(
+          (e) => String(e.onChainId) === String(onChainId)
+        ) || {};
 
-        let confirmed = 0;
-        try {
-          confirmed = await getOnChainAttendeeCount(onChainId);
-        } catch {}
+      // confirmedCount is persisted to deployedEvents.json by syncMissingAttendeeCounts on startup
+      const confirmed =
+        typeof data.confirmedCount === "number"
+          ? data.confirmedCount
+          : Array.isArray(data.confirmedAttendees)
+          ? data.confirmedAttendees.length
+          : 0;
 
-        const pendingCount = Object.keys(
-          pending[String(onChainId)] || {}
-        ).length;
+      const pendingCount = Object.keys(
+        pending[String(onChainId)] || {}
+      ).length;
 
-        return {
-          localId,
-          onChainId,
-          name: meta.name || `Event #${onChainId}`,
-          emoji: meta.emoji || "📅",
-          color: meta.color || "#7c6cf0",
-          status: meta.status || "unknown",
-          startTime: meta.startTime || null,
-          endTime: meta.endTime || null,
-          joinCode: data.joinCode || "",
-          txHash: data.txHash || "",
-          confirmedAttendees: confirmed,
-          pendingAttendees: pendingCount,
-        };
-      })
-    );
-
-    const eventList = results
-      .filter((r) => r.status === "fulfilled")
-      .map((r) => r.value);
+      return {
+        localId,
+        onChainId,
+        name: meta.name || `Event #${onChainId}`,
+        emoji: meta.emoji || "📅",
+        color: meta.color || "#7c6cf0",
+        status: meta.status || "unknown",
+        startTime: meta.startTime || null,
+        endTime: meta.endTime || null,
+        joinCode: data.joinCode || "",
+        txHash: data.txHash || "",
+        confirmedAttendees: confirmed,
+        pendingAttendees: pendingCount,
+      };
+    });
 
     eventList.forEach((e) => {
       totalConfirmed += e.confirmedAttendees;
