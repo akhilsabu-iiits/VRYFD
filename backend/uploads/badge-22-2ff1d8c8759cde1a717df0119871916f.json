@@ -1,0 +1,32 @@
+{
+  "name": "VRYFD: TESTNET",
+  "description": "Proof of Attendance for TESTNET",
+  "image": "http://localhost:3001/uploads/vryfd-upload-1776428970658-0484f4c6d25a7eb6b7ea9bddb60bbc32.png",
+  "external_url": "http://localhost:3001/api/verify/event/22",
+  "attributes": [
+    {
+      "trait_type": "Event",
+      "value": "TESTNET"
+    },
+    {
+      "trait_type": "Event ID",
+      "value": "22"
+    },
+    {
+      "trait_type": "Date",
+      "value": "2026-04-17"
+    },
+    {
+      "trait_type": "Organizer",
+      "value": "admin+81f629d9@vryfd.local"
+    },
+    {
+      "trait_type": "Type",
+      "value": "POAP Badge"
+    },
+    {
+      "trait_type": "Soulbound",
+      "value": "true"
+    }
+  ]
+}

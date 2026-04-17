@@ -1,0 +1,19 @@
+{
+  "name": "vryfd-tests",
+  "version": "1.0.0",
+  "description": "End-to-end test suite for VRYFD (UI + API)",
+  "type": "commonjs",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test ui/",
+    "test:api": "playwright test api/",
+    "test:debug": "playwright test --debug",
+    "test:watch": "playwright test --ui",
+    "report": "playwright show-report report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "ethers": "^6.16.0"
+  }
+}

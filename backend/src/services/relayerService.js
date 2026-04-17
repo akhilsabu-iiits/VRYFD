@@ -4,6 +4,7 @@ const path = require("path");
 const VryfdABI = require("../abis/VryfdAttendance.json");
 const VRYFTokenABI = require("../abis/VRYFToken.json");
 const { getENSOverride } = require("./ensOverrides");
+const webhookService = require("./webhookService");
 
 // ─── Atomic JSON write helper ─────────────────────────────────────────────────
 // Writes JSON to a .tmp file then renames it over the target so readers never
@@ -27,9 +28,14 @@ function getJoinCode(onChainEventId) {
   return code;
 }
 
-// Alias for backwards compatibility with existing callers
 function generateJoinCode(onChainEventId) {
-  return getJoinCode(onChainEventId);
+  const existing = customCodeStore.get(String(onChainEventId));
+  if (existing) return existing;
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  setCustomCode(onChainEventId, code);
+  return code;
 }
 
 // ─── Pending attendees store: onChainEventId → Map<attendee.lower, { attendee, signature }> ─
@@ -204,10 +210,8 @@ function incrementConfirmedCount(onChainEventId, attendee) {
     for (const info of Object.values(store)) {
       if (String(info.onChainId) === key) {
         info.confirmedCount = next;
-        // Persist attendee list as array
         const list = [...(confirmedAttendeesStore.get(key) ?? [])];
         info.confirmedAttendees = list;
-        // Persist full attendee details for fast reload after server restart
         const details = confirmedAttendeesDetailStore.get(key);
         info.confirmedAttendeesDetail = details ? [...details.values()] : [];
       }
@@ -215,6 +219,43 @@ function incrementConfirmedCount(onChainEventId, attendee) {
     atomicWriteJSON(STORE_PATH, store);
   } catch (e) {
     console.error("[store] incrementConfirmedCount persist failed:", e.message);
+  }
+
+  // Also update events.json so the frontend sees the new count
+  // Skip incrementing if the attendee is the event organizer
+  try {
+    const events = getAllEvents();
+    if (events) {
+      const ev = events.find(
+        (e) =>
+          String(e.onChainId) === key ||
+          String(e.id) === key ||
+          String(e.eventId) === key
+      );
+      if (ev) {
+        let isOrgOrAdmin = false;
+        if (attendee) {
+          const addr = attendee.toLowerCase();
+          const { getUserByEmail } = require("./authService");
+          const orgUser = getUserByEmail(ev.createdBy || ev.organizer || "");
+          if (orgUser?.walletAddress && orgUser.walletAddress.toLowerCase() === addr) {
+            isOrgOrAdmin = true;
+          }
+          const adminEmail = (process.env.ADMIN_EMAIL || "admin@vryfd.com").toLowerCase();
+          const adminUser = getUserByEmail(adminEmail);
+          if (adminUser?.walletAddress && adminUser.walletAddress.toLowerCase() === addr) {
+            isOrgOrAdmin = true;
+          }
+        }
+        if (!isOrgOrAdmin) {
+          ev.attendeeCount = (ev.attendeeCount || 0) + 1;
+          ev.attendees = (ev.attendees || 0) + 1;
+          saveAllEvents(events);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[store] incrementConfirmedCount events.json update failed:", e.message);
   }
 }
 
@@ -290,10 +331,9 @@ function saveAllEvents(events) {
 // Default state: events 1 & 2 are pre-deployed on Sepolia (always live).
 // These values must match the actual on-chain IDs in deployedEvents.json.
 // Run: node -e "console.log(require('./data/deployedEvents.json'))" to verify.
-const INITIAL_DEPLOYED_EVENTS = {
-  "1": { txHash: "0xf235ead355af6b55ea855f1cb56882480d90d4f7681a792211ea5915ab415524", onChainId: "15", joinCode: "HK7P2T" },
-  "2": { txHash: "0x0757989ad76ca232eb664bba986a365bf099cf2e1e80d0fd884efdb5d0ef2289", onChainId: "16", joinCode: "W5NX4M" },
-};
+// Empty by design — events are created on-chain via the organizer dashboard.
+// The contract is the source of truth (per PRD §8.1).
+const INITIAL_DEPLOYED_EVENTS = {};
 
 function loadDeployedEvents() {
   try { return JSON.parse(fs.readFileSync(STORE_PATH, "utf8")); } catch { return {}; }
@@ -414,12 +454,13 @@ let contract;
 let cachedChainId = null;
 
 
-const SEPOLIA_NETWORK = ethers.Network.from({ name: "sepolia", chainId: 11155111 });
+let detectedNetwork = null;
 
 function buildProviderForUrl(url) {
-  // staticNetwork: true tells ethers not to call eth_chainId on every request.
-  // Hard-coding Sepolia avoids ~2 extra RPC round-trips per call on Alchemy free tier.
-  return new ethers.JsonRpcProvider(url, SEPOLIA_NETWORK, { staticNetwork: true });
+  if (detectedNetwork) {
+    return new ethers.JsonRpcProvider(url, detectedNetwork, { staticNetwork: true });
+  }
+  return new ethers.JsonRpcProvider(url);
 }
 
 async function getChainId() {
@@ -513,14 +554,13 @@ async function deployContracts() {
 /**
  * Initialize the relayer with the deployer wallet (has ORGANIZER_ROLE)
  */
-function initRelayer() {
+async function initRelayer() {
   const privateKey = process.env.PRIVATE_KEY;
   const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
 
   if (!privateKey) {
     console.error("[relayer] FATAL: PRIVATE_KEY env var is not set — relayer cannot start");
     console.error("[relayer] Set PRIVATE_KEY in Railway Variables and redeploy");
-    // Don't throw — let the server start so /api/health responds for debugging
     loadCustomCodesFromStore();
     return;
   }
@@ -531,7 +571,6 @@ function initRelayer() {
   }
 
   const alchemyUrl = process.env.SEPOLIA_RPC;
-  // Multiple public Sepolia RPCs as fallbacks — tried in order on 429
   rpcUrls = [
     ...(alchemyUrl ? [alchemyUrl] : []),
     "https://ethereum-sepolia-rpc.publicnode.com",
@@ -543,7 +582,16 @@ function initRelayer() {
   rpcIndex = 0;
   provider = buildProviderForUrl(rpcUrls[0]);
 
-  // Normalize private key — ethers v6 requires 0x prefix
+  // Detect and cache the actual network (handles both local Hardhat and Sepolia)
+  try {
+    const net = await provider.getNetwork();
+    detectedNetwork = net;
+    console.log(`[relayer] Detected network: ${net.name} (chainId=${net.chainId})`);
+    provider = buildProviderForUrl(rpcUrls[0]);
+  } catch (e) {
+    console.warn("[relayer] network detection failed, continuing without staticNetwork:", e.message);
+  }
+
   const normalizedKey = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
   try {
     relayerWallet = new ethers.Wallet(normalizedKey, provider);
@@ -576,31 +624,94 @@ function getContract() {
   return contract;
 }
 
+/**
+ * Returns the active ethers.Wallet used by the relayer. Other services
+ * (e.g. badgeService) use this to build their own contract instances without
+ * re-initialising a second wallet/provider pair.
+ */
+function getRelayerWallet() {
+  if (!relayerWallet) throw new Error("Relayer not initialized");
+  return relayerWallet;
+}
+
+function getProvider() {
+  if (!provider) throw new Error("Relayer not initialized");
+  return provider;
+}
+
 // ─── Organizer Actions (relayer pays gas) ─────────────────────────────────
 
 /**
  * Create an event on-chain — relayer wallet pays gas (has ORGANIZER_ROLE)
  */
-async function createEvent(name, metadataURI, startTime, endTime) {
+async function createEvent(name, metadataURI, startTime, endTime, attendanceThreshold = 75, claimPeriodDays = 30, durationMinutes = 60, eventType = 0) {
   return withRpcFallback(async () => {
     const c = getContract();
-    const tx = await c.createEvent(name, metadataURI, BigInt(startTime), BigInt(endTime));
-    const receipt = await tx.wait(1, 120_000); // 1 confirmation, 2-min timeout
 
-    const iface = new ethers.Interface(VryfdABI.abi);
-    let eventId = null;
-    for (const log of receipt.logs) {
-      try {
-        const parsed = iface.parseLog(log);
-        if (parsed?.name === "EventCreated") {
-          eventId = parsed.args[0].toString();
-          break;
+    // --- Optimization for demo UX ---
+    // Instead of waiting ~12–15s for the Sepolia block confirmation, we:
+    //   1) Read `nextEventId()` → the id the new event will be assigned
+    //      (the contract uses `uint256 eventId = nextEventId++;`)
+    //   2) Submit the tx (await c.createEvent) → resolves as soon as the
+    //      signed tx is accepted by the node (< 1s on Alchemy). We do NOT
+    //      wait for mining / receipt.
+    //   3) Return { txHash, eventId } immediately. The UI can show the new
+    //      event right away with a "Pending on-chain confirmation" badge.
+    //   4) In the background, we wait for the receipt to fire the webhook
+    //      and log confirmation — failures are non-fatal for the UX.
+    const predictedEventId = (await c.nextEventId()).toString();
+
+    const tx = await c.createEvent(
+      name, metadataURI, BigInt(startTime), BigInt(endTime),
+      BigInt(attendanceThreshold), BigInt(claimPeriodDays), BigInt(durationMinutes), BigInt(eventType)
+    );
+    console.log(`[createEvent] tx submitted: ${tx.hash} (predicted eventId=${predictedEventId})`);
+
+    // Background: wait for confirmation, verify the eventId matches, emit webhook.
+    // We deliberately do NOT await this so the API responds immediately.
+    tx.wait(1, 120_000)
+      .then((receipt) => {
+        if (!receipt) {
+          console.warn(`[createEvent] no receipt for ${tx.hash}`);
+          return;
         }
-      } catch {}
-    }
+        let actualEventId = null;
+        try {
+          const iface = new ethers.Interface(VryfdABI.abi);
+          for (const log of receipt.logs) {
+            try {
+              const parsed = iface.parseLog(log);
+              if (parsed?.name === "EventCreated") {
+                actualEventId = parsed.args[0].toString();
+                break;
+              }
+            } catch {}
+          }
+        } catch {}
 
-    if (eventId === null) throw new Error("EventCreated log not found in receipt — event may not have been created");
-    return { txHash: receipt.hash, eventId };
+        if (actualEventId && actualEventId !== predictedEventId) {
+          console.warn(`[createEvent] eventId mismatch: predicted=${predictedEventId} actual=${actualEventId}`);
+        } else {
+          console.log(`[createEvent] ✓ confirmed on-chain eventId=${actualEventId || predictedEventId} (tx ${receipt.hash})`);
+        }
+
+        webhookService
+          .triggerEvent("event.created", {
+            eventId: actualEventId || predictedEventId,
+            name,
+            metadataURI,
+            startTime,
+            endTime,
+            txHash: receipt.hash,
+            timestamp: new Date().toISOString(),
+          })
+          .catch((err) => console.error("[relayer] Webhook trigger failed:", err));
+      })
+      .catch((err) => {
+        console.error(`[createEvent] confirmation failed for ${tx.hash}:`, err.message);
+      });
+
+    return { txHash: tx.hash, eventId: predictedEventId, pending: true };
   });
 }
 
@@ -610,19 +721,59 @@ async function createEvent(name, metadataURI, startTime, endTime) {
  */
 async function issueCertificate(eventId, attendee, metadataURI) {
   const c = getContract();
+  const eid = BigInt(eventId);
 
-  const ev = await c.events(BigInt(eventId));
-  const now = Math.floor(Date.now() / 1000);
+  // ─── Pre-flight: event must exist, be active, and have started ──────────────
+  const ev = await c.events(eid);
   if (!ev.active) throw new Error("Event does not exist or is inactive");
-  if (now < Number(ev.startTime)) throw new Error(`Event has not started yet (starts ${new Date(Number(ev.startTime) * 1000).toUTCString()})`);
+  const now = Math.floor(Date.now() / 1000);
+  if (now < Number(ev.startTime)) {
+    throw new Error(
+      `Event has not started yet (starts ${new Date(Number(ev.startTime) * 1000).toUTCString()})`
+    );
+  }
 
-  const record = await c.getAttendanceRecord(BigInt(eventId), attendee);
-  if (Number(record.timestamp) === 0) throw new Error("Attendee has not confirmed attendance for this event");
+  // ─── Ensure attendance is recorded on-chain (auto-record if missing) ────────
+  // We check the raw `attendance` mapping here — direct mapping reads are
+  // more reliable than `getAttendanceRecord()` which may have ABI-decoding
+  // quirks across ethers versions for certain struct returns.
+  //
+  // If the attendee has no attendance record, the organizer (this relayer
+  // wallet) calls `checkInFor()` on their behalf. The attendee must be
+  // present in-session for this to make sense — the organizer is confirming
+  // that presence. checkInFor reverts past the on-chain endTime; we give a
+  // clear error if so.
+  let record = await c.attendance(eid, attendee);
+  const hasAttendance = Number(record.timestamp) > 0 || String(record[1] || "0") !== "0";
 
+  if (!hasAttendance) {
+    console.log(`[issueCertificate] no attendance record for ${attendee} on event ${eventId} — auto-recording via checkInFor`);
+    try {
+      const markTx = await c.checkInFor(attendee, eid);
+      await markTx.wait(1, 120_000);
+      console.log(`[issueCertificate] ✓ attendance recorded on-chain (tx: ${markTx.hash})`);
+      // Re-read so the duplicate check below uses fresh data
+      record = await c.attendance(eid, attendee);
+    } catch (markErr) {
+      const m = (markErr.message || "").toLowerCase();
+      if (m.includes("already")) {
+        // Race: another call recorded it — re-read and continue
+        record = await c.attendance(eid, attendee);
+      } else if (m.includes("event ended")) {
+        throw new Error(
+          "Cannot record attendance — on-chain event window has ended. Start the event again to extend the window."
+        );
+      } else {
+        throw new Error(`Failed to record attendance: ${markErr.message}`);
+      }
+    }
+  }
+
+  // ─── Duplicate check: skip cert issuance if one already exists ──────────────
   const totalCerts = Number(await c.nextCertificateId());
-  for (let i = 1; i < totalCerts; i++) {  // start at 1 — slot 0 is unused (1-indexed)
+  for (let i = 1; i < totalCerts; i++) {
     const cert = await c.certificates(BigInt(i));
-    if (Number(cert.timestamp) === 0) continue;  // skip empty slots
+    if (Number(cert.timestamp) === 0) continue;
     if (
       Number(cert.eventId) === Number(eventId) &&
       cert.attendee.toLowerCase() === attendee.toLowerCase() &&
@@ -632,7 +783,8 @@ async function issueCertificate(eventId, attendee, metadataURI) {
     }
   }
 
-  const tx = await c.issueCertificate(BigInt(eventId), attendee, metadataURI);
+  // ─── Mint the certificate on-chain ──────────────────────────────────────────
+  const tx = await c.issueCertificate(eid, attendee, metadataURI);
   const receipt = await tx.wait(1, 120_000);
 
   const iface = new ethers.Interface(VryfdABI.abi);
@@ -1184,9 +1336,65 @@ async function syncMissingAttendeeCounts() {
   }
 }
 
+// ──────────────────────────────────────────────
+// Event Editing & Cancellation (PRD Gap 2)
+// ──────────────────────────────────────────────
+
+async function editEvent(eventId, name, metadataURI, startTime, endTime, attendanceThreshold, durationMinutes) {
+  return withRpcFallback(async () => {
+    const c = getContract();
+    const tx = await c.editEvent(
+      BigInt(eventId), name, metadataURI,
+      BigInt(startTime), BigInt(endTime),
+      BigInt(attendanceThreshold), BigInt(durationMinutes)
+    );
+    const receipt = await tx.wait(1, 120_000);
+    return { txHash: receipt.hash };
+  });
+}
+
+async function cancelEvent(eventId) {
+  return withRpcFallback(async () => {
+    const c = getContract();
+    const tx = await c.cancelEvent(BigInt(eventId));
+    const receipt = await tx.wait(1, 120_000);
+    return { txHash: receipt.hash };
+  });
+}
+
+// ──────────────────────────────────────────────
+// Multi-Checkpoint (PRD Gap 3)
+// ──────────────────────────────────────────────
+
+async function setEventCheckpoints(eventId, totalCheckpoints) {
+  return withRpcFallback(async () => {
+    const c = getContract();
+    const tx = await c.setEventCheckpoints(BigInt(eventId), BigInt(totalCheckpoints));
+    const receipt = await tx.wait(1, 120_000);
+    return { txHash: receipt.hash };
+  });
+}
+
+// ──────────────────────────────────────────────
+// Per-Event Reward Tiers (PRD Gap 4)
+// ──────────────────────────────────────────────
+
+async function addRewardTier(eventId, name, minPercentage, metadataURI) {
+  return withRpcFallback(async () => {
+    const c = getContract();
+    const tx = await c.addRewardTier(BigInt(eventId), name, BigInt(minPercentage), metadataURI);
+    const receipt = await tx.wait(1, 120_000);
+    return { txHash: receipt.hash };
+  });
+}
+
 module.exports = {
   initRelayer,
   createEvent,
+  editEvent,
+  cancelEvent,
+  setEventCheckpoints,
+  addRewardTier,
   getConfirmedCount,
   getOnChainAttendeeCount,
   syncMissingAttendeeCounts,
@@ -1219,4 +1427,8 @@ module.exports = {
   gaslessMilestoneReward,
   deployContracts,
   clearAllDeployedEvents,
+  getRelayerWallet,
+  getProvider,
+  withRpcFallback,
+  getChainId,
 };

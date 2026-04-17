@@ -1,0 +1,32 @@
+{
+  "name": "VRYFD: GLL SUMMIT 2",
+  "description": "Proof of Attendance for GLL SUMMIT 2",
+  "image": "http://localhost:3001/uploads/vryfd-upload-1776427607795-0484f4c6d25a7eb6b7ea9bddb60bbc32.png",
+  "external_url": "http://localhost:3001/api/verify/event/21",
+  "attributes": [
+    {
+      "trait_type": "Event",
+      "value": "GLL SUMMIT 2"
+    },
+    {
+      "trait_type": "Event ID",
+      "value": "21"
+    },
+    {
+      "trait_type": "Date",
+      "value": "2026-04-17"
+    },
+    {
+      "trait_type": "Organizer",
+      "value": "admin@vryfd.com"
+    },
+    {
+      "trait_type": "Type",
+      "value": "POAP Badge"
+    },
+    {
+      "trait_type": "Soulbound",
+      "value": "true"
+    }
+  ]
+}

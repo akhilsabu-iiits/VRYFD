@@ -1,6 +1,7 @@
 const express = require("express");
 const { ethers } = require("ethers");
 const { createFullCertificate } = require("../services/certificateService");
+const certificateService = require("../services/certificateService");
 
 const router = express.Router();
 
@@ -31,9 +32,9 @@ function certGenRateLimit(req, res, next) {
  */
 router.get("/mine/:address", async (req, res) => {
   try {
-    const { address } = req.params;
+    const address = decodeURIComponent(req.params.address);
     if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
-      return res.status(400).json({ error: "Invalid wallet address" });
+      return res.json({ success: true, certificates: [], note: "Wallet required" });
     }
 
     const rpcUrl = process.env.SEPOLIA_RPC || "https://rpc.sepolia.org";
@@ -46,25 +47,26 @@ router.get("/mine/:address", async (req, res) => {
 
     const total = Number(await contract.nextCertificateId());
     const certificates = [];
-
-    // Fetch all certs in parallel — start at 1 (slot 0 is unused, certs are 1-indexed)
     const fetches = Array.from({ length: Math.max(0, total - 1) }, (_, i) => i + 1).map((i) =>
-      contract.certificates(BigInt(i)).then(async (cert) => {
-        if (Number(cert.timestamp) === 0) return null;  // skip empty slots
-        if (cert.attendee.toLowerCase() !== address.toLowerCase()) return null;
-        const ev = await contract.events(cert.eventId);
-        return {
-          certId: i,
-          eventId: Number(cert.eventId),
-          eventName: ev.name,
-          attendee: cert.attendee,
-          timestamp: Number(cert.timestamp),
-          metadataURI: cert.metadataURI,
-          isValid: cert.isValid,
-        };
-      }).catch(() => null)
+      contract
+        .certificates(BigInt(i))
+        .then(async (cert) => {
+          if (Number(cert.timestamp) === 0) return null;
+          if (cert.attendee.toLowerCase() !== address.toLowerCase()) return null;
+          const ev = await contract.events(cert.eventId);
+          return {
+            certId: i,
+            eventId: Number(cert.eventId),
+            eventName: ev.name,
+            attendee: cert.attendee,
+            timestamp: Number(cert.timestamp),
+            metadataURI: cert.metadataURI,
+            isValid: cert.isValid,
+            onChain: true,
+          };
+        })
+        .catch(() => null)
     );
-
     const results = await Promise.all(fetches);
     results.forEach((c) => { if (c) certificates.push(c); });
 
@@ -135,6 +137,131 @@ router.post("/generate", certGenRateLimit, async (req, res) => {
   } catch (error) {
     console.error("Certificate generation error:", error);
     res.status(500).json({ error: "Failed to generate certificate" });
+  }
+});
+
+/**
+ * GET /api/certificates/image/:certificateId
+ * Returns a generated PNG of the certificate streamed inline.
+ * No IPFS round-trip; ideal for instant preview / print / download in the UI.
+ *
+ * The certificate data is fetched from the on-chain contract so the rendered
+ * image is always in sync with the source of truth.
+ */
+router.get("/image/:certificateId", async (req, res) => {
+  try {
+    const { certificateId } = req.params;
+    if (!/^\d+$/.test(certificateId) || Number(certificateId) < 1) {
+      return res.status(400).json({ error: "Invalid certificate ID" });
+    }
+
+    const rpcUrl = process.env.SEPOLIA_RPC || "https://rpc.sepolia.org";
+    const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
+    if (!contractAddress) return res.status(500).json({ error: "Contract not configured" });
+
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const VryfdABI = require("../abis/VryfdAttendance.json");
+    const contract = new ethers.Contract(contractAddress, VryfdABI.abi, provider);
+
+    let cert;
+    try {
+      cert = await contract.certificates(BigInt(certificateId));
+    } catch {
+      return res.status(404).json({ error: "Certificate not found on-chain" });
+    }
+    if (Number(cert.timestamp) === 0) {
+      return res.status(404).json({ error: "Certificate not found on-chain" });
+    }
+
+    const ev = await contract.events(cert.eventId);
+
+    // --- Resolve attendee display name ---
+    // Preference order (same as the organizer attendees endpoint):
+    //   1. Name stored on the session at check-in (wallet-only sign-ups)
+    //   2. Registered user record by wallet (email signups that linked a wallet)
+    //   3. Registered user record by email (if any)
+    //   4. Truncated wallet address (0x1234…abcd) — never the full 42-char hex
+    let attendeeName = null;
+    try {
+      const { getUserByWallet } = require("../services/authService");
+      const user = getUserByWallet?.(cert.attendee);
+      if (user?.name) attendeeName = user.name;
+    } catch {}
+    // Sessions (in-memory) may know the name for wallet-only sign-ups.
+    // attendanceSessions is exported by attendance.js; fall back silently if unavailable.
+    if (!attendeeName) {
+      try {
+        const attendanceRoute = require("./attendance");
+        const sessions = attendanceRoute.__getSessions?.();
+        if (sessions) {
+          for (const s of sessions.values()) {
+            if (
+              s.attendee?.toLowerCase() === cert.attendee.toLowerCase() &&
+              s.name
+            ) {
+              attendeeName = s.name;
+              break;
+            }
+          }
+        }
+      } catch {}
+    }
+    if (!attendeeName) {
+      attendeeName = `${cert.attendee.slice(0, 6)}…${cert.attendee.slice(-4)}`;
+    }
+
+    // --- Resolve organizer display name ---
+    // The event stored in events.json records organizer email (createdBy).
+    // We look up their display name (and fall back to a short ETH address
+    // or the word "VRYFD Organizer" if nothing matches).
+    let organizerName = "VRYFD Organizer";
+    try {
+      const { getAllEvents } = require("../services/relayerService");
+      const events = getAllEvents() || [];
+      const onChainIdStr = String(cert.eventId);
+      const evMeta = events.find(
+        (e) =>
+          String(e.onChainId) === onChainIdStr ||
+          String(e.id) === onChainIdStr ||
+          String(e.eventId) === onChainIdStr
+      );
+      if (evMeta) {
+        const { getUserByEmail } = require("../services/authService");
+        const orgEmail = evMeta.organizer || evMeta.createdBy;
+        if (orgEmail) {
+          const orgUser = getUserByEmail(orgEmail);
+          if (orgUser?.name) {
+            organizerName = orgUser.name;
+          } else {
+            // fall back to local-part of the email
+            organizerName = String(orgEmail).split("@")[0];
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[cert image] could not resolve organizer name:", e.message);
+    }
+
+    const date = new Date(Number(cert.timestamp) * 1000).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+
+    const png = await certificateService.generateCertificateImage({
+      eventName: ev.name,
+      attendeeName,
+      organizerName,
+      date,
+      certificateId: Number(certificateId),
+    });
+
+    res.set("Content-Type", "image/png");
+    res.set("Cache-Control", "public, max-age=300");
+    res.send(png);
+  } catch (error) {
+    console.error("[certificates/image] error:", error);
+    res.status(500).json({ error: error.message || "Failed to render certificate" });
   }
 });
 

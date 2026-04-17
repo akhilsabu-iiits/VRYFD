@@ -27,12 +27,14 @@ router.post("/upload-image", upload.single("image"), async (req, res) => {
     // Use a sanitised server-side filename instead of the user-supplied originalname
     const ext = req.file.mimetype.split("/")[1].replace("svg+xml", "svg");
     const filename = `vryfd-upload-${Date.now()}.${ext}`;
-    const cid = await pinFile(req.file.buffer, filename, req.file.mimetype);
+    const pinned = await pinFile(req.file.buffer, filename, req.file.mimetype);
     res.json({
       success: true,
-      cid,
-      url: `ipfs://${cid}`,
-      gateway: `https://gateway.pinata.cloud/ipfs/${cid}`,
+      cid: pinned.cid,
+      url: pinned.uri,
+      // Gateway only meaningful for real IPFS pins; for local-fallback it's the same URL.
+      gateway: pinned.local ? pinned.uri : `https://gateway.pinata.cloud/ipfs/${pinned.cid}`,
+      local: pinned.local,
     });
   } catch (error) {
     console.error("IPFS upload error:", error);
@@ -47,20 +49,21 @@ router.post("/upload-image", upload.single("image"), async (req, res) => {
  */
 router.post("/badge-metadata", async (req, res) => {
   try {
-    const { eventName, eventId, description, imageCID, eventDate, organizer } = req.body;
+    const { eventName, eventId, description, imageCID, imageUrl, eventDate, organizer } = req.body;
     if (!eventName || eventId === undefined) {
       return res.status(400).json({ error: "Missing required fields: eventName, eventId" });
     }
     if (typeof eventName !== "string" || eventName.length > 200) {
       return res.status(400).json({ error: "eventName must be a string ≤ 200 chars" });
     }
-    const metadata = buildBadgeMetadata({ eventName, eventId, description, imageCID, eventDate, organizer });
-    const cid = await pinJSON(metadata, `badge-${eventId}`);
+    const metadata = buildBadgeMetadata({ eventName, eventId, description, imageCID, imageUrl, eventDate, organizer });
+    const pinned = await pinJSON(metadata, `badge-${eventId}`);
     res.json({
       success: true,
-      cid,
-      uri: `ipfs://${cid}`,
+      cid: pinned.cid,
+      uri: pinned.uri,
       metadata,
+      local: pinned.local,
     });
   } catch (error) {
     console.error("Badge metadata error:", error);
@@ -83,12 +86,13 @@ router.post("/milestone-metadata", async (req, res) => {
       return res.status(400).json({ error: "tierName must be a string ≤ 100 chars" });
     }
     const metadata = buildMilestoneMetadata({ tierName, threshold, imageCID, attendeeENS });
-    const cid = await pinJSON(metadata, `milestone-${tierName}`);
+    const pinned = await pinJSON(metadata, `milestone-${tierName}`);
     res.json({
       success: true,
-      cid,
-      uri: `ipfs://${cid}`,
+      cid: pinned.cid,
+      uri: pinned.uri,
       metadata,
+      local: pinned.local,
     });
   } catch (error) {
     console.error("Milestone metadata error:", error);

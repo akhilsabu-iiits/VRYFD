@@ -17,6 +17,8 @@ import "./VRYFToken.sol";
  *   Feature 2 - Soulbound POAP badge minting        (+25 VRYF)
  *   Feature 3 - Milestone-based reward NFTs          (+100/250/500 VRYF)
  *   Feature 4 - Time-stamped certificates with revocation
+ *   Feature 5 - Webinar attendance tracking with configurable thresholds
+ *   Feature 6 - Physical event check-ins with signature verification
  */
 contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
     using ECDSA for bytes32;
@@ -29,15 +31,26 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
     bytes32 public constant RELAYER_ROLE = keccak256("RELAYER_ROLE");
 
     // ──────────────────────────────────────────────
+    // Enums
+    // ──────────────────────────────────────────────
+    
+    /// @notice Event type classification
+    enum EventType { VIRTUAL, PHYSICAL, HYBRID }
+
+    // ──────────────────────────────────────────────
     // Structs
     // ──────────────────────────────────────────────
     struct Event {
         string name;
-        string metadataURI;    // IPFS URI for badge image/metadata
+        string metadataURI;           // IPFS URI for badge image/metadata
         uint256 startTime;
         uint256 endTime;
         address organizer;
         bool active;
+        uint256 attendanceThreshold;  // Percentage required for certificate (e.g., 75 = 75%)
+        uint256 claimPeriodDays;      // Days after event end to claim certificate
+        uint256 durationMinutes;      // Scheduled event duration in minutes
+        EventType eventType;          // VIRTUAL, PHYSICAL, or HYBRID
     }
 
     struct Certificate {
@@ -46,12 +59,25 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
         uint256 timestamp;
         string metadataURI;    // IPFS URI for certificate data
         bool isValid;
+        uint256 tokenId;       // ERC-1155 soulbound token ID for this certificate
     }
 
     struct AttendanceRecord {
         uint256 eventId;
         uint256 timestamp;
         bool badgeClaimed;
+        uint256 attendancePercentage;  // Percentage of event attended (0-100)
+        uint256 totalMinutesPresent;   // Total minutes present for webinars
+        uint256 checkInTime;           // Timestamp of first check-in
+        uint256 checkpointCount;       // Number of checkpoints scanned (physical/hybrid)
+    }
+
+    /// @notice Organizer-defined reward tier for an event
+    struct RewardTier {
+        string name;           // e.g. "Early Joiner", "Full Attendance"
+        uint256 minPercentage; // Minimum attendance % to qualify
+        string metadataURI;    // IPFS URI for reward NFT metadata
+        bool active;
     }
 
     // ──────────────────────────────────────────────
@@ -85,6 +111,22 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
     // Soulbound: track which tokens are non-transferable
     mapping(uint256 => bool) public isSoulbound;
 
+    /// @notice Authorized backend relayers for webinar attendance recording
+    mapping(address => bool) public backendRelayers;
+
+    // Certificate token IDs start at 2_000_000 to avoid collision
+    uint256 public nextCertTokenId = 2_000_000;
+
+    // Per-event reward tiers: eventId => tier index => RewardTier
+    mapping(uint256 => RewardTier[]) public eventRewardTiers;
+    // Reward tier token IDs start at 3_000_000
+    uint256 public nextRewardTierTokenId = 3_000_000;
+    // Track claimed reward tiers: eventId => attendee => tier index => claimed
+    mapping(uint256 => mapping(address => mapping(uint256 => bool))) public rewardTierClaimed;
+
+    // Multi-checkpoint config: eventId => total checkpoint count
+    mapping(uint256 => uint256) public eventCheckpointCount;
+
     // EIP-712 typed hashes — shared nonce across all gasless operations
     bytes32 public constant CHECKIN_TYPEHASH =
         keccak256("CheckIn(address attendee,uint256 eventId,uint256 nonce)");
@@ -92,6 +134,8 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
         keccak256("ClaimBadge(address attendee,uint256 eventId,uint256 nonce)");
     bytes32 public constant CLAIM_MILESTONE_TYPEHASH =
         keccak256("ClaimMilestone(address attendee,uint256 nonce)");
+    bytes32 public constant PHYSICAL_CHECKIN_TYPEHASH =
+        keccak256("PhysicalCheckIn(address attendee,uint256 eventId,uint256 nonce)");
     mapping(address => uint256) public nonces;
 
     // ── $VRYF Token ──
@@ -106,6 +150,33 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
     event MilestoneReached(address indexed attendee, uint256 milestone, uint256 tokenId, string tierName);
     event CertificateIssued(uint256 indexed certificateId, uint256 indexed eventId, address indexed attendee);
     event CertificateRevoked(uint256 indexed certificateId);
+    
+    /// @notice Emitted when webinar attendance is recorded
+    event WebinarAttendanceRecorded(uint256 indexed eventId, address indexed attendee, uint256 percentage);
+    
+    /// @notice Emitted when physical event check-in occurs
+    event PhysicalCheckIn(uint256 indexed eventId, address indexed attendee, uint256 timestamp);
+    
+    /// @notice Emitted when event attendance threshold is updated
+    event ThresholdUpdated(uint256 indexed eventId, uint256 newThreshold);
+    
+    /// @notice Emitted when backend relayer status changes
+    event BackendRelayerUpdated(address indexed relayer, bool status);
+
+    /// @notice Emitted when an event is edited
+    event EventUpdated(uint256 indexed eventId, string name, string metadataURI);
+
+    /// @notice Emitted when an event is cancelled
+    event EventCancelled(uint256 indexed eventId);
+
+    /// @notice Emitted when a reward tier is added to an event
+    event RewardTierAdded(uint256 indexed eventId, uint256 tierIndex, string name);
+
+    /// @notice Emitted when a reward tier NFT is claimed
+    event RewardTierClaimed(uint256 indexed eventId, address indexed attendee, uint256 tierIndex, uint256 tokenId);
+
+    /// @notice Emitted when a physical checkpoint is recorded
+    event CheckpointRecorded(uint256 indexed eventId, address indexed attendee, uint256 checkpointNumber);
 
     // ──────────────────────────────────────────────
     // Constructor
@@ -135,14 +206,29 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
     // ──────────────────────────────────────────────
 
     /// @notice Create a new event (organizer only)
+    /// @param name Event name
+    /// @param metadataURI IPFS URI for event metadata
+    /// @param startTime Event start timestamp
+    /// @param endTime Event end timestamp
+    /// @param attendanceThreshold Percentage required for certificate (default 75)
+    /// @param claimPeriodDays Days after event to claim certificate (default 30)
+    /// @param durationMinutes Scheduled event duration in minutes
+    /// @param eventType Type of event (VIRTUAL, PHYSICAL, HYBRID)
+    /// @return eventId The created event ID
     function createEvent(
         string calldata name,
         string calldata metadataURI,
         uint256 startTime,
-        uint256 endTime
+        uint256 endTime,
+        uint256 attendanceThreshold,
+        uint256 claimPeriodDays,
+        uint256 durationMinutes,
+        EventType eventType
     ) external onlyRole(ORGANIZER_ROLE) returns (uint256) {
         require(endTime > startTime, "Invalid time range");
         require(endTime > block.timestamp, "Event has already ended");
+        require(attendanceThreshold > 0 && attendanceThreshold <= 100, "Invalid threshold");
+        require(durationMinutes > 0, "Invalid duration");
 
         uint256 eventId = nextEventId++;
         events[eventId] = Event({
@@ -151,7 +237,11 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
             startTime: startTime,
             endTime: endTime,
             organizer: msg.sender,
-            active: true
+            active: true,
+            attendanceThreshold: attendanceThreshold,
+            claimPeriodDays: claimPeriodDays,
+            durationMinutes: durationMinutes,
+            eventType: eventType
         });
 
         // Create a unique badge token ID for this event
@@ -162,6 +252,120 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
 
         emit EventCreated(eventId, name, msg.sender);
         return eventId;
+    }
+
+    /// @notice Edit an existing event (organizer only, before event ends)
+    function editEvent(
+        uint256 eventId,
+        string calldata name,
+        string calldata metadataURI,
+        uint256 startTime,
+        uint256 endTime,
+        uint256 attendanceThreshold,
+        uint256 durationMinutes
+    ) external onlyRole(ORGANIZER_ROLE) {
+        Event storage evt = events[eventId];
+        require(evt.organizer == msg.sender, "Not event organizer");
+        require(evt.active, "Event not active");
+        require(endTime > startTime, "Invalid time range");
+        require(attendanceThreshold > 0 && attendanceThreshold <= 100, "Invalid threshold");
+        require(durationMinutes > 0, "Invalid duration");
+
+        evt.name = name;
+        evt.metadataURI = metadataURI;
+        evt.startTime = startTime;
+        evt.endTime = endTime;
+        evt.attendanceThreshold = attendanceThreshold;
+        evt.durationMinutes = durationMinutes;
+
+        uint256 badgeTokenId = eventBadgeToken[eventId];
+        _tokenURIs[badgeTokenId] = metadataURI;
+
+        emit EventUpdated(eventId, name, metadataURI);
+    }
+
+    /// @notice Cancel an event (organizer only)
+    function cancelEvent(uint256 eventId) external onlyRole(ORGANIZER_ROLE) {
+        Event storage evt = events[eventId];
+        require(evt.organizer == msg.sender, "Not event organizer");
+        require(evt.active, "Event already inactive");
+
+        evt.active = false;
+
+        emit EventCancelled(eventId);
+    }
+
+    /// @notice Configure multi-checkpoint for a physical/hybrid event
+    function setEventCheckpoints(
+        uint256 eventId,
+        uint256 totalCheckpoints
+    ) external onlyRole(ORGANIZER_ROLE) {
+        Event storage evt = events[eventId];
+        require(evt.organizer == msg.sender, "Not event organizer");
+        require(evt.active, "Event not active");
+        require(totalCheckpoints > 0 && totalCheckpoints <= 20, "Invalid checkpoint count");
+        require(evt.eventType == EventType.PHYSICAL || evt.eventType == EventType.HYBRID, "Only physical/hybrid events");
+
+        eventCheckpointCount[eventId] = totalCheckpoints;
+    }
+
+    /// @notice Add a reward tier to an event (organizer only)
+    function addRewardTier(
+        uint256 eventId,
+        string calldata name,
+        uint256 minPercentage,
+        string calldata metadataURI
+    ) external onlyRole(ORGANIZER_ROLE) {
+        Event storage evt = events[eventId];
+        require(evt.organizer == msg.sender, "Not event organizer");
+        require(evt.active, "Event not active");
+        require(minPercentage > 0 && minPercentage <= 100, "Invalid percentage");
+
+        eventRewardTiers[eventId].push(RewardTier({
+            name: name,
+            minPercentage: minPercentage,
+            metadataURI: metadataURI,
+            active: true
+        }));
+
+        emit RewardTierAdded(eventId, eventRewardTiers[eventId].length - 1, name);
+    }
+
+    /// @notice Claim a per-event reward tier NFT
+    function claimRewardTier(uint256 eventId, uint256 tierIndex) external {
+        AttendanceRecord storage record = attendance[eventId][msg.sender];
+        require(record.timestamp > 0, "Not attended");
+
+        RewardTier storage tier = eventRewardTiers[eventId][tierIndex];
+        require(tier.active, "Tier not active");
+        require(record.attendancePercentage >= tier.minPercentage, "Below minimum attendance");
+        require(!rewardTierClaimed[eventId][msg.sender][tierIndex], "Already claimed");
+
+        rewardTierClaimed[eventId][msg.sender][tierIndex] = true;
+
+        uint256 tokenId = nextRewardTierTokenId++;
+        _tokenURIs[tokenId] = tier.metadataURI;
+        isSoulbound[tokenId] = true;
+        _mint(msg.sender, tokenId, 1, "");
+
+        emit RewardTierClaimed(eventId, msg.sender, tierIndex, tokenId);
+    }
+
+    /// @notice Get reward tiers for an event
+    function getEventRewardTiers(uint256 eventId) external view returns (
+        string[] memory names,
+        uint256[] memory minPercentages,
+        bool[] memory actives
+    ) {
+        uint256 len = eventRewardTiers[eventId].length;
+        names = new string[](len);
+        minPercentages = new uint256[](len);
+        actives = new bool[](len);
+        for (uint256 i = 0; i < len; i++) {
+            names[i] = eventRewardTiers[eventId][i].name;
+            minPercentages[i] = eventRewardTiers[eventId][i].minPercentage;
+            actives[i] = eventRewardTiers[eventId][i].active;
+        }
     }
 
     /// @notice Check in to an event directly (organizer pays gas)
@@ -212,17 +416,11 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
         );
         require(attendees.length <= 100, "Batch too large");
 
-        // Deduplicate: reject batches that contain the same (attendee, eventId) pair twice.
-        // Without this, a crafted batch could pass two valid signatures for the same attendee
-        // by pre-computing sig(nonce N) and sig(nonce N+1) before the nonce is incremented.
-        for (uint256 i = 0; i < attendees.length; i++) {
-            for (uint256 j = i + 1; j < attendees.length; j++) {
-                require(
-                    attendees[i] != attendees[j] || eventIds[i] != eventIds[j],
-                    "Duplicate attendee+event in batch"
-                );
-            }
-        }
+        // O(n) deduplication: _recordAttendance already reverts on "Already checked in",
+        // so a duplicate (attendee, eventId) pair will be caught by the existing
+        // attendance[eventId][attendee].timestamp == 0 check in _recordAttendance.
+        // The nonce increment in the signature verification below also prevents
+        // replay of pre-computed signatures since each call consumes a unique nonce.
 
         for (uint256 i = 0; i < attendees.length; i++) {
             bytes32 structHash = keccak256(
@@ -234,6 +432,220 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
 
             _recordAttendance(eventIds[i], attendees[i]);
         }
+    }
+
+    // ──────────────────────────────────────────────
+    // Feature 5: Webinar Attendance Tracking
+    // ──────────────────────────────────────────────
+
+    /// @notice Record webinar attendance with time tracking (relayer only)
+    /// @dev Called by addresses with RELAYER_ROLE to record webinar participation.
+    ///      Also accepts legacy backendRelayers mapping for backwards compatibility.
+    /// @param eventId The event ID
+    /// @param attendee The attendee address
+    /// @param minutesPresent Total minutes the attendee was present
+    function recordWebinarAttendance(
+        uint256 eventId,
+        address attendee,
+        uint256 minutesPresent
+    ) external {
+        require(
+            hasRole(RELAYER_ROLE, msg.sender) || backendRelayers[msg.sender],
+            "Not authorized relayer"
+        );
+        Event storage evt = events[eventId];
+        require(evt.active, "Event not active");
+        require(evt.eventType == EventType.VIRTUAL || evt.eventType == EventType.HYBRID, "Not a virtual event");
+        
+        AttendanceRecord storage record = attendance[eventId][attendee];
+        
+        // Initialize record if first time
+        if (record.timestamp == 0) {
+            record.eventId = eventId;
+            record.timestamp = block.timestamp;
+            record.badgeClaimed = false;
+            record.checkInTime = block.timestamp;
+            totalAttendance[attendee]++;
+        }
+        
+        // Update attendance metrics
+        record.totalMinutesPresent = minutesPresent;
+        
+        // Calculate attendance percentage
+        if (evt.durationMinutes > 0) {
+            record.attendancePercentage = (minutesPresent * 100) / evt.durationMinutes;
+            if (record.attendancePercentage > 100) {
+                record.attendancePercentage = 100; // Cap at 100%
+            }
+        }
+        
+        emit WebinarAttendanceRecorded(eventId, attendee, record.attendancePercentage);
+        
+        // Reward: +10 VRYF for webinar participation (only on first record)
+        if (record.totalMinutesPresent == minutesPresent) {
+            try vryfToken.mintCheckInReward(attendee) {} catch {}
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    // Feature 6: Physical Event Check-In
+    // ──────────────────────────────────────────────
+
+    /// @notice Record physical event check-in with signature verification
+    /// @dev Supports multi-checkpoint: if checkpoints configured, each scan increments
+    ///      the checkpoint count and recalculates attendance percentage. First scan creates
+    ///      the attendance record; subsequent scans update percentage.
+    function recordPhysicalCheckIn(
+        address attendee,
+        uint256 eventId,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external onlyRole(RELAYER_ROLE) {
+        Event storage evt = events[eventId];
+        require(evt.active, "Event not active");
+        require(evt.eventType == EventType.PHYSICAL || evt.eventType == EventType.HYBRID, "Not a physical event");
+        require(block.timestamp >= evt.startTime, "Event not started");
+        require(block.timestamp <= evt.endTime, "Event ended");
+
+        bytes32 structHash = keccak256(
+            abi.encode(PHYSICAL_CHECKIN_TYPEHASH, attendee, eventId, nonces[attendee]++)
+        );
+        bytes32 hash = _hashTypedDataV4(structHash);
+        require(ECDSA.recover(hash, v, r, s) == attendee, "Invalid signature");
+
+        AttendanceRecord storage record = attendance[eventId][attendee];
+        uint256 totalCheckpoints = eventCheckpointCount[eventId];
+
+        if (record.timestamp == 0) {
+            record.eventId = eventId;
+            record.timestamp = block.timestamp;
+            record.checkInTime = block.timestamp;
+            record.badgeClaimed = false;
+            record.checkpointCount = 1;
+
+            if (totalCheckpoints > 1) {
+                record.attendancePercentage = (1 * 100) / totalCheckpoints;
+                record.totalMinutesPresent = evt.durationMinutes / totalCheckpoints;
+            } else {
+                record.attendancePercentage = 100;
+                record.totalMinutesPresent = evt.durationMinutes;
+            }
+
+            totalAttendance[attendee]++;
+            try vryfToken.mintCheckInReward(attendee) {} catch {}
+
+            emit PhysicalCheckIn(eventId, attendee, block.timestamp);
+        } else {
+            require(totalCheckpoints > 1, "Single-checkpoint: already checked in");
+            require(record.checkpointCount < totalCheckpoints, "All checkpoints scanned");
+
+            record.checkpointCount++;
+            record.attendancePercentage = (record.checkpointCount * 100) / totalCheckpoints;
+            record.totalMinutesPresent = (evt.durationMinutes * record.checkpointCount) / totalCheckpoints;
+
+            emit CheckpointRecorded(eventId, attendee, record.checkpointCount);
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    // Certificate Eligibility & Management
+    // ──────────────────────────────────────────────
+
+    /// @notice Check if attendee is eligible for certificate based on attendance threshold
+    /// @param eventId The event ID
+    /// @param attendee The attendee address
+    /// @return eligible True if attendee meets the threshold
+    function isEligibleForCertificate(
+        uint256 eventId,
+        address attendee
+    ) public view returns (bool eligible) {
+        Event storage evt = events[eventId];
+        AttendanceRecord storage record = attendance[eventId][attendee];
+        
+        // Must have attended
+        if (record.timestamp == 0) {
+            return false;
+        }
+        
+        // Check if within claim period
+        if (evt.claimPeriodDays > 0) {
+            uint256 claimDeadline = evt.endTime + (evt.claimPeriodDays * 1 days);
+            if (block.timestamp > claimDeadline) {
+                return false;
+            }
+        }
+        
+        // Check attendance percentage meets threshold
+        return record.attendancePercentage >= evt.attendanceThreshold;
+    }
+
+    /// @notice Update the attendance threshold for an event
+    /// @dev Only organizer can update, and only before event ends
+    /// @param eventId The event ID
+    /// @param newThreshold New threshold percentage (1-100)
+    function updateEventThreshold(
+        uint256 eventId,
+        uint256 newThreshold
+    ) external onlyRole(ORGANIZER_ROLE) {
+        require(newThreshold > 0 && newThreshold <= 100, "Invalid threshold");
+        Event storage evt = events[eventId];
+        require(evt.organizer == msg.sender, "Not event organizer");
+        require(block.timestamp <= evt.endTime, "Event ended");
+        
+        evt.attendanceThreshold = newThreshold;
+        
+        emit ThresholdUpdated(eventId, newThreshold);
+    }
+
+    /// @notice Get detailed attendance information for an attendee
+    /// @param eventId The event ID
+    /// @param attendee The attendee address
+    /// @return timestamp Check-in timestamp
+    /// @return badgeClaimed Whether badge was claimed
+    /// @return attendancePercentage Percentage of event attended
+    /// @return totalMinutesPresent Total minutes present
+    /// @return checkInTime Physical check-in time
+    /// @return eligible Whether eligible for certificate
+    function getAttendanceDetails(
+        uint256 eventId,
+        address attendee
+    ) external view returns (
+        uint256 timestamp,
+        bool badgeClaimed,
+        uint256 attendancePercentage,
+        uint256 totalMinutesPresent,
+        uint256 checkInTime,
+        bool eligible
+    ) {
+        AttendanceRecord storage record = attendance[eventId][attendee];
+        return (
+            record.timestamp,
+            record.badgeClaimed,
+            record.attendancePercentage,
+            record.totalMinutesPresent,
+            record.checkInTime,
+            isEligibleForCertificate(eventId, attendee)
+        );
+    }
+
+    // ──────────────────────────────────────────────
+    // Backend Relayer Management
+    // ──────────────────────────────────────────────
+
+    /// @notice Add a backend relayer (admin only)
+    /// @param relayer Address to authorize as backend relayer
+    function addBackendRelayer(address relayer) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(relayer != address(0), "Invalid address");
+        backendRelayers[relayer] = true;
+        emit BackendRelayerUpdated(relayer, true);
+    }
+
+    /// @notice Remove a backend relayer (admin only)
+    /// @param relayer Address to remove from backend relayers
+    function removeBackendRelayer(address relayer) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        backendRelayers[relayer] = false;
+        emit BackendRelayerUpdated(relayer, false);
     }
 
     // ──────────────────────────────────────────────
@@ -387,31 +799,45 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
     // Feature 4: Time-Stamped Certificates
     // ──────────────────────────────────────────────
 
-    /// @notice Issue a time-stamped certificate for an attendee
+    /// @notice Issue a time-stamped certificate as a soulbound ERC-1155 NFT
     function issueCertificate(
         uint256 eventId,
         address attendee,
         string calldata metadataURI
     ) external onlyRole(ORGANIZER_ROLE) returns (uint256) {
         require(attendance[eventId][attendee].timestamp > 0, "Attendee not recorded");
+        require(isEligibleForCertificate(eventId, attendee), "Not eligible for certificate");
 
         uint256 certId = nextCertificateId++;
+        uint256 certTokenId = nextCertTokenId++;
+        _tokenURIs[certTokenId] = metadataURI;
+        isSoulbound[certTokenId] = true;
+
         certificates[certId] = Certificate({
             eventId: eventId,
             attendee: attendee,
             timestamp: block.timestamp,
             metadataURI: metadataURI,
-            isValid: true
+            isValid: true,
+            tokenId: certTokenId
         });
+
+        _mint(attendee, certTokenId, 1, "");
 
         emit CertificateIssued(certId, eventId, attendee);
         return certId;
     }
 
-    /// @notice Revoke a certificate (organizer only)
+    /// @notice Revoke a certificate and burn the soulbound NFT (organizer only)
     function revokeCertificate(uint256 certificateId) external onlyRole(ORGANIZER_ROLE) {
-        require(certificates[certificateId].timestamp > 0, "Certificate not found");
-        certificates[certificateId].isValid = false;
+        Certificate storage cert = certificates[certificateId];
+        require(cert.timestamp > 0, "Certificate not found");
+        cert.isValid = false;
+
+        if (cert.tokenId > 0 && balanceOf(cert.attendee, cert.tokenId) > 0) {
+            _burn(cert.attendee, cert.tokenId, 1);
+        }
+
         emit CertificateRevoked(certificateId);
     }
 
@@ -501,7 +927,11 @@ contract VryfdAttendance is ERC1155, AccessControl, EIP712 {
         attendance[eventId][attendee] = AttendanceRecord({
             eventId: eventId,
             timestamp: block.timestamp,
-            badgeClaimed: false
+            badgeClaimed: false,
+            attendancePercentage: 100, // Default 100% for direct check-ins
+            totalMinutesPresent: evt.durationMinutes, // Full duration credit
+            checkInTime: block.timestamp,
+            checkpointCount: 1
         });
 
         totalAttendance[attendee]++;

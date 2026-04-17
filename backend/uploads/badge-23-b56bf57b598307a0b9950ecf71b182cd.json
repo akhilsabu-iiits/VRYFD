@@ -1,0 +1,32 @@
+{
+  "name": "VRYFD: Test event 2",
+  "description": "Proof of Attendance for Test event 2",
+  "image": "http://localhost:3001/uploads/vryfd-upload-1776429546720-0484f4c6d25a7eb6b7ea9bddb60bbc32.png",
+  "external_url": "http://localhost:3001/api/verify/event/23",
+  "attributes": [
+    {
+      "trait_type": "Event",
+      "value": "Test event 2"
+    },
+    {
+      "trait_type": "Event ID",
+      "value": "23"
+    },
+    {
+      "trait_type": "Date",
+      "value": "2026-04-17"
+    },
+    {
+      "trait_type": "Organizer",
+      "value": "admin+81f629d9@vryfd.local"
+    },
+    {
+      "trait_type": "Type",
+      "value": "POAP Badge"
+    },
+    {
+      "trait_type": "Soulbound",
+      "value": "true"
+    }
+  ]
+}

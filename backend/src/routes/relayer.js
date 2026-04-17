@@ -34,31 +34,177 @@ const {
   clearAllDeployedEvents,
 } = require("../services/relayerService");
 
+const { authMiddleware } = require("../services/authService");
+const { ethers } = require("ethers");
+
 const router = express.Router();
+
+// ── On-chain VRYF Token reader (Sepolia) ─────────────────────────────────────
+// All token balances and transaction history come directly from the deployed
+// VRYFToken contract. No off-chain ledger.
+const VRYF_TOKEN_ADDRESS = process.env.NEXT_PUBLIC_VRYF_TOKEN_ADDRESS;
+const SEPOLIA_RPC = process.env.SEPOLIA_RPC || "https://rpc.sepolia.org";
+
+const ERC20_ABI = [
+  "function balanceOf(address) view returns (uint256)",
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)",
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
+];
+
+function getTokenContract() {
+  if (!VRYF_TOKEN_ADDRESS) throw new Error("VRYF token address not configured");
+  const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC);
+  return new ethers.Contract(VRYF_TOKEN_ADDRESS, ERC20_ABI, provider);
+}
+
+async function getOnChainBalance(account) {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(account)) return 0;
+  try {
+    const c = getTokenContract();
+    const [bal, decimals] = await Promise.all([c.balanceOf(account), c.decimals()]);
+    return Number(ethers.formatUnits(bal, decimals));
+  } catch (e) {
+    console.error("[tokens] balance read failed:", e.message);
+    return 0;
+  }
+}
+
+async function getOnChainTransactions(account) {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(account)) return [];
+  try {
+    const c = getTokenContract();
+    const decimals = Number(await c.decimals());
+    // Query both incoming and outgoing transfers
+    const [incoming, outgoing] = await Promise.all([
+      c.queryFilter(c.filters.Transfer(null, account)),
+      c.queryFilter(c.filters.Transfer(account, null)),
+    ]);
+    const txs = [];
+    for (const ev of incoming) {
+      const block = await ev.getBlock();
+      txs.push({
+        id: `${ev.transactionHash}-${ev.logIndex}`,
+        account: account.toLowerCase(),
+        amount: Number(ethers.formatUnits(ev.args.value, decimals)),
+        reason: ev.args.from === ethers.ZeroAddress ? "Mint reward" : `From ${ev.args.from.slice(0, 10)}…`,
+        timestamp: Number(block.timestamp) * 1000,
+        txHash: ev.transactionHash,
+        type: "in",
+      });
+    }
+    for (const ev of outgoing) {
+      const block = await ev.getBlock();
+      txs.push({
+        id: `${ev.transactionHash}-${ev.logIndex}`,
+        account: account.toLowerCase(),
+        amount: -Number(ethers.formatUnits(ev.args.value, decimals)),
+        reason: `To ${ev.args.to.slice(0, 10)}…`,
+        timestamp: Number(block.timestamp) * 1000,
+        txHash: ev.transactionHash,
+        type: "out",
+      });
+    }
+    return txs.sort((a, b) => b.timestamp - a.timestamp);
+  } catch (e) {
+    console.error("[tokens] history read failed:", e.message);
+    return [];
+  }
+}
 
 /**
  * POST /api/relay/createEvent
  * Organizer creates event — backend pays gas (has ORGANIZER_ROLE)
  * Body: { name, metadataURI, startTime, endTime }
  */
-router.post("/createEvent", async (req, res) => {
+router.post("/createEvent", authMiddleware, async (req, res) => {
   try {
-    const { name, metadataURI, startTime, endTime, demoId, joinCode } = req.body;
+    const { name, metadataURI, startTime, endTime, demoId, joinCode, attendanceThreshold, claimPeriodDays, durationMinutes, eventType } = req.body;
     if (!name || !startTime || !endTime) {
       return res.status(400).json({ error: "Missing required fields: name, startTime, endTime" });
     }
-    const result = await createEvent(name, metadataURI || "", startTime, endTime);
+    const result = await createEvent(name, metadataURI || "", startTime, endTime, attendanceThreshold, claimPeriodDays, durationMinutes, eventType);
     if (demoId !== undefined && demoId !== null) {
       try { saveDeployedEvent(demoId, result.txHash, result.eventId, joinCode || null); } catch (e) {
         console.error("saveDeployedEvent failed (non-fatal):", e.message);
       }
     }
     // Register custom join code so attendees can check in with it
+    const generatedCode = joinCode || generateJoinCode(result.eventId);
     if (joinCode) {
       try { setCustomCode(result.eventId, joinCode); } catch (e) {
         console.error("setCustomCode failed (non-fatal):", e.message);
       }
     }
+
+    // Append new event to the events list so it shows up in the UI
+    try {
+      const existing = getAllEvents() || [];
+      const startDate = new Date(startTime * 1000);
+      const now = new Date();
+      const endDate = new Date(endTime * 1000);
+      let status = "upcoming";
+      if (now >= startDate && now <= endDate) status = "live";
+      else if (now > endDate) status = "ended";
+      existing.push({
+        id: existing.length + 1,
+        onChainId: result.eventId,
+        name,
+        date: startDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        startTime,
+        endTime,
+        status,
+        active: status !== "ended",
+        attendees: 0,
+        attendeeCount: 0,
+        createdBy: req.user.email,
+        organizer: req.user.email,
+        emoji: "🎪",
+        color: "#7c6cf0",
+        joinCode: generatedCode,
+        txHash: result.txHash,
+        metadataURI: metadataURI || "",
+        // EventType enum on-chain: 0 = VIRTUAL (Virtual / online), 1 = PHYSICAL,
+        // 2 = HYBRID. The UI gates QR-code features on physical/hybrid events.
+        eventType: typeof eventType === "number" ? eventType : 0,
+        attendanceThreshold: typeof attendanceThreshold === "number" ? attendanceThreshold : 75,
+        durationMinutes: typeof durationMinutes === "number" ? durationMinutes : undefined,
+        claimPeriodDays: typeof claimPeriodDays === "number" ? claimPeriodDays : undefined,
+        // The createEvent service now returns immediately without waiting for
+        // block confirmation — UIs can show a "pending on-chain" hint while
+        // the tx is still being mined.
+        onChainPending: !!result.pending,
+      });
+      saveAllEvents(existing);
+
+      // Background watcher: wait for the tx to confirm, then clear the
+      // onChainPending flag in events.json so the UI badge disappears.
+      if (result.pending && result.txHash) {
+        (async () => {
+          try {
+            const { ethers } = require("ethers");
+            const rpc = process.env.SEPOLIA_RPC || "https://rpc.sepolia.org";
+            const provider = new ethers.JsonRpcProvider(rpc);
+            await provider.waitForTransaction(result.txHash, 1, 180_000);
+            const fresh = getAllEvents() || [];
+            const target = fresh.find(
+              (e) => String(e.onChainId) === String(result.eventId) && e.txHash === result.txHash
+            );
+            if (target) {
+              target.onChainPending = false;
+              target.onChainConfirmedAt = Date.now();
+              saveAllEvents(fresh);
+              console.log(`[createEvent] ✓ cleared onChainPending for event ${result.eventId}`);
+            }
+          } catch (err) {
+            console.warn(`[createEvent] pending watcher failed for ${result.txHash}:`, err.message);
+          }
+        })();
+      }
+    } catch (e) {
+      console.error("saveAllEvents after create failed (non-fatal):", e.message);
+    }
+
     res.json({ success: true, ...result });
   } catch (error) {
     console.error("createEvent error:", error.message);
@@ -290,17 +436,56 @@ router.post("/checkin", async (req, res) => {
  * Issue certificate — backend pays gas (has ORGANIZER_ROLE)
  * Body: { eventId, attendee, metadataURI }
  */
-router.post("/issueCertificate", async (req, res) => {
+router.post("/issueCertificate", authMiddleware, async (req, res) => {
   try {
     const { eventId, attendee, metadataURI } = req.body;
     if (eventId === undefined || !attendee) {
       return res.status(400).json({ error: "Missing required fields: eventId, attendee" });
     }
-    const result = await issueCertificate(eventId, attendee, metadataURI || "");
+    if (!/^0x[0-9a-fA-F]{40}$/.test(attendee)) {
+      return res.status(400).json({ error: "Wallet address required (per PRD §11)" });
+    }
+
+    // Authorize: only the event's organizer or an admin may issue
+    const events = getAllEvents() || [];
+    const ev = findEvent(events, eventId);
+    if (!ev) return res.status(404).json({ error: "Event not found" });
+    if (!canManageEvent(req.user, ev)) {
+      return res.status(403).json({
+        error: "Only the event organizer or an admin can issue certificates for this event",
+      });
+    }
+    const onChainId = ev.onChainId || ev.eventId || ev.id;
+
+    // The service (relayerService.issueCertificate) now auto-records attendance
+    // if missing, and validates the event window. We just wrap the result and
+    // translate common revert reasons into friendly HTTP errors.
+    const result = await issueCertificate(Number(onChainId), attendee, metadataURI || "");
     res.json({ success: true, ...result });
   } catch (error) {
-    console.error("issueCertificate error:", error.message);
-    res.status(500).json({ error: error.message });
+    const msg = error.message || "";
+    const lower = msg.toLowerCase();
+    if (lower.includes("already issued") || lower.includes("certificate already")) {
+      return res.status(409).json({ success: false, error: msg });
+    }
+    if (lower.includes("not eligible") || lower.includes("below the event threshold")) {
+      return res.status(403).json({
+        success: false,
+        error: "Not eligible — attendee's on-chain attendance percentage is below the event threshold",
+      });
+    }
+    if (lower.includes("event window has ended") || lower.includes("event ended")) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "On-chain event window has ended. Click Start Event again to extend the window, then try issuing the certificate.",
+      });
+    }
+    if (lower.includes("event has not started")) {
+      return res.status(400).json({ success: false, error: msg });
+    }
+    console.error("[issueCertificate] unexpected error:", msg);
+    res.status(500).json({ error: msg || "Failed to issue certificate" });
   }
 });
 
@@ -534,10 +719,216 @@ router.get("/ens/:address", async (req, res) => {
  * GET /api/relay/events
  * Returns the full saved event list (source of truth for frontend state)
  */
+/**
+ * Compute live status & active flag from start/end times.
+ * The `active` flag stored in events.json is only the value at creation time —
+ * it never updates as time passes. We re-derive it on every read so the UI
+ * always shows accurate state.
+ */
+/**
+ * Lifecycle status precedence (highest first):
+ *   1. lifecycleStatus === "ended"     → ended (organizer manually closed)
+ *   2. lifecycleStatus === "live"      → live (organizer manually started)
+ *   3. lifecycleStatus === "not_started" → upcoming (explicit hold)
+ *   4. otherwise: derived from startTime/endTime
+ *
+ * Check-ins/checkouts are only allowed when status === "live".
+ */
+function withLiveStatus(events) {
+  const now = Math.floor(Date.now() / 1000);
+  return (events || []).map((ev) => {
+    const start = Number(ev.startTime || 0);
+    const end = Number(ev.endTime || 0);
+    let status;
+    if (ev.lifecycleStatus === "ended") {
+      status = "ended";
+    } else if (ev.lifecycleStatus === "live") {
+      status = "live";
+    } else if (ev.lifecycleStatus === "not_started") {
+      status = "upcoming";
+    } else if (end > 0 && now > end) {
+      status = "ended";
+    } else if (start > 0 && now >= start && now <= end) {
+      status = "live";
+    } else {
+      status = "upcoming";
+    }
+    return {
+      ...ev,
+      status,
+      active: status === "live",
+      canCheckIn: status === "live",
+      canCheckOut: status === "live",
+    };
+  });
+}
+
+/**
+ * Look up an event by id/onChainId/eventId. Returns null if not found.
+ */
+function findEvent(events, idOrOnChain) {
+  return (events || []).find(
+    (e) =>
+      String(e.id) === String(idOrOnChain) ||
+      String(e.eventId) === String(idOrOnChain) ||
+      String(e.onChainId) === String(idOrOnChain)
+  );
+}
+
+/**
+ * Returns true if the caller (req.user) is allowed to manage this event.
+ * Admins manage all events; organizers only manage their own.
+ */
+function canManageEvent(user, event) {
+  if (!user || !event) return false;
+  if (user.role === "admin") return true;
+  if (user.role !== "organizer") return false;
+  const email = (user.email || "").toLowerCase();
+  return (
+    email === (event.createdBy || "").toLowerCase() ||
+    email === (event.organizer || "").toLowerCase()
+  );
+}
+
 router.get("/events", (req, res) => {
   try {
-    const events = getAllEvents();
-    res.json({ events }); // events is null when no file exists yet
+    const events = withLiveStatus(getAllEvents());
+    res.json({ events });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/relay/startEvent
+ * Organizer/admin manually opens the event for check-ins.
+ * Body: { eventId }
+ */
+router.post("/startEvent", authMiddleware, async (req, res) => {
+  try {
+    const { eventId } = req.body;
+    if (eventId === undefined || eventId === null) {
+      return res.status(400).json({ error: "Missing eventId" });
+    }
+    const events = getAllEvents() || [];
+    const ev = findEvent(events, eventId);
+    if (!ev) return res.status(404).json({ error: "Event not found" });
+    if (!canManageEvent(req.user, ev)) {
+      return res.status(403).json({ error: "Only the event organizer or an admin can start this event" });
+    }
+    if (ev.lifecycleStatus === "ended") {
+      return res.status(400).json({ error: "Event has already ended and cannot be reopened" });
+    }
+    ev.lifecycleStatus = "live";
+    ev.startedAt = Date.now();
+
+    // IMPORTANT: extend the on-chain endTime so that check-ins work for the
+    // entire duration the organizer keeps the event open. The contract gates
+    // checkInFor() by `block.timestamp <= evt.endTime`, so we push endTime
+    // out to now+24h (or keep the existing endTime if it's already further).
+    try {
+      const { editEvent: editOnChain } = require("../services/relayerService");
+      const onChainId = ev.onChainId || ev.eventId || ev.id;
+      const nowSec = Math.floor(Date.now() / 1000);
+      const desiredEnd = nowSec + 24 * 60 * 60; // 24h from now
+      if (Number(ev.endTime) < desiredEnd) {
+        await editOnChain(
+          Number(onChainId),
+          ev.name,
+          ev.metadataURI || "",
+          Number(ev.startTime),
+          desiredEnd,
+          Number(ev.attendanceThreshold || 75),
+          Number(ev.durationMinutes || 60)
+        );
+        ev.endTime = desiredEnd;
+        ev.onChainEndExtended = true;
+        console.log(`[lifecycle] extended on-chain endTime to ${new Date(desiredEnd * 1000).toISOString()}`);
+      }
+    } catch (extErr) {
+      console.warn(`[lifecycle] on-chain endTime extension failed (non-fatal): ${extErr.message}`);
+      // Continue anyway — attendees may still be able to check in via existing window
+    }
+
+    saveAllEvents(events);
+    console.log(`[lifecycle] ${req.user.email} STARTED event ${eventId}`);
+    return res.json({
+      success: true,
+      message: "Event is now live — attendees can check in",
+      event: withLiveStatus([ev])[0],
+    });
+  } catch (error) {
+    console.error("[startEvent] error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/relay/endEvent
+ * Organizer/admin manually closes the event. After this no further
+ * check-ins or checkouts are permitted.
+ * Body: { eventId }
+ */
+router.post("/endEvent", authMiddleware, (req, res) => {
+  try {
+    const { eventId } = req.body;
+    if (eventId === undefined || eventId === null) {
+      return res.status(400).json({ error: "Missing eventId" });
+    }
+    const events = getAllEvents() || [];
+    const ev = findEvent(events, eventId);
+    if (!ev) return res.status(404).json({ error: "Event not found" });
+    if (!canManageEvent(req.user, ev)) {
+      return res.status(403).json({ error: "Only the event organizer or an admin can end this event" });
+    }
+    ev.lifecycleStatus = "ended";
+    ev.endedAt = Date.now();
+    saveAllEvents(events);
+    console.log(`[lifecycle] ${req.user.email} ENDED event ${eventId}`);
+
+    // Broadcast to any active attendees in the live meeting room so
+    // their client-side sessions auto-checkout and disconnect.
+    try {
+      const io = req.app.get("io");
+      if (io) {
+        const roomId = `vryfd-live-${ev.onChainId || ev.id || eventId}`;
+        io.to(roomId).emit("event-ended", {
+          eventId: ev.onChainId || ev.id || eventId,
+          endedBy: req.user.email,
+          reason: "organizer_closed",
+        });
+        // Also emit the existing channel so older live-page handlers still react
+        io.to(roomId).emit("meeting-ended", { endedBy: req.user.email });
+        console.log(`[lifecycle] broadcast event-ended to room ${roomId}`);
+      }
+    } catch (e) {
+      console.warn("[endEvent] broadcast failed:", e.message);
+    }
+
+    return res.json({
+      success: true,
+      message: "Event ended — check-ins are now closed",
+      event: withLiveStatus([ev])[0],
+    });
+  } catch (error) {
+    console.error("[endEvent] error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/relay/my-events
+ * Returns events owned by the authenticated user (organizer isolation)
+ * Admin role bypasses the filter and sees all events.
+ */
+router.get("/my-events", authMiddleware, (req, res) => {
+  try {
+    const all = withLiveStatus(getAllEvents() || []);
+    if (req.user.role === "admin") {
+      return res.json({ events: all });
+    }
+    const mine = all.filter((e) => e.createdBy === req.user.email);
+    res.json({ events: mine });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -578,6 +969,129 @@ router.post("/reset", async (req, res) => {
 });
 
 /**
+ * POST /api/relay/editEvent
+ * Organizer edits an existing event on-chain
+ * Body: { eventId, name, metadataURI, startTime, endTime, attendanceThreshold, durationMinutes }
+ */
+router.post("/editEvent", async (req, res) => {
+  try {
+    const { eventId, name, metadataURI, startTime, endTime, attendanceThreshold, durationMinutes } = req.body;
+    if (eventId === undefined || !name || !startTime || !endTime) {
+      return res.status(400).json({ error: "Missing required fields: eventId, name, startTime, endTime" });
+    }
+    const { editEvent } = require("../services/relayerService");
+    const result = await editEvent(eventId, name, metadataURI || "", startTime, endTime, attendanceThreshold || 75, durationMinutes || 60);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error("editEvent error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/relay/endMeeting
+ * Admin/organizer ends a live meeting — marks event as ended in events.json
+ * Body: { eventId }
+ */
+router.post("/endMeeting", authMiddleware, async (req, res) => {
+  try {
+    const { eventId } = req.body;
+    if (eventId === undefined) {
+      return res.status(400).json({ error: "Missing eventId" });
+    }
+    if (req.user.role !== "admin" && req.user.role !== "organizer") {
+      return res.status(403).json({ error: "Only admin or organizer can end a meeting" });
+    }
+    const events = getAllEvents();
+    if (!events) return res.status(404).json({ error: "No events found" });
+
+    const ev = events.find(
+      (e) =>
+        String(e.onChainId) === String(eventId) ||
+        String(e.id) === String(eventId) ||
+        String(e.eventId) === String(eventId)
+    );
+    if (!ev) return res.status(404).json({ error: "Event not found" });
+
+    // Check ownership for organizers
+    if (req.user.role === "organizer" && ev.createdBy !== req.user.email) {
+      return res.status(403).json({ error: "You can only end your own events" });
+    }
+
+    ev.status = "ended";
+    ev.active = false;
+    ev.endedAt = Date.now();
+    saveAllEvents(events);
+
+    console.log(`[endMeeting] Event ${eventId} ended by ${req.user.email}`);
+    res.json({ success: true, message: "Meeting ended" });
+  } catch (error) {
+    console.error("endMeeting error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/relay/cancelEvent
+ * Organizer cancels an event on-chain
+ * Body: { eventId }
+ */
+router.post("/cancelEvent", async (req, res) => {
+  try {
+    const { eventId } = req.body;
+    if (eventId === undefined) {
+      return res.status(400).json({ error: "Missing eventId" });
+    }
+    const { cancelEvent } = require("../services/relayerService");
+    const result = await cancelEvent(eventId);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error("cancelEvent error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/relay/setCheckpoints
+ * Configure multi-checkpoint for a physical/hybrid event
+ * Body: { eventId, totalCheckpoints }
+ */
+router.post("/setCheckpoints", async (req, res) => {
+  try {
+    const { eventId, totalCheckpoints } = req.body;
+    if (eventId === undefined || !totalCheckpoints) {
+      return res.status(400).json({ error: "Missing required fields: eventId, totalCheckpoints" });
+    }
+    const { setEventCheckpoints } = require("../services/relayerService");
+    const result = await setEventCheckpoints(eventId, totalCheckpoints);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error("setCheckpoints error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/relay/addRewardTier
+ * Add a reward tier to an event
+ * Body: { eventId, name, minPercentage, metadataURI }
+ */
+router.post("/addRewardTier", async (req, res) => {
+  try {
+    const { eventId, name, minPercentage, metadataURI } = req.body;
+    if (eventId === undefined || !name || !minPercentage) {
+      return res.status(400).json({ error: "Missing required fields: eventId, name, minPercentage" });
+    }
+    const { addRewardTier } = require("../services/relayerService");
+    const result = await addRewardTier(eventId, name, minPercentage, metadataURI || "");
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error("addRewardTier error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * POST /api/relay/testCheckIn
  * DEV/TEST ONLY — available only when NODE_ENV !== "production".
  * Directly calls checkInFor for a list of onChainEventIds bypassing the
@@ -608,4 +1122,40 @@ if (process.env.NODE_ENV !== "production") router.post("/testCheckIn", async (re
   }
 });
 
+// ── VRYF Token Balance & Transactions ────────────────────────────────────────
+
+/**
+ * GET /api/relay/token-balance/:account
+ * Returns the VRYF token balance from the on-chain VRYFToken contract.
+ * Wallet address required (no email — per PRD §11).
+ */
+router.get("/token-balance/:account", async (req, res) => {
+  const account = decodeURIComponent(req.params.account);
+  if (!/^0x[0-9a-fA-F]{40}$/.test(account)) {
+    return res.json({ success: true, account, balance: 0, note: "Wallet required" });
+  }
+  const balance = await getOnChainBalance(account);
+  res.json({ success: true, account, balance });
+});
+
+/**
+ * GET /api/relay/token-history/:account
+ * Returns the VRYF token transaction history from on-chain Transfer events.
+ */
+router.get("/token-history/:account", async (req, res) => {
+  const account = decodeURIComponent(req.params.account);
+  if (!/^0x[0-9a-fA-F]{40}$/.test(account)) {
+    return res.json({ success: true, account, balance: 0, transactions: [], note: "Wallet required" });
+  }
+  const [balance, transactions] = await Promise.all([
+    getOnChainBalance(account),
+    getOnChainTransactions(account),
+  ]);
+  res.json({ success: true, account, balance, transactions });
+});
+
+// Export helpers for use by other routes (attendance.js, etc.)
 module.exports = router;
+module.exports.withLiveStatus = withLiveStatus;
+module.exports.findEvent = findEvent;
+module.exports.canManageEvent = canManageEvent;

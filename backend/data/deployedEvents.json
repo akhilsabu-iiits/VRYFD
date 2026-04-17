@@ -1,12 +1,1 @@
-{
-  "1": {
-    "txHash": "0xf235ead355af6b55ea855f1cb56882480d90d4f7681a792211ea5915ab415524",
-    "onChainId": "15",
-    "joinCode": "HK7P2T"
-  },
-  "2": {
-    "txHash": "0x0757989ad76ca232eb664bba986a365bf099cf2e1e80d0fd884efdb5d0ef2289",
-    "onChainId": "16",
-    "joinCode": "W5NX4M"
-  }
-}
+{}

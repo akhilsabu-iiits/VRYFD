@@ -1,50 +1,99 @@
-import { getDefaultConfig } from "@rainbow-me/rainbowkit";
-import { sepolia, mainnet } from "wagmi/chains";
-import { http } from "wagmi";
+import { connectorsForWallets } from "@rainbow-me/rainbowkit";
+import {
+  metaMaskWallet,
+  injectedWallet,
+  rainbowWallet,
+  walletConnectWallet,
+  coinbaseWallet,
+} from "@rainbow-me/rainbowkit/wallets";
+import { sepolia, mainnet, gnosis, polygon, hardhat } from "wagmi/chains";
+import { http, createConfig } from "wagmi";
+import { defineChain } from "viem";
 
-// NOTE: NEXT_PUBLIC_ALCHEMY_API_KEY is intentionally NOT used here.
-// Embedding an Alchemy key in the browser bundle exposes it to anyone who
-// inspects the page source. All ENS lookups go through the backend proxy
-// (/api/relay/ens/:address) where the key stays server-side.
-// For Sepolia RPC we use the public endpoint — adequate for a testnet dApp.
-// If you need a private Sepolia RPC, add a Next.js API route that proxies
-// calls to Alchemy using a server-only env var (no NEXT_PUBLIC_ prefix).
+export {
+  CONTRACT_ADDRESSES,
+  getContractAddresses,
+  hasValidAddresses,
+  getBlockExplorerUrl,
+  getTxExplorerUrl,
+} from "../config/contracts";
 
+export const VRYF_TOKEN_ADDRESS: `0x${string}` = (
+  typeof window !== "undefined" && localStorage.getItem("vryfd_vryf_token_address")?.startsWith("0x")
+    ? localStorage.getItem("vryfd_vryf_token_address")
+    : process.env.NEXT_PUBLIC_VRYF_TOKEN_ADDRESS ||
+      process.env.NEXT_PUBLIC_SEPOLIA_VRYF_TOKEN_ADDRESS ||
+      "0x0000000000000000000000000000000000000000"
+) as `0x${string}`;
+
+// Gnosis Chiado testnet (not in wagmi/chains by default)
+export const gnosisChiado = defineChain({
+  id: 10200,
+  name: "Gnosis Chiado Testnet",
+  nativeCurrency: { decimals: 18, name: "Chiado xDAI", symbol: "xDAI" },
+  rpcUrls: {
+    default: { http: ["https://rpc.chiadochain.net"] },
+    public: { http: ["https://rpc.chiadochain.net"] },
+  },
+  blockExplorers: { default: { name: "Blockscout", url: "https://gnosis-chiado.blockscout.com" } },
+  testnet: true,
+});
+
+// WalletConnect project ID is OPTIONAL.
+// Without it: MetaMask + browser-injected wallets still work (PRD attendee flow).
+// With it: WalletConnect mobile wallets, Rainbow, Coinbase Wallet also work.
+// Get a free one at https://cloud.reown.com/
 const walletConnectProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
-if (!walletConnectProjectId) {
-  throw new Error("NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID is not set. Add it to your .env file.");
+
+const supportsWalletConnect = !!walletConnectProjectId && walletConnectProjectId !== "development_placeholder";
+
+if (!supportsWalletConnect && typeof window !== "undefined") {
+  // eslint-disable-next-line no-console
+  console.info(
+    "[wagmi] WalletConnect disabled (no NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID). MetaMask + injected wallets still work."
+  );
 }
 
-export const config = getDefaultConfig({
-  appName: "VRYFD Attendance",
-  projectId: walletConnectProjectId,
-  // mainnet is included for ENS name display inside RainbowKit — actual ENS
-  // resolution for the app goes through the backend proxy, not the client.
-  chains: [sepolia, mainnet],
+// Build connector list dynamically — only include WalletConnect-based wallets
+// when we have a real project ID to avoid the 403 / 'invalid key' crash.
+const connectors = connectorsForWallets(
+  [
+    {
+      groupName: "Recommended",
+      wallets: supportsWalletConnect
+        ? [metaMaskWallet, rainbowWallet, walletConnectWallet, coinbaseWallet, injectedWallet]
+        : [metaMaskWallet, injectedWallet],
+    },
+  ],
+  {
+    appName: "VRYFD Attendance",
+    // Project ID must be a string; we pass a placeholder when WC is disabled
+    // (the connectors list above won't include any WC wallet so the value is unused).
+    projectId: walletConnectProjectId || "vryfd-no-wc",
+  }
+);
+
+export const config = createConfig({
+  connectors,
+  chains: [sepolia, gnosis, polygon, gnosisChiado, hardhat, mainnet],
   transports: {
-    [sepolia.id]: http("https://rpc.sepolia.org"),
+    [sepolia.id]: http(process.env.NEXT_PUBLIC_RPC_URL || "https://rpc.sepolia.org"),
+    [gnosis.id]: http(process.env.NEXT_PUBLIC_GNOSIS_RPC_URL || "https://rpc.gnosischain.com"),
+    [polygon.id]: http(process.env.NEXT_PUBLIC_POLYGON_RPC_URL || "https://polygon-rpc.com"),
+    [gnosisChiado.id]: http(process.env.NEXT_PUBLIC_CHIADO_RPC_URL || "https://rpc.chiadochain.net"),
+    [hardhat.id]: http("http://127.0.0.1:8545"),
     [mainnet.id]: http("https://eth.llamarpc.com"),
   },
   ssr: true,
 });
 
-/**
- * Contract addresses (Sepolia)
- * Reads from localStorage first (updated after reset/redeploy), falls back to env var.
- */
-function getStoredAddress(key: string, envVal: string | undefined): `0x${string}` {
-  if (typeof window !== "undefined") {
-    const stored = localStorage.getItem(key);
-    if (stored && stored.startsWith("0x")) return stored as `0x${string}`;
-  }
-  return (envVal as `0x${string}`) || "0x0000000000000000000000000000000000000000";
-}
+export const SUPPORTED_CHAIN_IDS = [sepolia.id, gnosis.id, polygon.id, gnosisChiado.id, hardhat.id];
 
-export const CONTRACT_ADDRESSES: Record<number, `0x${string}`> = {
-  11155111: getStoredAddress("vryfd_contract_address", process.env.NEXT_PUBLIC_CONTRACT_ADDRESS),
+export const DEFAULT_CHAIN_ID = sepolia.id;
+
+export const CHAIN_METADATA = {
+  [sepolia.id]: { name: "Sepolia Testnet", shortName: "Sepolia", icon: "🔵", color: "#627EEA", isPrimary: true },
+  [gnosis.id]: { name: "Gnosis Chain", shortName: "Gnosis", icon: "🟢", color: "#04795B", isPrimary: false },
+  [polygon.id]: { name: "Polygon PoS", shortName: "Polygon", icon: "🟣", color: "#8247E5", isPrimary: false },
+  [gnosisChiado.id]: { name: "Gnosis Chiado", shortName: "Chiado", icon: "🟢", color: "#04795B", isPrimary: false },
 };
-
-export const VRYF_TOKEN_ADDRESS: `0x${string}` = getStoredAddress(
-  "vryfd_vryf_token_address",
-  process.env.NEXT_PUBLIC_VRYF_TOKEN_ADDRESS,
-);

@@ -1,0 +1,32 @@
+{
+  "name": "VRYFD: TWOLK",
+  "description": "Proof of Attendance for TWOLK",
+  "image": "http://localhost:3001/uploads/vryfd-upload-1776443536008-177f31c45ce41e6fb0aec6901ea3df80.png",
+  "external_url": "http://localhost:3001/api/verify/event/24",
+  "attributes": [
+    {
+      "trait_type": "Event",
+      "value": "TWOLK"
+    },
+    {
+      "trait_type": "Event ID",
+      "value": "24"
+    },
+    {
+      "trait_type": "Date",
+      "value": "2026-04-17"
+    },
+    {
+      "trait_type": "Organizer",
+      "value": "admin+81f629d9@vryfd.local"
+    },
+    {
+      "trait_type": "Type",
+      "value": "POAP Badge"
+    },
+    {
+      "trait_type": "Soulbound",
+      "value": "true"
+    }
+  ]
+}

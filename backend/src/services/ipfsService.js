@@ -1,30 +1,60 @@
 const axios = require("axios");
 const FormData = require("form-data");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
 
 const PINATA_BASE = "https://api.pinata.cloud";
-const JWT = process.env.PINATA_JWT;
+const JWT = (process.env.PINATA_JWT || "").trim();
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:3001";
 
+// Local fallback — used when PINATA_JWT is not configured. Files are written
+// to backend/uploads and served statically at BACKEND_URL/uploads/<name>.
+// For NFT metadata this works for local demos; for production you still want
+// real IPFS because MetaMask / OpenSea can't reach localhost.
+const LOCAL_UPLOADS_DIR = path.resolve(__dirname, "../../uploads");
+const HAS_PINATA = Boolean(JWT);
+
+if (!HAS_PINATA) {
+  try { fs.mkdirSync(LOCAL_UPLOADS_DIR, { recursive: true }); } catch {}
+  console.warn("[ipfs] PINATA_JWT not set — falling back to local file storage at", LOCAL_UPLOADS_DIR);
+} else {
+  console.log("[ipfs] Using Pinata IPFS (PINATA_JWT configured)");
+}
+
 /**
- * Pin a JSON metadata object to IPFS via Pinata
- * Returns the IPFS CID (content hash)
+ * Each pinned object gets a short content-hashed identifier so the URL is stable.
+ */
+function contentHash(data) {
+  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  return crypto.createHash("sha256").update(buf).digest("hex").slice(0, 32);
+}
+
+function localFileUrl(filename) {
+  return `${BACKEND_URL}/uploads/${filename}`;
+}
+
+/**
+ * Pin a JSON metadata object. When Pinata is configured, returns an IPFS CID
+ * (so the returned URI is ipfs://<cid>). Otherwise writes the JSON to the
+ * local uploads dir and returns a pseudo-CID; the caller can tell the two
+ * apart by the returned scheme (see `uriFromCid`).
  */
 async function pinJSON(metadata, name = "vryfd-metadata") {
+  if (!HAS_PINATA) {
+    const body = Buffer.from(JSON.stringify(metadata, null, 2));
+    const hash = contentHash(body);
+    const filename = `${name.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 40)}-${hash}.json`;
+    fs.writeFileSync(path.join(LOCAL_UPLOADS_DIR, filename), body);
+    return { cid: hash, uri: localFileUrl(filename), local: true };
+  }
   try {
     const res = await axios.post(
       `${PINATA_BASE}/pinning/pinJSONToIPFS`,
-      {
-        pinataContent: metadata,
-        pinataMetadata: { name },
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${JWT}`,
-        },
-      }
+      { pinataContent: metadata, pinataMetadata: { name } },
+      { headers: { "Content-Type": "application/json", Authorization: `Bearer ${JWT}` } }
     );
-    return res.data.IpfsHash;
+    return { cid: res.data.IpfsHash, uri: `ipfs://${res.data.IpfsHash}`, local: false };
   } catch (err) {
     const detail = err?.response?.data?.error?.details ?? err?.response?.data ?? err.message;
     throw new Error(`IPFS pinJSON failed: ${JSON.stringify(detail)}`);
@@ -32,30 +62,31 @@ async function pinJSON(metadata, name = "vryfd-metadata") {
 }
 
 /**
- * Pin a file (image buffer) to IPFS via Pinata
- * Returns the IPFS CID
+ * Pin a file (image buffer). Same shape as pinJSON — returns {cid, uri, local}.
  */
 async function pinFile(fileBuffer, fileName, mimeType = "image/png") {
+  if (!HAS_PINATA) {
+    const hash = contentHash(fileBuffer);
+    const ext = (fileName.match(/\.[a-zA-Z0-9]+$/) || [".bin"])[0].toLowerCase();
+    const safeBase = (fileName.replace(/\.[a-zA-Z0-9]+$/, "") || "file")
+      .replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 40);
+    const filename = `${safeBase}-${hash}${ext}`;
+    fs.writeFileSync(path.join(LOCAL_UPLOADS_DIR, filename), fileBuffer);
+    return { cid: hash, uri: localFileUrl(filename), local: true };
+  }
   try {
     const formData = new FormData();
-    formData.append("file", fileBuffer, {
-      filename: fileName,
-      contentType: mimeType,
-    });
+    formData.append("file", fileBuffer, { filename: fileName, contentType: mimeType });
     formData.append("pinataMetadata", JSON.stringify({ name: fileName }));
-
     const res = await axios.post(
       `${PINATA_BASE}/pinning/pinFileToIPFS`,
       formData,
       {
         maxBodyLength: Infinity,
-        headers: {
-          ...formData.getHeaders(),
-          Authorization: `Bearer ${JWT}`,
-        },
+        headers: { ...formData.getHeaders(), Authorization: `Bearer ${JWT}` },
       }
     );
-    return res.data.IpfsHash;
+    return { cid: res.data.IpfsHash, uri: `ipfs://${res.data.IpfsHash}`, local: false };
   } catch (err) {
     const detail = err?.response?.data?.error?.details ?? err?.response?.data ?? err.message;
     throw new Error(`IPFS pinFile failed: ${JSON.stringify(detail)}`);
@@ -63,13 +94,16 @@ async function pinFile(fileBuffer, fileName, mimeType = "image/png") {
 }
 
 /**
- * Build a standard POAP badge metadata object (ERC-1155 compatible)
+ * Build a standard POAP badge metadata object (ERC-1155 compatible).
+ * Accepts either `imageUrl` (full URL, e.g. http://… or ipfs://…) or the legacy
+ * `imageCID` (assumed to be an IPFS CID and prefixed accordingly).
  */
-function buildBadgeMetadata({ eventName, eventId, description, imageCID, eventDate, organizer }) {
+function buildBadgeMetadata({ eventName, eventId, description, imageCID, imageUrl, eventDate, organizer }) {
+  const image = imageUrl || (imageCID ? `ipfs://${imageCID}` : "");
   return {
     name: `VRYFD: ${eventName}`,
     description: description || `Proof of Attendance for ${eventName}`,
-    image: `ipfs://${imageCID}`,
+    image,
     external_url: `${BACKEND_URL}/api/verify/event/${eventId}`,
     attributes: [
       { trait_type: "Event", value: eventName },

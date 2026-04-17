@@ -1,0 +1,890 @@
+openapi: 3.0.3
+info:
+  title: VRYFD REST API
+  description: |
+    Complete REST API for the VRYFD platform - On-Chain Event Attendance & Certification System.
+    
+    ## Authentication
+    All endpoints require an API key passed in the Authorization header:
+    ```
+    Authorization: Bearer vryfd_live_your_api_key_here
+    ```
+    
+    ## Rate Limiting
+    - Default: 100 requests per minute per API key
+    - Custom limits can be configured per key
+    
+    ## Webhooks
+    Subscribe to real-time events via webhooks with HMAC-SHA256 signature verification.
+  version: 1.0.0
+  contact:
+    name: VRYFD Support
+    email: support@vryfd.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.vryfd.com
+    description: Production server
+  - url: https://api-staging.vryfd.com
+    description: Staging server
+  - url: http://localhost:3001
+    description: Local development server
+
+tags:
+  - name: Events
+    description: Event management endpoints
+  - name: Attendance
+    description: Attendance tracking endpoints
+  - name: Certificates
+    description: Certificate management endpoints
+  - name: Leaderboard
+    description: Leaderboard and rankings
+  - name: API Keys
+    description: API key management (admin only)
+  - name: Webhooks
+    description: Webhook management (admin only)
+
+security:
+  - BearerAuth: []
+
+paths:
+  /api/v1/events:
+    get:
+      tags:
+        - Events
+      summary: List events
+      description: Retrieve a paginated list of events with optional filtering
+      operationId: listEvents
+      parameters:
+        - name: page
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: limit
+          in: query
+          description: Results per page
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: status
+          in: query
+          description: Filter by event status
+          schema:
+            type: string
+            enum: [upcoming, active, completed]
+        - name: chainId
+          in: query
+          description: Filter by blockchain network ID
+          schema:
+            type: integer
+        - name: sortBy
+          in: query
+          description: Field to sort by
+          schema:
+            type: string
+            default: date
+        - name: order
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+    
+    post:
+      tags:
+        - Events
+      summary: Create event
+      description: Create a new event (requires events:create scope)
+      operationId: createEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - date
+              properties:
+                name:
+                  type: string
+                  example: "Web3 Workshop"
+                date:
+                  type: string
+                  example: "Apr 20, 2026"
+                emoji:
+                  type: string
+                  example: "🎉"
+                color:
+                  type: string
+                  example: "#7c6cf0"
+                joinCode:
+                  type: string
+                  example: "ABC123"
+                chainId:
+                  type: integer
+                  example: 11155111
+      responses:
+        '201':
+          description: Event created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Event'
+                  message:
+                    type: string
+                    example: "Event created successfully"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/events/{id}:
+    get:
+      tags:
+        - Events
+      summary: Get event details
+      description: Retrieve detailed information about a specific event
+      operationId: getEvent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event ID
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Event'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/events/{id}/attendees:
+    get:
+      tags:
+        - Events
+      summary: Get event attendees
+      description: Retrieve list of attendees for an event (requires attendance:read scope)
+      operationId: getEventAttendees
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event ID
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AttendanceRecord'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /api/v1/attendance/{eventId}/{address}:
+    get:
+      tags:
+        - Attendance
+      summary: Get attendance record
+      description: Retrieve attendance record for a specific address at an event
+      operationId: getAttendance
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          description: On-chain event ID
+          schema:
+            type: string
+        - name: address
+          in: path
+          required: true
+          description: Ethereum address
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/AttendanceRecord'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/certificates/{eventId}/{address}:
+    get:
+      tags:
+        - Certificates
+      summary: Get certificate
+      description: Retrieve certificate for a specific address at an event
+      operationId: getCertificate
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: address
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Certificate'
+        '403':
+          description: Not eligible for certificate
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/leaderboard:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get leaderboard
+      description: Retrieve global leaderboard rankings
+      operationId: getLeaderboard
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+        - name: chainId
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaderboardEntry'
+                  count:
+                    type: integer
+
+  /api/v1/keys:
+    get:
+      tags:
+        - API Keys
+      summary: List API keys
+      description: List all API keys for the authenticated admin
+      operationId: listApiKeys
+      parameters:
+        - name: includeInactive
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiKey'
+    
+    post:
+      tags:
+        - API Keys
+      summary: Generate API key
+      description: Generate a new API key (admin only)
+      operationId: generateApiKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - scopes
+              properties:
+                name:
+                  type: string
+                scopes:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - events:read
+                      - events:create
+                      - attendance:read
+                      - certificates:read
+                      - webhooks:manage
+                      - leaderboard:read
+                environment:
+                  type: string
+                  enum: [live, test]
+                  default: live
+                rateLimit:
+                  type: integer
+                  default: 100
+      responses:
+        '200':
+          description: API key generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      key:
+                        type: string
+                        description: Full API key (only shown once)
+                      name:
+                        type: string
+                      scopes:
+                        type: array
+                        items:
+                          type: string
+                  message:
+                    type: string
+
+  /api/v1/keys/{id}:
+    delete:
+      tags:
+        - API Keys
+      summary: Revoke API key
+      description: Revoke an API key
+      operationId: revokeApiKey
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: API key revoked successfully
+
+  /api/v1/webhooks:
+    get:
+      tags:
+        - Webhooks
+      summary: List webhooks
+      description: List all webhooks for the authenticated admin
+      operationId: listWebhooks
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Webhook'
+    
+    post:
+      tags:
+        - Webhooks
+      summary: Register webhook
+      description: Register a new webhook endpoint
+      operationId: registerWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+                - events
+              properties:
+                url:
+                  type: string
+                  format: uri
+                events:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - event.created
+                      - event.updated
+                      - attendance.recorded
+                      - certificate.issued
+                      - badge.claimed
+                      - milestone.achieved
+                description:
+                  type: string
+      responses:
+        '200':
+          description: Webhook registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      url:
+                        type: string
+                      events:
+                        type: array
+                        items:
+                          type: string
+                      secret:
+                        type: string
+                        description: HMAC secret (only shown once)
+
+  /api/v1/webhooks/{id}:
+    put:
+      tags:
+        - Webhooks
+      summary: Update webhook
+      description: Update webhook configuration
+      operationId: updateWebhook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                events:
+                  type: array
+                  items:
+                    type: string
+                active:
+                  type: boolean
+                description:
+                  type: string
+      responses:
+        '200':
+          description: Webhook updated successfully
+    
+    delete:
+      tags:
+        - Webhooks
+      summary: Delete webhook
+      description: Delete a webhook endpoint
+      operationId: deleteWebhook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Webhook deleted successfully
+
+  /api/v1/webhooks/{id}/deliveries:
+    get:
+      tags:
+        - Webhooks
+      summary: Get delivery history
+      description: Retrieve webhook delivery history
+      operationId: getWebhookDeliveries
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: skip
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      deliveries:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/WebhookDelivery'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+      description: API key authentication
+
+  schemas:
+    Event:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        date:
+          type: string
+        status:
+          type: string
+          enum: [upcoming, active, completed]
+        attendees:
+          type: integer
+        emoji:
+          type: string
+        color:
+          type: string
+        joinCode:
+          type: string
+        onChainEventId:
+          type: string
+        chainId:
+          type: integer
+        contractAddress:
+          type: string
+        txHash:
+          type: string
+        deployed:
+          type: boolean
+
+    AttendanceRecord:
+      type: object
+      properties:
+        eventId:
+          type: string
+        address:
+          type: string
+        totalMinutes:
+          type: integer
+        percentage:
+          type: integer
+        eligible:
+          type: boolean
+        submittedToBlockchain:
+          type: boolean
+        blockchainTxHash:
+          type: string
+        blockchainSubmittedAt:
+          type: string
+          format: date-time
+        sessions:
+          type: array
+          items:
+            type: object
+            properties:
+              sessionId:
+                type: string
+              joinTime:
+                type: string
+                format: date-time
+              leaveTime:
+                type: string
+                format: date-time
+              duration:
+                type: integer
+
+    Certificate:
+      type: object
+      properties:
+        eventId:
+          type: string
+        address:
+          type: string
+        attendancePercentage:
+          type: integer
+        totalMinutes:
+          type: integer
+        eligible:
+          type: boolean
+        blockchainTxHash:
+          type: string
+        issuedAt:
+          type: string
+          format: date-time
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        rank:
+          type: integer
+        address:
+          type: string
+        totalEvents:
+          type: integer
+        totalMinutes:
+          type: integer
+        averageAttendance:
+          type: integer
+
+    ApiKey:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        rateLimit:
+          type: integer
+        environment:
+          type: string
+          enum: [live, test]
+        active:
+          type: boolean
+        lastUsed:
+          type: string
+          format: date-time
+        usageCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        keyPreview:
+          type: string
+
+    Webhook:
+      type: object
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+        active:
+          type: boolean
+        lastDeliveryAt:
+          type: string
+          format: date-time
+        lastDeliveryStatus:
+          type: string
+          enum: [success, failed, pending]
+        successCount:
+          type: integer
+        failureCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    WebhookDelivery:
+      type: object
+      properties:
+        id:
+          type: string
+        event:
+          type: string
+        status:
+          type: string
+          enum: [pending, success, failed, retrying]
+        attempts:
+          type: integer
+        maxAttempts:
+          type: integer
+        lastAttemptAt:
+          type: string
+          format: date-time
+        nextRetryAt:
+          type: string
+          format: date-time
+        responseStatus:
+          type: integer
+        errorMessage:
+          type: string
+        deliveredAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+        message:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Bad request - Invalid parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    Unauthorized:
+      description: Unauthorized - Invalid or missing API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    Forbidden:
+      description: Forbidden - Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    NotFound:
+      description: Not found - Resource doesn't exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    RateLimitExceeded:
+      description: Too many requests - Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

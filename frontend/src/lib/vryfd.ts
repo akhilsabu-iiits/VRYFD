@@ -10,8 +10,9 @@ export interface VEvent {
   endTime?: number;     // unix seconds
   metadataURI?: string;
   joinCode?: string;    // generated at creation time, used for attendee check-in
-  onChainId?: number;   // set when deployed — the Sepolia contract event ID
+  onChainId?: number;   // set when deployed — the contract event ID
   deployTxHash?: string; // transaction hash of the deploy tx
+  chainId?: number;     // chain ID where the event is deployed (100=Gnosis, 137=Polygon, 11155111=Sepolia)
 }
 
 export interface LBEntry {
@@ -19,6 +20,14 @@ export interface LBEntry {
   addr: string;
   count: number;
   tier: string;
+}
+
+export interface VRYFEntry {
+  label: string;
+  amount: number;
+  date: string;
+  type: "checkin" | "badge" | "milestone";
+  timestamp?: number;
 }
 
 export interface ToastState {

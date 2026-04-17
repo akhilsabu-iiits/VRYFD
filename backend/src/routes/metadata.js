@@ -106,13 +106,19 @@ const customEvents = {};
 const pinnedBadgeURIs     = {};
 const pinnedMilestoneURIs = {};
 
+// Pinata gateway only resolves real IPFS CIDs — when the local fallback is
+// active, `pinned.uri` is already a http://localhost URL so we use that directly.
+function publicUrlFor(pinned) {
+  return pinned.local ? pinned.uri : `https://gateway.pinata.cloud/ipfs/${pinned.cid}`;
+}
+
 async function pinBadgeMetadata(ev) {
   if (pinnedBadgeURIs[ev.id]) return pinnedBadgeURIs[ev.id];
-  const imageCID = await pinFile(Buffer.from(badgeSVG(ev)), `vryfd-badge-${ev.id}.svg`, "image/svg+xml");
+  const pinnedImage = await pinFile(Buffer.from(badgeSVG(ev)), `vryfd-badge-${ev.id}.svg`, "image/svg+xml");
   const metadata = {
     name: `${ev.shortName} — POAP Badge`,
     description: `Soulbound Proof of Attendance badge for ${ev.shortName} on ${ev.date}. Issued by VRYFD on Sepolia.`,
-    image: `https://gateway.pinata.cloud/ipfs/${imageCID}`,
+    image: publicUrlFor(pinnedImage),
     attributes: [
       { trait_type: "Event", value: ev.shortName },
       { trait_type: "Date",  value: ev.date },
@@ -120,18 +126,18 @@ async function pinBadgeMetadata(ev) {
       { trait_type: "Chain", value: "Sepolia" },
     ],
   };
-  const metaCID = await pinJSON(metadata, `vryfd-badge-meta-${ev.id}`);
-  pinnedBadgeURIs[ev.id] = `https://gateway.pinata.cloud/ipfs/${metaCID}`;
+  const pinnedMeta = await pinJSON(metadata, `vryfd-badge-meta-${ev.id}`);
+  pinnedBadgeURIs[ev.id] = publicUrlFor(pinnedMeta);
   return pinnedBadgeURIs[ev.id];
 }
 
 async function pinMilestoneMetadata(m) {
   if (pinnedMilestoneURIs[m.threshold]) return pinnedMilestoneURIs[m.threshold];
-  const imageCID = await pinFile(Buffer.from(milestoneSVG(m)), `vryfd-milestone-${m.threshold}.svg`, "image/svg+xml");
+  const pinnedImage = await pinFile(Buffer.from(milestoneSVG(m)), `vryfd-milestone-${m.threshold}.svg`, "image/svg+xml");
   const metadata = {
     name: `VRYFD ${m.tier}`,
     description: `Milestone reward for completing ${m.threshold} events, verified on-chain via VRYFD.`,
-    image: `https://gateway.pinata.cloud/ipfs/${imageCID}`,
+    image: publicUrlFor(pinnedImage),
     attributes: [
       { trait_type: "Tier",      value: m.tier },
       { trait_type: "Threshold", value: m.label },
@@ -139,8 +145,8 @@ async function pinMilestoneMetadata(m) {
       { trait_type: "Chain",     value: "Sepolia" },
     ],
   };
-  const metaCID = await pinJSON(metadata, `vryfd-milestone-meta-${m.threshold}`);
-  pinnedMilestoneURIs[m.threshold] = `https://gateway.pinata.cloud/ipfs/${metaCID}`;
+  const pinnedMeta = await pinJSON(metadata, `vryfd-milestone-meta-${m.threshold}`);
+  pinnedMilestoneURIs[m.threshold] = publicUrlFor(pinnedMeta);
   return pinnedMilestoneURIs[m.threshold];
 }
 
