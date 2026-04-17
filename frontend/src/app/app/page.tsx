@@ -1542,7 +1542,12 @@ export default function Home() {
   const checkPendingStatus = useCallback(async () => {
     if (!address || currentEventId === null) return;
     const onChainEventId = onChainEventIds[currentEventId];
-    if (onChainEventId === undefined) return;
+    if (onChainEventId === undefined) {
+      // Remove stale pending state so the join code input shows again
+      setPendingRegistrationIds((prev) => prev.filter((id) => id !== currentEventId));
+      showToast("This event isn't deployed on-chain yet — contact the organizer to deploy it first.", "error");
+      return;
+    }
     try {
       const res = await fetch(`${BACKEND}/api/relay/checkin-status/${onChainEventId}/${address}`);
       const data = await res.json();
@@ -1576,7 +1581,7 @@ export default function Home() {
     } catch {
       showToast("Could not check status — try again", "error");
     }
-  }, [address, currentEventId, onChainEventIds, userCheckins, checkedInIds, events, showToast, refetchVryf, addVryfEntry]);
+  }, [address, currentEventId, onChainEventIds, userCheckins, checkedInIds, events, showToast, refetchVryf, addVryfEntry, setPendingRegistrationIds]);
 
   // ─── Milestone NFT claim ────────────────────────────────────────────────────
 
