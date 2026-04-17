@@ -1308,15 +1308,36 @@ function TabBar({ active, onChange, counts }: {
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void }) {
-  const [relayer, setRelayer] = useState<RelayerInfo | null>(null);
-  const [stats, setStats] = useState<AdminStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
-  const [filter, setFilter] = useState<StatusFilter>("all");
-  const [search, setSearch] = useState("");
+  const [relayer, setRelayer]           = useState<RelayerInfo | null>(null);
+  const [stats, setStats]               = useState<AdminStats | null>(null);
+  const [contractData, setContractData] = useState<ContractStatsData | null>(null);
+  const [systemData, setSystemData]     = useState<SystemData | null>(null);
+  const [uptimeTick, setUptimeTick]     = useState(0);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState("");
+  const [lastRefresh, setLastRefresh]   = useState<Date | null>(null);
+  const [activeTab, setActiveTab]       = useState<AdminTab>("overview");
+  const [filter, setFilter]             = useState<StatusFilter>("all");
+  const [search, setSearch]             = useState("");
   const { copy, copied } = useCopy();
+
+  // Fetch contract-stats and system health once on mount (non-blocking)
+  useEffect(() => {
+    const hdrs = { "x-admin-secret": secret };
+    const ctrl = new AbortController();
+    fetch(`${API}/api/admin/contract-stats`, { headers: hdrs, signal: ctrl.signal })
+      .then(r => r.json()).then(d => { if (!d.error) setContractData(d); }).catch(() => {});
+    fetch(`${API}/api/admin/system`, { headers: hdrs, signal: ctrl.signal })
+      .then(r => r.json()).then(d => { if (!d.error) setSystemData(d); }).catch(() => {});
+    return () => ctrl.abort();
+  }, [secret]);
+
+  // Live uptime counter
+  useEffect(() => {
+    if (!systemData) return;
+    const t = setInterval(() => setUptimeTick(n => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [systemData]);
 
   const refresh = useCallback(async () => {
     setError("");
@@ -1458,130 +1479,347 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
           <div className="fade-up">
 
             {/* ── Overview ─────────────────────────────────────────────────── */}
-            {activeTab === "overview" && (
-              <>
-                {/* Hero stat row — 4 across */}
-                {stats && (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 16 }}>
-                    {[
-                      { label: "Total Events",        value: stats.totalEvents,    icon: "📅", iconBg: "rgba(124,108,240,0.12)", color: "var(--accent2)", sub: `${counts.live} live · ${counts.upcoming} upcoming` },
-                      { label: "Confirmed On-Chain",  value: stats.totalConfirmed, icon: "✅", iconBg: "rgba(52,211,153,0.12)",  color: "var(--green)",   sub: "total attendees confirmed" },
-                      { label: "Pending Queue",       value: stats.totalPending,   icon: "⏳", iconBg: "rgba(251,191,36,0.12)",  color: "var(--amber)",   sub: stats.totalPending > 0 ? "awaiting organizer" : "queue is clear" },
-                      { label: "Live Now",            value: counts.live,          icon: "🔴", iconBg: "rgba(248,113,113,0.12)", color: "var(--coral)",   sub: `${counts.ended} ended · ${counts.upcoming} upcoming` },
-                    ].map(s => (
-                      <div key={s.label} className="card stat-card" style={{ cursor: "default" }}>
-                        <div className="stat-icon" style={{ background: s.iconBg }}>{s.icon}</div>
-                        <div className="stat-value" style={{ color: s.color, fontSize: 32 }}>{s.value}</div>
-                        <div className="stat-label">{s.label}</div>
-                        <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{s.sub}</div>
-                      </div>
-                    ))}
+            {activeTab === "overview" && (() => {
+              // Compute overall system status
+              const bal = relayer ? parseFloat(relayer.balanceEth) : null;
+              const sys = systemData;
+              const overallStatus =
+                !relayer || !sys                             ? "loading"  :
+                bal! < 0.05 || !sys.env.hasPrivateKey        ? "critical" :
+                bal! < 0.1  || !sys.env.hasAlchemyUrl        ? "degraded" :
+                "healthy";
+
+              const statusMeta = {
+                loading:  { color: "var(--text3)",  bg: "rgba(107,103,128,0.1)",  border: "rgba(107,103,128,0.2)",  icon: "◌", text: "Initialising…" },
+                healthy:  { color: "var(--green)",  bg: "rgba(52,211,153,0.08)",  border: "rgba(52,211,153,0.25)",  icon: "●", text: "All systems operational" },
+                degraded: { color: "var(--amber)",  bg: "rgba(251,191,36,0.08)",  border: "rgba(251,191,36,0.25)",  icon: "◐", text: "Degraded — check config" },
+                critical: { color: "var(--coral)",  bg: "rgba(248,113,113,0.08)", border: "rgba(248,113,113,0.25)", icon: "●", text: "Critical — immediate action required" },
+              }[overallStatus];
+
+              const liveUptime = systemData ? systemData.uptime + uptimeTick : null;
+              const memPct = systemData
+                ? Math.round((parseFloat(systemData.memoryMB.heapUsed) / parseFloat(systemData.memoryMB.heapTotal)) * 100)
+                : 0;
+              const CHECKIN_GAS = 85000; const GAS_GWEI = 10;
+              const pendingCostEth = stats ? stats.totalPending * CHECKIN_GAS * GAS_GWEI * 1e-9 : 0;
+              const fundingOk = bal !== null ? bal >= pendingCostEth : true;
+
+              return (
+                <>
+                  {/* ── 1. Overall Status Banner ─────────────────────────────── */}
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+                    padding: "14px 20px", borderRadius: "var(--radius)",
+                    background: statusMeta.bg, border: `1px solid ${statusMeta.border}`,
+                    marginBottom: 16,
+                  }}>
+                    <span style={{
+                      width: 10, height: 10, borderRadius: "50%", background: statusMeta.color, flexShrink: 0,
+                      boxShadow: overallStatus === "healthy" ? `0 0 8px ${statusMeta.color}` : "none",
+                    }} />
+                    <div>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: statusMeta.color, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                        {overallStatus === "loading" ? "Loading" : overallStatus.charAt(0).toUpperCase() + overallStatus.slice(1)}
+                      </span>
+                      <span style={{ fontSize: 13, color: "var(--text3)", marginLeft: 10 }}>{statusMeta.text}</span>
+                    </div>
+                    {lastRefresh && (
+                      <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text3)" }}>
+                        Last refreshed {lastRefresh.toLocaleTimeString()}
+                      </span>
+                    )}
                   </div>
-                )}
 
-                {/* Relayer + System Health side by side */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, marginBottom: 0 }}>
-                  <div>{relayer && <RelayerCard relayer={relayer} copy={copy} copied={copied} />}</div>
-                  <div><SystemHealth secret={secret} /></div>
-                </div>
+                  {/* ── 2. Four Detail Cards ─────────────────────────────────── */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14, marginBottom: 14 }}>
 
-                {/* On-chain contract stats */}
-                <ContractStats secret={secret} copy={copy} copied={copied} />
-
-                {/* Funding calculator */}
-                {stats && relayer && stats.totalPending > 0 && (() => {
-                  const CHECKIN_GAS  = 85000;
-                  const GAS_PRICE_GWEI = 10; // conservative Sepolia estimate
-                  const costEth = stats.totalPending * CHECKIN_GAS * GAS_PRICE_GWEI * 1e-9;
-                  const balEth  = parseFloat(relayer.balanceEth);
-                  const surplus = balEth - costEth;
-                  const ok      = surplus >= 0;
-                  return (
-                    <div className="card" style={{ marginBottom: 16, padding: "18px 22px" }}>
-                      <SectionTitle>Funding Calculator</SectionTitle>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 20, alignItems: "flex-start" }}>
-                        <div style={{ flex: "1 1 200px" }}>
-                          <div style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>Cost to confirm all pending</div>
-                          <div style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
-                            ~{costEth.toFixed(6)} ETH
-                          </div>
-                          <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>
-                            {stats.totalPending} × {numFmt(CHECKIN_GAS)} gas × {GAS_PRICE_GWEI} Gwei
-                          </div>
-                        </div>
-                        <div style={{ flex: "1 1 160px" }}>
-                          <div style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>Relayer balance</div>
-                          <div style={{ fontSize: 24, fontWeight: 700, color: ok ? "var(--green)" : "var(--coral)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
-                            {relayer.balanceEth} ETH
-                          </div>
-                        </div>
-                        <div style={{ flex: "1 1 180px" }}>
-                          <div style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>Status</div>
-                          <div style={{
-                            display: "inline-flex", alignItems: "center", gap: 8,
-                            padding: "8px 16px", borderRadius: "var(--radius-sm)",
-                            background: ok ? "rgba(52,211,153,0.1)" : "rgba(248,113,113,0.1)",
-                            border: `1px solid ${ok ? "rgba(52,211,153,0.3)" : "rgba(248,113,113,0.3)"}`,
+                    {/* Relayer Wallet */}
+                    <div className="card" style={{ padding: "18px 20px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                        <div style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "rgba(124,108,240,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>🔑</div>
+                        <span style={{ fontWeight: 600, fontSize: 14, color: "var(--text)" }}>Relayer Wallet</span>
+                        {relayer && (
+                          <span style={{
+                            marginLeft: "auto", fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 10,
+                            background: bal! < 0.05 ? "rgba(248,113,113,0.12)" : bal! < 0.1 ? "rgba(251,191,36,0.12)" : "rgba(52,211,153,0.12)",
+                            color: bal! < 0.05 ? "var(--coral)" : bal! < 0.1 ? "var(--amber)" : "var(--green)",
+                            border: `1px solid ${bal! < 0.05 ? "rgba(248,113,113,0.3)" : bal! < 0.1 ? "rgba(251,191,36,0.3)" : "rgba(52,211,153,0.3)"}`,
                           }}>
-                            <span style={{ fontSize: 16 }}>{ok ? "✅" : "🚨"}</span>
+                            {bal! < 0.05 ? "CRITICAL" : bal! < 0.1 ? "LOW" : "HEALTHY"}
+                          </span>
+                        )}
+                      </div>
+                      {relayer ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          <div>
+                            <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Address</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <a href={`${ETHERSCAN}/address/${relayer.address}`} target="_blank" rel="noreferrer"
+                                style={{ color: "var(--accent2)", fontSize: 12, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
+                                {short(relayer.address, 14)}
+                              </a>
+                              <CopyBtn text={relayer.address} id="ov-wallet" copy={copy} copied={copied} />
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: 20 }}>
                             <div>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: ok ? "var(--green)" : "var(--coral)" }}>
-                                {ok ? "Sufficient" : "Shortfall"}
+                              <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Balance</div>
+                              <div style={{
+                                fontSize: 22, fontWeight: 700, fontFamily: "var(--font-space-mono),'Space Mono',monospace",
+                                color: bal! < 0.05 ? "var(--coral)" : bal! < 0.1 ? "var(--amber)" : "var(--green)",
+                              }}>
+                                {relayer.balanceEth} <span style={{ fontSize: 13 }}>ETH</span>
                               </div>
-                              <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>
-                                {ok
-                                  ? `${surplus.toFixed(6)} ETH remaining after`
-                                  : `Need ${Math.abs(surplus).toFixed(6)} ETH more`
-                                }
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Latest Block</div>
+                              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                                {relayer.blockNumber ? `#${numFmt(relayer.blockNumber)}` : "—"}
                               </div>
                             </div>
                           </div>
+                          <div style={{ fontSize: 11, color: "var(--text3)" }}>
+                            {relayer.chain} · Chain ID {relayer.chainId}
+                          </div>
                         </div>
+                      ) : (
+                        <div style={{ color: "var(--text3)", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+                          <span className="spinner" /> Fetching…
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Smart Contract */}
+                    <div className="card" style={{ padding: "18px 20px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                        <div style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "rgba(52,211,153,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>📜</div>
+                        <span style={{ fontWeight: 600, fontSize: 14, color: "var(--text)" }}>Smart Contract</span>
                       </div>
-                      <div style={{ marginTop: 10, fontSize: 11, color: "var(--text3)" }}>
-                        ℹ Estimate uses {GAS_PRICE_GWEI} Gwei gas price. Actual cost varies — check the Gas tab for live prices.
+                      {relayer?.contractAddress ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          <div>
+                            <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Address</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <a href={`${ETHERSCAN}/address/${relayer.contractAddress}`} target="_blank" rel="noreferrer"
+                                style={{ color: "var(--accent2)", fontSize: 12, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
+                                {short(relayer.contractAddress, 14)}
+                              </a>
+                              <CopyBtn text={relayer.contractAddress} id="ov-contract" copy={copy} copied={copied} />
+                              <ELink href={`${ETHERSCAN}/address/${relayer.contractAddress}`} label="Etherscan" />
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+                            <div>
+                              <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Certificates Issued</div>
+                              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--green)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                                {contractData?.totalCertificatesIssued !== null ? numFmt(contractData?.totalCertificatesIssued ?? 0) : "—"}
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Events On-Chain</div>
+                              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--accent2)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                                {contractData?.totalEventsCreatedOnChain !== null ? numFmt(contractData?.totalEventsCreatedOnChain ?? 0) : "—"}
+                              </div>
+                            </div>
+                          </div>
+                          {contractData?.contractDeployedAt && (
+                            <div style={{ fontSize: 11, color: "var(--text3)" }}>
+                              Deployed {fmtDate(contractData.contractDeployedAt / 1000)} · {fmtAge(contractData.contractDeployedAt)}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ color: "var(--text3)", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+                          <span className="spinner" /> Fetching…
+                        </div>
+                      )}
+                    </div>
+
+                    {/* VRYF Token */}
+                    <div className="card" style={{ padding: "18px 20px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                        <div style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "rgba(251,191,36,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>🪙</div>
+                        <span style={{ fontWeight: 600, fontSize: 14, color: "var(--text)" }}>VRYF Token</span>
+                        <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "1px 7px" }}>ERC-20</span>
+                      </div>
+                      {contractData?.vryfTokenAddress ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          <div>
+                            <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Token Address</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <a href={`${ETHERSCAN}/token/${contractData.vryfTokenAddress}`} target="_blank" rel="noreferrer"
+                                style={{ color: "var(--accent2)", fontSize: 12, fontFamily: "var(--font-space-mono),'Space Mono',monospace", textDecoration: "none" }}>
+                                {short(contractData.vryfTokenAddress, 14)}
+                              </a>
+                              <CopyBtn text={contractData.vryfTokenAddress} id="ov-vryf" copy={copy} copied={copied} />
+                              <ELink href={`${ETHERSCAN}/token/${contractData.vryfTokenAddress}`} label="Token" />
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Total Supply Distributed</div>
+                            <div style={{ fontSize: 22, fontWeight: 700, color: "var(--amber)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                              {contractData.vryfDistributed ?? "—"}
+                              <span style={{ fontSize: 13, marginLeft: 6, color: "var(--text3)" }}>VRYF</span>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--text3)" }}>Sepolia Testnet · Soulbound reward token</div>
+                        </div>
+                      ) : (
+                        <div style={{ color: "var(--text3)", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+                          <span className="spinner" /> Fetching…
+                        </div>
+                      )}
+                    </div>
+
+                    {/* System Health */}
+                    <div className="card" style={{ padding: "18px 20px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                        <div style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "rgba(124,108,240,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>🖥</div>
+                        <span style={{ fontWeight: 600, fontSize: 14, color: "var(--text)" }}>System Health</span>
+                      </div>
+                      {systemData ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          <div style={{ display: "flex", gap: 20 }}>
+                            <div>
+                              <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Uptime</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--green)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                                {fmtUptime(liveUptime!)}
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Node</div>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text2)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                                {systemData.nodeVersion}
+                              </div>
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                              <span style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em" }}>Heap Memory</span>
+                              <span style={{ fontSize: 10, color: memPct > 80 ? "var(--coral)" : "var(--text3)" }}>{systemData.memoryMB.heapUsed}/{systemData.memoryMB.heapTotal} MB · {memPct}%</span>
+                            </div>
+                            <div style={{ height: 5, background: "var(--bg4)", borderRadius: 4, overflow: "hidden" }}>
+                              <div style={{
+                                height: "100%", borderRadius: 4, transition: "width 0.5s",
+                                width: `${memPct}%`,
+                                background: memPct > 80 ? "var(--coral)" : memPct > 60 ? "var(--amber)" : "var(--accent)",
+                              }} />
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                            <EnvBadge ok={systemData.env.hasPrivateKey} label="Key" />
+                            <EnvBadge ok={systemData.env.hasAlchemyUrl} label="RPC" />
+                            <EnvBadge ok={systemData.env.hasMongoUri}   label="DB" />
+                            <EnvBadge ok={systemData.env.nodeEnv === "production"} label="Prod" />
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ color: "var(--text3)", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+                          <span className="spinner" /> Fetching…
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── 3. Activity + Funding Row ─────────────────────────────── */}
+                  {stats && (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14, marginBottom: 14 }}>
+                      {/* Event metrics */}
+                      {[
+                        { label: "Total Events",       value: stats.totalEvents,    color: "var(--accent2)", sub: `${counts.live} live · ${counts.upcoming} upcoming` },
+                        { label: "Confirmed On-Chain", value: stats.totalConfirmed, color: "var(--green)",   sub: "total attendees confirmed" },
+                        { label: "Pending Queue",      value: stats.totalPending,   color: stats.totalPending > 0 ? "var(--amber)" : "var(--text3)", sub: stats.totalPending > 0 ? "awaiting organizer" : "queue is clear" },
+                        { label: "Live Now",           value: counts.live,          color: counts.live > 0 ? "var(--coral)" : "var(--text3)", sub: `${counts.ended} ended · ${counts.upcoming} upcoming` },
+                      ].map(s => (
+                        <div key={s.label} className="card" style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: s.color, fontFamily: "var(--font-space-mono),'Space Mono',monospace", minWidth: 40 }}>
+                            {s.value}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{s.label}</div>
+                            <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>{s.sub}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ── 4. Funding Calculator (only if pending > 0) ───────────── */}
+                  {stats && relayer && stats.totalPending > 0 && (
+                    <div className="card" style={{ marginBottom: 14, padding: "16px 20px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                        <div style={{ width: 30, height: 30, borderRadius: "var(--radius-sm)", background: "rgba(124,108,240,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>💰</div>
+                        <span style={{ fontWeight: 600, fontSize: 14, color: "var(--text)" }}>Funding Calculator</span>
+                        <span style={{
+                          marginLeft: "auto", fontSize: 11, fontWeight: 600, padding: "2px 10px", borderRadius: 10,
+                          background: fundingOk ? "rgba(52,211,153,0.1)" : "rgba(248,113,113,0.1)",
+                          border: `1px solid ${fundingOk ? "rgba(52,211,153,0.3)" : "rgba(248,113,113,0.3)"}`,
+                          color: fundingOk ? "var(--green)" : "var(--coral)",
+                        }}>
+                          {fundingOk ? "✓ Sufficient" : "⚠ Shortfall"}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", gap: 0, background: "var(--bg3)", borderRadius: "var(--radius-sm)", overflow: "hidden", border: "1px solid var(--border)" }}>
+                        {[
+                          { label: "Pending Confirmations",  value: `${stats.totalPending}`,           sub: `× ${numFmt(CHECKIN_GAS)} gas × ${GAS_GWEI} Gwei`, color: "var(--text)" },
+                          { label: "Estimated Cost",          value: `~${pendingCostEth.toFixed(6)}`,   sub: "ETH required",                                      color: "var(--amber)" },
+                          { label: "Relayer Balance",         value: relayer.balanceEth,                sub: "ETH available",                                     color: fundingOk ? "var(--green)" : "var(--coral)" },
+                          { label: "Surplus / Shortfall",     value: `${fundingOk ? "+" : ""}${(bal! - pendingCostEth).toFixed(6)}`, sub: "ETH",               color: fundingOk ? "var(--green)" : "var(--coral)" },
+                        ].map((item, i) => (
+                          <div key={i} style={{
+                            flex: 1, padding: "12px 14px",
+                            borderRight: i < 3 ? "1px solid var(--border)" : "none",
+                          }}>
+                            <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{item.label}</div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: item.color, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>{item.value}</div>
+                            <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 2 }}>{item.sub}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 11, color: "var(--text3)" }}>
+                        ℹ Estimate at {GAS_GWEI} Gwei. Check the Gas tab for live network prices.
                       </div>
                     </div>
-                  );
-                })()}
+                  )}
 
-                {/* Navigation strip to other tabs */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 16 }}>
-                  {([
-                    { tab: "events"  as AdminTab, icon: "📅", title: "Deployed Events",   desc: "Events, join codes, attendees, pending queue", color: "var(--accent2)", border: "rgba(124,108,240,0.3)" },
-                    { tab: "history" as AdminTab, icon: "📋", title: "Operation History", desc: "Confirmation timeline & deployment log",        color: "var(--green)",   border: "rgba(52,211,153,0.3)"  },
-                    { tab: "gas"     as AdminTab, icon: "⛽", title: "Gas & Cost",        desc: "Per-op estimates + real on-chain receipts",     color: "var(--amber)",   border: "rgba(251,191,36,0.3)"  },
-                  ] as const).map(q => (
-                    <button
-                      key={q.tab}
-                      onClick={() => setActiveTab(q.tab)}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 14,
-                        background: "var(--bg2)", border: `1px solid ${q.border}`,
-                        borderRadius: "var(--radius)", padding: "14px 18px",
-                        cursor: "pointer", textAlign: "left", width: "100%",
-                        transition: "background 0.15s, transform 0.15s",
-                      }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--bg3)"; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "var(--bg2)"; (e.currentTarget as HTMLElement).style.transform = "none"; }}
-                    >
-                      <div style={{
-                        width: 40, height: 40, borderRadius: "var(--radius-sm)", flexShrink: 0,
-                        background: `${q.border.replace("0.3", "0.12")}`,
-                        display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
-                      }}>
-                        {q.icon}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13, color: q.color, marginBottom: 3 }}>{q.title}</div>
-                        <div style={{ fontSize: 11, color: "var(--text3)", lineHeight: 1.4 }}>{q.desc}</div>
-                      </div>
-                      <span style={{ color: q.color, fontSize: 16, flexShrink: 0 }}>→</span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
+                  {/* ── 5. Tab Navigation Strip ──────────────────────────────── */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 8 }}>
+                    {([
+                      { tab: "events"  as AdminTab, icon: "📅", title: "Deployed Events",   desc: "Events, join codes, attendees, pending queue", color: "var(--accent2)", border: "rgba(124,108,240,0.3)" },
+                      { tab: "history" as AdminTab, icon: "📋", title: "Operation History", desc: "Confirmation timeline & deployment log",        color: "var(--green)",   border: "rgba(52,211,153,0.3)"  },
+                      { tab: "gas"     as AdminTab, icon: "⛽", title: "Gas & Cost",        desc: "Per-op estimates + real on-chain receipts",     color: "var(--amber)",   border: "rgba(251,191,36,0.3)"  },
+                    ] as const).map(q => (
+                      <button
+                        key={q.tab}
+                        onClick={() => setActiveTab(q.tab)}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 14,
+                          background: "var(--bg2)", border: `1px solid ${q.border}`,
+                          borderRadius: "var(--radius)", padding: "14px 18px",
+                          cursor: "pointer", textAlign: "left", width: "100%",
+                          transition: "background 0.15s, transform 0.15s",
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--bg3)"; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "var(--bg2)"; (e.currentTarget as HTMLElement).style.transform = "none"; }}
+                      >
+                        <div style={{
+                          width: 40, height: 40, borderRadius: "var(--radius-sm)", flexShrink: 0,
+                          background: `${q.border.replace("0.3", "0.12")}`,
+                          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
+                        }}>
+                          {q.icon}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13, color: q.color, marginBottom: 3 }}>{q.title}</div>
+                          <div style={{ fontSize: 11, color: "var(--text3)", lineHeight: 1.4 }}>{q.desc}</div>
+                        </div>
+                        <span style={{ color: q.color, fontSize: 16, flexShrink: 0 }}>→</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
 
             {/* ── Deployed Events ───────────────────────────────────────────── */}
             {activeTab === "events" && stats && (
