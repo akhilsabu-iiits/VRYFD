@@ -120,23 +120,35 @@ export async function tryAddNftImport(
   provider: NftProvider,
   contractAddr: string,
   decimalTokenId: string,
+  options?: {
+    /**
+     * Skip the wallet_switchEthereumChain round-trip.
+     * Set to true when the caller has already verified the chain without
+     * triggering a chain-switch popup — this keeps wallet_watchAsset as
+     * the first popup in the gesture frame (the only one MetaMask will show).
+     */
+    skipChainSwitch?: boolean;
+  },
 ): Promise<AddNftOutcome> {
   // ── Chain guard ────────────────────────────────────────────────────────────
   // wallet_watchAsset validates NFT ownership on the CONNECTED chain.
   // A mainnet wallet will not find a Sepolia token and returns silently.
-  // Attempt a chain switch; if the user declines, mark it and proceed — some
-  // recent wallet builds handle wallet_watchAsset cross-chain gracefully.
+  // Attempt a chain switch ONLY when the caller has not already handled it —
+  // wallet_switchEthereumChain fires its own popup which consumes the user-
+  // gesture frame, preventing wallet_watchAsset from showing a second popup.
   let chainSwitchRejected = false;
-  try {
-    const currentChain = await provider.request({ method: "eth_chainId" });
-    if (currentChain !== SEPOLIA_CHAIN_ID) {
-      await provider.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: SEPOLIA_CHAIN_ID }],
-      });
+  if (!options?.skipChainSwitch) {
+    try {
+      const currentChain = await provider.request({ method: "eth_chainId" });
+      if (currentChain !== SEPOLIA_CHAIN_ID) {
+        await provider.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: SEPOLIA_CHAIN_ID }],
+        });
+      }
+    } catch {
+      chainSwitchRejected = true;
     }
-  } catch {
-    chainSwitchRejected = true;
   }
 
   // ── wallet_watchAsset ──────────────────────────────────────────────────────

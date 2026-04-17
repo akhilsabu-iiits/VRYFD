@@ -26,9 +26,30 @@ export default function BadgesPage({
   const [addedToWallet, setAddedToWallet] = useState<Set<string>>(new Set());
   // Tracks the key of the button currently awaiting MetaMask response.
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
+  // Tracks which manual-import panels are expanded (keyed by panelKey string).
+  const [expandedManual, setExpandedManual] = useState<Set<string>>(new Set());
+  // Tracks which copy button last received a click (for 2s "Copied!" feedback).
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const markAdded = useCallback((key: string) => {
     setAddedToWallet((prev) => new Set([...prev, key]));
+  }, []);
+
+  const toggleManual = useCallback((panelKey: string) => {
+    setExpandedManual((prev) => {
+      const next = new Set(prev);
+      if (next.has(panelKey)) next.delete(panelKey);
+      else next.add(panelKey);
+      return next;
+    });
+  }, []);
+
+  const copyToClipboard = useCallback(async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 2000);
+    } catch { /* clipboard blocked — no feedback */ }
   }, []);
 
   // eventId: demoId used to look up tokenId on-demand if not yet known.
@@ -54,6 +75,118 @@ export default function BadgesPage({
       >
         {added ? "✓ Added" : isLoading ? "Opening MetaMask…" : block ? "+ Add to MetaMask" : "+ MetaMask"}
       </button>
+    );
+  };
+
+  /**
+   * Collapsible manual import panel shown under every badge/milestone card.
+   * Uses the nft-import-* CSS classes already defined in globals.css.
+   */
+  const ManualPanel = ({
+    panelKey,
+    contractAddr,
+    tokenId,
+  }: {
+    panelKey: string;
+    contractAddr: string;
+    tokenId: string;
+  }) => {
+    const isOpen = expandedManual.has(panelKey);
+    const hasAddr = contractAddr && contractAddr.startsWith("0x");
+    const addrDisplay = hasAddr
+      ? `${contractAddr.slice(0, 10)}…${contractAddr.slice(-8)}`
+      : "Not yet available";
+    const tid = tokenId && tokenId !== "0" ? tokenId : "";
+    const etherscanBase = hasAddr
+      ? `https://sepolia.etherscan.io/token/${contractAddr}`
+      : "https://sepolia.etherscan.io";
+
+    return (
+      <div style={{ width: "100%", marginTop: "6px" }}>
+        {/* Toggle link */}
+        <button
+          type="button"
+          onClick={() => toggleManual(panelKey)}
+          style={{
+            background: "none", border: "none", cursor: "pointer",
+            fontSize: "11px", color: "var(--text3)", padding: "2px 0",
+            textDecoration: "underline", textDecorationStyle: "dashed",
+            display: "flex", alignItems: "center", gap: "4px",
+          }}
+        >
+          <span style={{ fontSize: "9px" }}>{isOpen ? "▾" : "▸"}</span>
+          {isOpen ? "Hide manual steps" : "Can't see the popup? Add manually"}
+        </button>
+
+        {/* Expanded panel */}
+        {isOpen && (
+          <div className="nft-import-panel">
+            <div className="nft-import-title">Manual MetaMask Import</div>
+            <div className="nft-import-hint">
+              Open MetaMask → NFTs tab → Import NFT, then paste these values:
+            </div>
+
+            {/* Contract address row */}
+            <div className="nft-import-row">
+              <span className="nft-import-label">Contract:</span>
+              <button
+                type="button"
+                className="nft-import-copy"
+                disabled={!hasAddr}
+                onClick={() => hasAddr && copyToClipboard(contractAddr, `${panelKey}-addr`)}
+                title={hasAddr ? contractAddr : "Not yet available"}
+              >
+                <span>{addrDisplay}</span>
+                <span className="nft-import-copy-icon">
+                  {copiedKey === `${panelKey}-addr` ? "✓" : "📋"}
+                </span>
+              </button>
+            </div>
+
+            {/* Token ID row */}
+            <div className="nft-import-row">
+              <span className="nft-import-label">Token ID:</span>
+              {tid ? (
+                <button
+                  type="button"
+                  className="nft-import-copy"
+                  onClick={() => copyToClipboard(tid, `${panelKey}-tid`)}
+                  title={tid}
+                >
+                  <span>{tid}</span>
+                  <span className="nft-import-copy-icon">
+                    {copiedKey === `${panelKey}-tid` ? "✓" : "📋"}
+                  </span>
+                </button>
+              ) : (
+                <a
+                  href={etherscanBase}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="nft-import-copy"
+                  style={{ textDecoration: "none" }}
+                  title="Check Etherscan for your token ID"
+                >
+                  <span>Find on Etherscan</span>
+                  <span className="nft-import-copy-icon">↗</span>
+                </a>
+              )}
+            </div>
+
+            {/* Step-by-step mini guide */}
+            <ol style={{
+              margin: "4px 0 0", padding: "0 0 0 14px",
+              fontSize: "10px", color: "var(--text3)", lineHeight: "1.7",
+            }}>
+              <li>Open <strong style={{ color: "var(--text2)" }}>MetaMask</strong> and click the <strong style={{ color: "var(--text2)" }}>NFTs</strong> tab</li>
+              <li>Scroll down and click <strong style={{ color: "var(--text2)" }}>Import NFT</strong></li>
+              <li>Paste the <strong style={{ color: "var(--text2)" }}>Contract address</strong> above</li>
+              <li>Paste the <strong style={{ color: "var(--text2)" }}>Token ID</strong> above</li>
+              <li>Click <strong style={{ color: "var(--text2)" }}>Add</strong></li>
+            </ol>
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -95,7 +228,7 @@ export default function BadgesPage({
         ) : (
           userBadges.map((id) => {
             const ev = events.find((e) => e.id === id);
-            const tid = badgeTokenIds[id];
+            const tid = badgeTokenIds[id] ?? "";
             const caddr = badgeContractAddrs[id] ?? "";
             return (
               <div key={id} className="card badge">
@@ -108,7 +241,8 @@ export default function BadgesPage({
                 <div className="badge-name">{ev ? ev.name : `Event #${id}`}</div>
                 <div className="badge-date">{ev ? ev.date : "—"}</div>
                 <div className="badge-soulbound">SOULBOUND</div>
-                <AddButton eventId={id} tokenId={tid ?? ""} contractAddr={caddr} block />
+                <AddButton eventId={id} tokenId={tid} contractAddr={caddr} block />
+                <ManualPanel panelKey={`badge-${id}`} contractAddr={caddr} tokenId={tid} />
               </div>
             );
           })
@@ -142,7 +276,14 @@ export default function BadgesPage({
             claimedMilestones.includes(5) ? (
               <div className="milestone-claimed-row">
                 <span className="milestone-claimed-label">✓ NFT Claimed</span>
-                {milestoneNftIds[5] && <AddButton eventId={0} tokenId={milestoneNftIds[5]} contractAddr={milestoneContractAddrs[5] ?? ""} block={false} />}
+                {milestoneNftIds[5] && (
+                  <AddButton eventId={0} tokenId={milestoneNftIds[5]} contractAddr={milestoneContractAddrs[5] ?? ""} block={false} />
+                )}
+                <ManualPanel
+                  panelKey="milestone-5"
+                  contractAddr={milestoneContractAddrs[5] ?? ""}
+                  tokenId={milestoneNftIds[5] ?? ""}
+                />
               </div>
             ) : userCheckins >= 5 ? (
               <button type="button" className="btn btn-block btn-claim-milestone" onClick={() => onClaimMilestone(5)} disabled={isMilestoneLoading}>
@@ -174,7 +315,14 @@ export default function BadgesPage({
             claimedMilestones.includes(10) ? (
               <div className="milestone-claimed-row">
                 <span className="milestone-claimed-label">✓ NFT Claimed</span>
-                {milestoneNftIds[10] && <AddButton eventId={0} tokenId={milestoneNftIds[10]} contractAddr={milestoneContractAddrs[10] ?? ""} block={false} />}
+                {milestoneNftIds[10] && (
+                  <AddButton eventId={0} tokenId={milestoneNftIds[10]} contractAddr={milestoneContractAddrs[10] ?? ""} block={false} />
+                )}
+                <ManualPanel
+                  panelKey="milestone-10"
+                  contractAddr={milestoneContractAddrs[10] ?? ""}
+                  tokenId={milestoneNftIds[10] ?? ""}
+                />
               </div>
             ) : userCheckins >= 10 ? (
               <button type="button" className="btn btn-block btn-claim-milestone" onClick={() => onClaimMilestone(10)} disabled={isMilestoneLoading}>
@@ -206,7 +354,14 @@ export default function BadgesPage({
             claimedMilestones.includes(20) ? (
               <div className="milestone-claimed-row">
                 <span className="milestone-claimed-label">✓ NFT Claimed</span>
-                {milestoneNftIds[20] && <AddButton eventId={0} tokenId={milestoneNftIds[20]} contractAddr={milestoneContractAddrs[20] ?? ""} block={false} />}
+                {milestoneNftIds[20] && (
+                  <AddButton eventId={0} tokenId={milestoneNftIds[20]} contractAddr={milestoneContractAddrs[20] ?? ""} block={false} />
+                )}
+                <ManualPanel
+                  panelKey="milestone-20"
+                  contractAddr={milestoneContractAddrs[20] ?? ""}
+                  tokenId={milestoneNftIds[20] ?? ""}
+                />
               </div>
             ) : userCheckins >= 20 ? (
               <button type="button" className="btn btn-block btn-claim-milestone" onClick={() => onClaimMilestone(20)} disabled={isMilestoneLoading}>

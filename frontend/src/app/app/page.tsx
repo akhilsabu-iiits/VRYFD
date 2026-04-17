@@ -309,19 +309,34 @@ export default function Home() {
       return;
     }
 
-    // ── Step 4: wallet_watchAsset via tryAddNftImport ─────────────────────────
-    // tryAddNftImport handles: chain switch to Sepolia, ERC1155 → ERC721 fallback,
-    // and returns a typed outcome. No setTimeout — still in the user-gesture chain.
+    // ── Step 4: chain guard — read chain from wagmi (no RPC, no popup) ─────────
+    // wallet_switchEthereumChain fires its own MetaMask popup which *consumes*
+    // the user-gesture frame, leaving wallet_watchAsset with no gesture context
+    // and causing it to silently fail. By checking via the wagmi hook instead of
+    // requesting a switch, we keep wallet_watchAsset as the first (and only)
+    // popup in this gesture chain — the most reliable fix for the missing popup.
     if (!eth) {
       showToastRef.current(`NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${addr.slice(0, 8)}… Token ID: ${resolvedTokenId}`, "");
       return;
     }
+    if (chainId !== 11155111) {
+      showToastRef.current(
+        `Switch MetaMask to Sepolia first, then click "Add to MetaMask" again.` +
+        ` Or use the manual import steps shown on the badge card.`,
+        "",
+      );
+      return;
+    }
 
+    // ── Step 5: wallet_watchAsset — first popup in the gesture chain ──────────
+    // skipChainSwitch=true: chain already verified above without triggering a
+    // switch popup. tryAddNftImport still handles ERC1155 → ERC721 fallback.
     const outcome = await tryAddNftImport(
       { request: eth.request.bind(eth) },
       addr,
       // Normalise to decimal string (invariant 1: MetaMask rejects hex / numeric)
       BigInt(resolvedTokenId).toString(),
+      { skipChainSwitch: true },
     );
 
     switch (outcome.status) {
@@ -331,21 +346,19 @@ export default function Home() {
         break;
       case "dismissed":
         showToastRef.current(
-          `NFT is in your wallet ✓ — check MetaMask → NFTs tab. Not showing? Import NFT → Contract: ${addr.slice(0, 8)}… Token ID: ${resolvedTokenId}`,
+          `NFT is in your wallet ✓ — check MetaMask → NFTs tab. Not showing? Use the manual import steps on the badge card.`,
           "success",
         );
         break;
       case "wrong_chain":
         showToastRef.current(
-          `Switch your wallet to Sepolia to add this NFT, or import manually → Token ID: ${resolvedTokenId}` +
-          ` | https://sepolia.etherscan.io/token/${addr}?a=${resolvedTokenId}`,
+          `Switch MetaMask to Sepolia, then click "Add to MetaMask" again. Or use the manual import steps on the badge card.`,
           "",
         );
         break;
       case "unsupported":
         showToastRef.current(
-          `NFT minted ✓  To add: MetaMask → NFTs tab → Import NFT → Contract: ${addr.slice(0, 8)}… Token ID: ${resolvedTokenId}` +
-          ` | https://sepolia.etherscan.io/token/${addr}?a=${resolvedTokenId}`,
+          `Your wallet doesn't support auto-import. Use the manual import steps shown on the badge card.`,
           "",
         );
         break;
@@ -354,7 +367,7 @@ export default function Home() {
       const msg = err instanceof Error ? err.message : String(err);
       showToastRef.current(`Could not add to MetaMask: ${msg}`, "error");
     }
-  }, [publicClient, onChainEventIds]);
+  }, [publicClient, onChainEventIds, chainId]);
 
   // No loadBackendDeployedEvents needed — onChainId/deployTxHash live on the VEvent itself.
 
@@ -613,37 +626,54 @@ export default function Home() {
               .catch(() => {});
           }
 
-          // Auto-deploy all events sequentially to the new contract.
-          // Sequential is required: each createEvent reads nextEventId before tx mines,
-          // so parallel calls would all predict the same onChainId and register wrong join codes.
+          // Auto-deploy all events to the new contract in a single batch call.
+          // The backend fetches nonce + nextEventId once and submits all txs in parallel
+          // with explicit sequential nonces — no collisions, ~4× faster than sequential.
           const now = Math.floor(Date.now() / 1000);
           const currentEvents = eventsRef.current;
           const updatedEvents = [...currentEvents];
           try {
-            for (let i = 0; i < currentEvents.length; i++) {
-              const ev = currentEvents[i];
-              try {
-                const startTime = ev.startTime ?? Math.floor(new Date(`${ev.date} 00:00:00 UTC`).getTime() / 1000);
-                const endTime   = ev.endTime   ?? (now + 10 * 365 * 86400);
-                const deployStart = startTime > now ? now - 3600 : startTime;
-                const metaURI = `${BACKEND}/api/metadata/badge/${ev.id}`;
-                const [, chainRes] = await Promise.all([
-                  fetch(`${BACKEND}/api/metadata/badge/register`, {
-                    method: "POST", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ id: ev.id, name: ev.name, date: ev.date, color: ev.color, emoji: ev.emoji }),
-                  }),
-                  fetch(`${BACKEND}/api/relay/createEvent`, {
-                    method: "POST", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ name: ev.name, metadataURI: metaURI, startTime: deployStart, endTime, demoId: ev.id, joinCode: ev.joinCode }),
-                  }),
-                ]);
-                if (chainRes.ok) {
-                  const d = await chainRes.json() as { eventId?: number; txHash?: string };
-                  if (d.eventId != null) {
-                    updatedEvents[i] = { ...ev, onChainId: Number(d.eventId), deployTxHash: d.txHash ?? "", status: "live" as const };
+            // Register all badge metadata in parallel while the batch tx is submitted
+            const batchPayload = currentEvents.map((ev) => {
+              const startTime = ev.startTime ?? Math.floor(new Date(`${ev.date} 00:00:00 UTC`).getTime() / 1000);
+              const endTime   = ev.endTime   ?? (now + 10 * 365 * 86400);
+              return {
+                demoId: ev.id,
+                name: ev.name,
+                metadataURI: `${BACKEND}/api/metadata/badge/${ev.id}`,
+                startTime: startTime > now ? now - 3600 : startTime,
+                endTime,
+                joinCode: ev.joinCode,
+              };
+            });
+
+            const [, batchRes] = await Promise.all([
+              // Register all badge metadata in parallel
+              Promise.all(currentEvents.map((ev) =>
+                fetch(`${BACKEND}/api/metadata/badge/register`, {
+                  method: "POST", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ id: ev.id, name: ev.name, date: ev.date, color: ev.color, emoji: ev.emoji }),
+                }).catch(() => {})
+              )),
+              // Single batch createEvent call — one nonce fetch, all txs in parallel
+              fetch(`${BACKEND}/api/relay/createEventsBatch`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ events: batchPayload }),
+              }),
+            ]);
+
+            if (batchRes.ok) {
+              const batchData = await batchRes.json() as { results?: { demoId: number; eventId: number; txHash: string; status: string }[] };
+              if (Array.isArray(batchData.results)) {
+                for (const r of batchData.results) {
+                  if (r.status === "ok" && r.eventId != null) {
+                    const idx = updatedEvents.findIndex((e) => e.id === r.demoId);
+                    if (idx !== -1) {
+                      updatedEvents[idx] = { ...updatedEvents[idx], onChainId: Number(r.eventId), deployTxHash: r.txHash ?? "", status: "live" as const };
+                    }
                   }
                 }
-              } catch { /* skip failed event — organizer can deploy manually */ }
+              }
             }
             // Persist onChainIds into localStorage so they're available immediately after reload
             localStorage.setItem("vryfd_all_events", JSON.stringify(updatedEvents));
@@ -1319,7 +1349,7 @@ export default function Home() {
           if (currentEventId !== null) {
             setCheckedInIds((prev) => prev.filter((id) => id !== currentEventId));
           }
-          showToast("Attendance not confirmed on-chain yet. Ask the organizer to confirm your attendance.", "error");
+          showToast("Attendance not yet confirmed on-chain. If the organizer already confirmed you, wait ~15s for the block to mine and try again.", "error");
         } else if (msg.startsWith("Badge mint would fail:")) {
           showToast(msg, "error");
         } else {
