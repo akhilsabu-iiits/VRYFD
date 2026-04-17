@@ -13,6 +13,7 @@ const relayerRoutes = require("./routes/relayer");
 const certificateRoutes = require("./routes/certificates");
 const verifyRoutes = require("./routes/verify");
 const metadataRoutes = require("./routes/metadata");
+const adminRoutes = require("./routes/admin");
 const { initRelayer, setMilestoneURIs, getContract } = require("./services/relayerService");
 
 const app = express();
@@ -86,6 +87,7 @@ app.use("/api/relay", relayerRoutes);
 app.use("/api/certificates", certificateRoutes);
 app.use("/api/verify", verifyRoutes);
 app.use("/api/metadata", metadataRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Health check — reports relayer + MongoDB state so load balancers can detect degraded service
 app.get("/api/health", (req, res) => {
