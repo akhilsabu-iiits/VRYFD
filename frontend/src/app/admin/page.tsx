@@ -995,14 +995,15 @@ function EventCard({ ev, secret, copy, copied }: {
   ev: EventStat; secret: string;
   copy: (t: string, k: string) => void; copied: string | null;
 }) {
-  const [drawerTab, setDrawerTab] = useState<"confirmed" | "pending" | null>(null);
+  const [showConfirmed, setShowConfirmed] = useState(false);
+  const [showPending,   setShowPending]   = useState(false);
   const total = ev.confirmedAttendees + ev.pendingAttendees;
 
   return (
     <div className="card" style={{
       padding: 0, overflow: "hidden",
       borderLeft: `3px solid ${ev.color || "var(--accent)"}`,
-      boxShadow: drawerTab ? `0 0 24px ${ev.color || "var(--accent)"}18` : undefined,
+      boxShadow: (showConfirmed || showPending) ? `0 0 24px ${ev.color || "var(--accent)"}18` : undefined,
     }}>
       <div style={{ padding: "16px 20px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -1098,10 +1099,10 @@ function EventCard({ ev, secret, copy, copied }: {
         {/* Expand buttons */}
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           <button
-            onClick={() => setDrawerTab(drawerTab === "confirmed" ? null : "confirmed")}
+            onClick={() => setShowConfirmed(v => !v)}
             className="btn btn-outline btn-sm"
           >
-            {drawerTab === "confirmed" ? "▴ Hide" : "▾ Confirmed"}
+            {showConfirmed ? "▴ Hide" : "▾ Confirmed"}
             {ev.confirmedAttendees > 0 && (
               <span style={{
                 background: "rgba(52,211,153,0.15)", color: "var(--green)",
@@ -1112,10 +1113,10 @@ function EventCard({ ev, secret, copy, copied }: {
             )}
           </button>
           <button
-            onClick={() => setDrawerTab(drawerTab === "pending" ? null : "pending")}
+            onClick={() => setShowPending(v => !v)}
             className="btn btn-outline btn-sm"
           >
-            {drawerTab === "pending" ? "▴ Hide" : "▾ Pending"}
+            {showPending ? "▴ Hide" : "▾ Pending"}
             {ev.pendingAttendees > 0 && (
               <span style={{
                 background: "rgba(251,191,36,0.15)", color: "var(--amber)",
@@ -1128,12 +1129,20 @@ function EventCard({ ev, secret, copy, copied }: {
         </div>
       </div>
 
-      {drawerTab && (
+      {showConfirmed && (
         <div style={{ borderTop: "1px solid var(--border)", background: "var(--bg3)" }}>
-          {drawerTab === "confirmed"
-            ? <ConfirmedDrawer onChainId={ev.onChainId} secret={secret} copy={copy} copied={copied} />
-            : <PendingDrawer   onChainId={ev.onChainId} secret={secret} copy={copy} copied={copied} />
-          }
+          <div style={{ padding: "8px 20px 0", fontSize: 11, fontWeight: 600, color: "var(--green)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            ✅ Confirmed Attendees
+          </div>
+          <ConfirmedDrawer onChainId={ev.onChainId} secret={secret} copy={copy} copied={copied} />
+        </div>
+      )}
+      {showPending && (
+        <div style={{ borderTop: "1px solid var(--border)", background: "var(--bg3)" }}>
+          <div style={{ padding: "8px 20px 0", fontSize: 11, fontWeight: 600, color: "var(--amber)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            ⏳ Pending Queue
+          </div>
+          <PendingDrawer onChainId={ev.onChainId} secret={secret} copy={copy} copied={copied} />
         </div>
       )}
     </div>
