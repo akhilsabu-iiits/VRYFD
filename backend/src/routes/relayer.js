@@ -385,6 +385,8 @@ router.post("/gaslessClaimBadge", async (req, res) => {
     const { attendee, onChainEventId, signature } = req.body;
     if (!attendee || onChainEventId === undefined || onChainEventId === null || !signature)
       return res.status(400).json({ error: "Missing attendee, onChainEventId, or signature" });
+    if (!/^0x[0-9a-fA-F]{40}$/.test(attendee))
+      return res.status(400).json({ error: "Invalid wallet address" });
     const result = await gaslessClaimBadge(attendee, onChainEventId, signature);
     res.json(result);
   } catch (error) {

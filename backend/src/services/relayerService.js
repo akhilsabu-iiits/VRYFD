@@ -137,8 +137,16 @@ function joinCodeCheckin(onChainEventId, attendee, code, signature, ens = null, 
       throw new Error(`Signature does not match: expected ${attendee} got ${recovered}`);
   }
 
-  // 3. Already confirmed? — use in-memory store (no RPC needed)
-  if (confirmedAttendeesStore.get(String(onChainEventId))?.has(attendee.toLowerCase())) {
+  // 3. Already confirmed? — check in-memory store first (fast path), then fall back to
+  //    the detail cache. Both are populated by confirmAttendee and persisted to disk,
+  //    so they survive Railway restarts. We deliberately avoid an RPC call here because
+  //    joinCodeCheckin is synchronous and this path is hot (every join-code submission).
+  //    If both caches miss (e.g., first cold start with empty disk), the duplicate
+  //    will be caught by confirmAttendee's "Already checked in" revert (BUG-2 mitigation).
+  const addrLower = attendee.toLowerCase();
+  const inAddrStore   = confirmedAttendeesStore.get(String(onChainEventId))?.has(addrLower);
+  const inDetailStore = confirmedAttendeesDetailStore.get(String(onChainEventId))?.has(addrLower);
+  if (inAddrStore || inDetailStore) {
     throw new Error("Already confirmed on-chain");
   }
 
@@ -252,7 +260,7 @@ async function confirmAttendee(onChainEventId, attendee) {
       } : {}),
     };
 
-    // Submit the tx — if the contract reverts (already checked in), catch it here
+    // Submit the tx — catch known contract revert patterns and clean up pending state.
     let tx;
     try {
       tx = await c.checkInFor(attendee, BigInt(onChainEventId), overrides);
@@ -261,6 +269,12 @@ async function confirmAttendee(onChainEventId, attendee) {
       if (msg.includes("already") || msg.includes("checked in") || msg.includes("confirmed")) {
         removePending(onChainEventId, attendee);
         return { alreadyConfirmed: true, txHash: null };
+      }
+      // Non-recoverable contract conditions: event ended, not active, etc.
+      // Remove from pending so the organizer panel doesn't show stale entries forever.
+      // The attendee would need to re-register once the event is active/within its window.
+      if (msg.includes("ended") || msg.includes("not active") || msg.includes("not started")) {
+        removePending(onChainEventId, attendee);
       }
       throw err;
     }
@@ -1009,6 +1023,12 @@ async function gaslessClaimBadge(attendee, onChainEventId, signature) {
   // with "Not attended" if truly unconfirmed, which is the safe failure mode.
   // Previously, `onChainRecord?.timestamp ?? 0` silently coerced undefined to 0,
   // causing a false "Not attended" error any time the pre-check RPC call failed.
+  // Pre-flight: bail early when the badge was already claimed — avoids burning a
+  // gas-estimate call that would return a cryptic ethers CALL_EXCEPTION.
+  if (onChainRecord !== undefined && onChainRecord.badgeClaimed) {
+    throw new Error("Badge already claimed");
+  }
+
   if (onChainRecord !== undefined && Number(onChainRecord.timestamp) === 0) {
     const detail = confirmedAttendeesDetailStore.get(String(onChainEventId))?.get(attendee.toLowerCase());
     if (detail?.txHash) {
@@ -1253,7 +1273,7 @@ async function getAttendanceRecord(eventId, attendee) {
 
   // Always read chain for badgeClaimed — that state only changes when the attendee
   // calls claimBadgeGasless, which is unrelated to the confirmation timing gap.
-  const record = await c.getAttendanceRecord(BigInt(eventId), attendee);
+  const record = await withRpcFallback(() => c.getAttendanceRecord(BigInt(eventId), attendee));
   const onChainCheckedIn = Number(record.timestamp) > 0;
 
   // checkedIn = true if chain confirms it OR if the organiser's tx is in-flight

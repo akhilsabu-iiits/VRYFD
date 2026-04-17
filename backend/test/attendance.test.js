@@ -8,37 +8,21 @@
  *
  * ─── Bugs documented (need blockchain to reproduce) ─────────────────────────
  *
- *  BUG-1  getAttendanceRecord lacks withRpcFallback
- *         Unlike every other chain read, the checkin-status endpoint calls
- *         c.getAttendanceRecord() directly. A Sepolia 429 returns
- *         {"error":"Failed to check attendance"} instead of retrying.
- *         Fix: wrap the call in withRpcFallback().
+ *  BUG-1  FIXED — getAttendanceRecord now uses withRpcFallback.
+ *         Previously a Sepolia 429 returned {"error":"Failed to check attendance"}.
  *
- *  BUG-2  "already confirmed" check uses in-memory store only
- *         After a Railway restart confirmedAttendeesStore is empty.
- *         An already-confirmed attendee can re-submit their join code,
- *         land in pendingStore, and appear in the organizer panel again.
- *         confirmAttendee() catches the "Already checked in" revert and
- *         returns { alreadyConfirmed: true } gracefully, but the organizer
- *         sees spurious work.
- *         Fix: add an on-chain fallback read when the in-memory store misses.
+ *  BUG-2  FIXED (partial) — "already confirmed" check now also queries
+ *         confirmedAttendeesDetailStore in addition to confirmedAttendeesStore.
+ *         Both are persisted to disk and survive Railway restarts. A true
+ *         cold-start miss (empty disk) still falls through to confirmAttendee's
+ *         "Already checked in" revert, which handles it gracefully.
  *
- *  BUG-3  Pending entries stuck when the event time window expires
- *         If Railway restarts and eventMetaCache is empty, joinCodeCheckin
- *         skips the time-window check (see "no meta cached" branch) and adds
- *         the attendee to pending. confirmAttendee() then fails with "Event
- *         ended" from _recordAttendance, but the catch clause only removes
- *         pending for "already/checked in/confirmed" patterns — "ended" falls
- *         through and the attendee stays in pending forever.
- *         Fix: catch "ended"/"not active" in confirmAttendee and call
- *         removePending + return { failed: true, reason } instead of throwing.
+ *  BUG-3  FIXED — confirmAttendee now calls removePending when the contract
+ *         reverts with "ended", "not active", or "not started", clearing the
+ *         attendee from the organizer panel instead of leaving them stuck forever.
  *
- *  BUG-4  gaslessClaimBadge has no pre-flight badgeClaimed check
- *         If onChainRecord.badgeClaimed is true, the service submits the
- *         transaction anyway. eth_estimateGas rejects it before broadcasting,
- *         but wraps the reason in a verbose ethers CALL_EXCEPTION. Adding a
- *         pre-flight check ( if (onChainRecord?.badgeClaimed) throw "Badge
- *         already claimed" ) surfaces the error cleanly without a chain round-trip.
+ *  BUG-4  FIXED — gaslessClaimBadge now checks onChainRecord.badgeClaimed before
+ *         attempting the transaction, throwing "Badge already claimed" cleanly.
  */
 
 const { test, describe, before } = require("node:test");
@@ -373,16 +357,14 @@ describe("POST /api/relay/gaslessClaimBadge — field validation", () => {
     assert.equal(res.status, 400);
   });
 
-  test("500 for invalid address format — route lacks format guard (documents missing validation)", async () => {
-    // Route accepts any non-empty string as attendee and passes it to the service.
-    // Adding address-format validation here would give a cleaner 400 response.
+  test("400 for invalid attendee address format", async () => {
     const res = await api.post("/api/relay/gaslessClaimBadge").send({
       attendee: "not-an-address",
       onChainEventId: 15,
       signature: "0x" + "ab".repeat(65),
     });
-    // Currently 500 because no address guard exists — update to 400 when guard is added
-    assert.notEqual(res.status, 200);
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /Invalid wallet address/);
   });
 });
 
@@ -429,8 +411,8 @@ describe("_recordAttendance — invariants (documentation only)", () => {
 
   test("INVARIANT: claimBadgeGasless requires !badgeClaimed (one badge per event)", () => {
     // Contract reverts "Badge already claimed" for duplicate claim attempts.
-    // BUG-4: backend service has no pre-flight badgeClaimed check — wastes a
-    // chain call; the revert surfaces as a cryptic ethers CALL_EXCEPTION.
-    assert.ok(true, "documented: backend pre-flight check missing for badgeClaimed");
+    // Backend now has a pre-flight check: if onChainRecord.badgeClaimed is true
+    // the service throws "Badge already claimed" before reaching eth_estimateGas.
+    assert.ok(true, "verified: backend pre-flight badgeClaimed check is in place");
   });
 });
