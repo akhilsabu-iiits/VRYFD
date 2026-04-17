@@ -1,4 +1,5 @@
 const express = require("express");
+const adminAuth = require("../middleware/adminAuth");
 const { getENSOverride, getAddressOverride } = require("../services/ensOverrides");
 const {
   createEvent,
@@ -409,6 +410,8 @@ router.post("/gaslessMilestoneReward", async (req, res) => {
     const { attendee, signature } = req.body;
     if (!attendee || !signature)
       return res.status(400).json({ error: "Missing attendee or signature" });
+    if (!/^0x[0-9a-fA-F]{40}$/.test(attendee))
+      return res.status(400).json({ error: "Invalid wallet address" });
     const result = await gaslessMilestoneReward(attendee, signature);
     res.json(result);
   } catch (error) {
@@ -426,6 +429,8 @@ router.post("/gaslessMilestoneReward", async (req, res) => {
 router.get("/checkin-status/:onChainEventId/:attendee", async (req, res) => {
   try {
     const { onChainEventId: eventId, attendee } = req.params;
+    if (!/^0x[0-9a-fA-F]{40}$/.test(attendee))
+      return res.status(400).json({ error: "Invalid wallet address" });
     const record = await getAttendanceRecord(eventId, attendee);
     res.json(record);
   } catch (error) {
@@ -451,12 +456,14 @@ router.get("/pending-attendees/:onChainEventId", (req, res) => {
  * Organizer confirms a single pending attendee — writes to chain (ORGANIZER_ROLE, backend pays gas)
  * Body: { onChainEventId, attendee }
  */
-router.post("/confirmAttendee", async (req, res) => {
+router.post("/confirmAttendee", adminAuth, async (req, res) => {
   try {
     const { onChainEventId, attendee } = req.body;
     if (onChainEventId === undefined || !attendee) {
       return res.status(400).json({ error: "Missing required fields: onChainEventId, attendee" });
     }
+    if (!/^0x[0-9a-fA-F]{40}$/.test(attendee))
+      return res.status(400).json({ error: "Invalid wallet address" });
     const result = await confirmAttendee(onChainEventId, attendee);
     res.json({ success: true, ...result });
   } catch (error) {
@@ -473,7 +480,7 @@ router.post("/confirmAttendee", async (req, res) => {
  * Organizer confirms all pending attendees for an event at once
  * Body: { onChainEventId }
  */
-router.post("/confirmAllAttendees", async (req, res) => {
+router.post("/confirmAllAttendees", adminAuth, async (req, res) => {
   try {
     const { onChainEventId } = req.body;
     if (onChainEventId === undefined) {

@@ -15,15 +15,18 @@ interface BadgesPageProps {
   badgeContractAddrs?: Record<number, string>;
   milestoneNftIds?: Record<number, string>;
   milestoneContractAddrs?: Record<number, string>;
-  onAddToWallet?: (eventId: number, tokenId: string, contractAddr: string, onSuccess: () => void) => Promise<void>;
+  onAddToWallet?: (eventId: number, tokenId: string, contractAddr: string, onSuccess: (resolvedTokenId: string) => void) => Promise<void>;
+  /** Keys already added to MetaMask (persisted across reloads by page.tsx). */
+  addedToWalletKeys?: string[];
+  /** Called when a key is newly added — page.tsx persists it to localStorage. */
+  onMarkAddedToWallet?: (key: string) => void;
 }
 
 export default function BadgesPage({
   events, userCheckins, userBadges, isConnected, claimedMilestones, isMilestoneLoading,
   onClaimMilestone, badgeTokenIds = {}, badgeContractAddrs = {}, milestoneNftIds = {}, milestoneContractAddrs = {}, onAddToWallet,
+  addedToWalletKeys = [], onMarkAddedToWallet,
 }: BadgesPageProps) {
-  // Tracks keys that have been successfully added to MetaMask this session.
-  const [addedToWallet, setAddedToWallet] = useState<Set<string>>(new Set());
   // Tracks the key of the button currently awaiting MetaMask response.
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
   // Tracks which manual-import panels are expanded (keyed by panelKey string).
@@ -32,8 +35,8 @@ export default function BadgesPage({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const markAdded = useCallback((key: string) => {
-    setAddedToWallet((prev) => new Set([...prev, key]));
-  }, []);
+    onMarkAddedToWallet?.(key);
+  }, [onMarkAddedToWallet]);
 
   const toggleManual = useCallback((panelKey: string) => {
     setExpandedManual((prev) => {
@@ -56,7 +59,7 @@ export default function BadgesPage({
   // contractAddr: the address stored at claim time — always correct even after a Reset.
   const AddButton = ({ eventId, tokenId, contractAddr, block }: { eventId: number; tokenId: string; contractAddr: string; block?: boolean }) => {
     const key = tokenId || String(eventId);
-    const added = addedToWallet.has(key);
+    const added = addedToWalletKeys.includes(key);
     const isLoading = loadingKey === key;
     return (
       <button
@@ -69,8 +72,13 @@ export default function BadgesPage({
         onClick={() => {
           if (!onAddToWallet || isLoading || added) return;
           setLoadingKey(key);
-          onAddToWallet(eventId, tokenId, contractAddr, () => markAdded(key))
-            .finally(() => setLoadingKey(null));
+          onAddToWallet(eventId, tokenId, contractAddr, (resolvedTokenId: string) => {
+            // Use the resolved tokenId as the key — it may differ from the original tokenId
+            // if handleAddToWallet fetched it on-chain (Step 3). This ensures the key saved
+            // matches the key computed on reload (badgeTokenIds is updated before onSuccess fires).
+            const savedKey = (resolvedTokenId && resolvedTokenId !== "0") ? resolvedTokenId : key;
+            markAdded(savedKey);
+          }).finally(() => setLoadingKey(null));
         }}
       >
         {added ? "✓ Added" : isLoading ? "Opening MetaMask…" : block ? "+ Add to MetaMask" : "+ MetaMask"}

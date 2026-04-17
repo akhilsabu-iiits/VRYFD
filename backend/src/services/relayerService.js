@@ -353,6 +353,11 @@ async function confirmAllAttendees(onChainEventId) {
           results.push({ attendee, status: "already_confirmed", txHash: null });
           continue; // tx was rejected — nonce was NOT consumed, don't increment
         }
+        if (msg.includes("ended") || msg.includes("not active") || msg.includes("not started")) {
+          removePending(onChainEventId, attendee);
+          results.push({ attendee, status: "failed", reason: err.message });
+          continue; // tx was rejected — nonce was NOT consumed, don't increment
+        }
         throw err;
       }
 
@@ -1273,7 +1278,22 @@ async function getAttendanceRecord(eventId, attendee) {
 
   // Always read chain for badgeClaimed — that state only changes when the attendee
   // calls claimBadgeGasless, which is unrelated to the confirmation timing gap.
-  const record = await withRpcFallback(() => c.getAttendanceRecord(BigInt(eventId), attendee));
+  let record;
+  try {
+    record = await withRpcFallback(() => c.getAttendanceRecord(BigInt(eventId), attendee));
+  } catch (rpcErr) {
+    // All RPCs exhausted — fall back to in-memory detail store so the UI doesn't
+    // show "not confirmed" for someone the organiser already confirmed this session.
+    if (storeDetail) {
+      return {
+        checkedIn: true,
+        timestamp: storeDetail.timestamp,
+        badgeClaimed: false, // unknown — be conservative; badge button won't show
+        txHash: storeDetail.txHash,
+      };
+    }
+    throw rpcErr;
+  }
   const onChainCheckedIn = Number(record.timestamp) > 0;
 
   // checkedIn = true if chain confirms it OR if the organiser's tx is in-flight
