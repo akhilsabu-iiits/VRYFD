@@ -109,12 +109,12 @@ export default function BadgesPage({
           onClick={() => toggleManual(panelKey)}
           style={{
             background: "none", border: "none", cursor: "pointer",
-            fontSize: "12px", color: "var(--text2)", padding: "4px 0",
-            textDecoration: "underline", textDecorationStyle: "dotted",
+            fontSize: "11px", color: "var(--text2)", padding: "4px 0",
+            textDecoration: "none",
             display: "flex", alignItems: "center", gap: "4px",
           }}
         >
-          <span style={{ fontSize: "10px" }}>{isOpen ? "▾" : "▸"}</span>
+          <span style={{ fontSize: "9px" }}>{isOpen ? "▾" : "▸"}</span>
           {isOpen ? "Hide manual steps" : "Can't see the popup? Add manually"}
         </button>
 
