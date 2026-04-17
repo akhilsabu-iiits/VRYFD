@@ -1655,8 +1655,7 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                             <span style={{ fontWeight: 700, fontSize: 14, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>System Health</span>
                           </div>
                           <p style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.6, margin: 0 }}>
-                            Live metrics for the VRYFD backend server — uptime, memory usage, and environment config.
-                            A healthy system means all gasless operations are running normally.
+                            Backend server uptime, memory &amp; environment config at a glance.
                           </p>
                         </div>
                         {/* Right: stats */}
@@ -1738,7 +1737,7 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                         )}
                       </div>
                       <p style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5, margin: "0 0 14px 0" }}>
-                        The server-side Ethereum wallet that pays gas fees on behalf of attendees, making all check-ins and NFT minting completely free for users.
+                        Pays gas fees so attendees get free gasless check-ins and NFT minting.
                       </p>
                       {relayer ? (
                         <>
@@ -1793,7 +1792,7 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                         <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 8px" }}>Sepolia</span>
                       </div>
                       <p style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5, margin: "0 0 14px 0" }}>
-                        The core on-chain program deployed to Ethereum Sepolia. It handles event creation, attendance verification, POAP badge minting, and certificate issuance — all recorded permanently on-chain.
+                        Manages events, attendance, badge minting &amp; certificates on Ethereum Sepolia.
                       </p>
                       {relayer?.contractAddress ? (
                         <>
@@ -1847,7 +1846,7 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                         <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 8px" }}>ERC-20</span>
                       </div>
                       <p style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5, margin: "0 0 14px 0" }}>
-                        The platform&apos;s reward token awarded to attendees for participating in events. It is soulbound (non-transferable), meaning it stays permanently in the earner&apos;s wallet as proof of participation.
+                        Soulbound reward token given to attendees — non-transferable proof of participation.
                       </p>
                       {contractData?.vryfTokenAddress ? (
                         <>
