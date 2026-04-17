@@ -665,7 +665,7 @@ function EventCard({ ev, secret, copy, copied }: {
                 <span style={{ color: "var(--green)", fontSize: 17, fontWeight: 700, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
                   {ev.confirmedAttendees}
                 </span>
-                <span style={{ color: "var(--green2)", fontSize: 10, color: "var(--green)" }}>confirmed</span>
+                <span style={{ color: "var(--green)", fontSize: 10 }}>confirmed</span>
               </div>
 
               {/* Pending */}
