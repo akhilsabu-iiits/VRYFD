@@ -774,26 +774,43 @@ function getProvider() {
 /**
  * Create an event on-chain — relayer wallet pays gas (has ORGANIZER_ROLE)
  */
+// Tracks how many createEvent txs have been submitted but not yet mined.
+// Incremented synchronously (before any await) so concurrent calls each get a unique offset.
+// This prevents the "all parallel deploys read the same nextEventId" bug.
+let _pendingEventCount = 0;
+
 async function createEvent(name, metadataURI, startTime, endTime) {
   return withRpcFallback(async () => {
     const c = getContract();
 
+    // Capture offset BEFORE the first await — JS event loop guarantees this is atomic
+    // relative to other concurrent createEvent calls entering the same block.
+    const offset = _pendingEventCount++;
+
     // Fetch nextEventId and fee data in parallel — saves one extra RPC round-trip.
-    // nextEventId is the slot assigned to this tx (contract increments after creation).
     const [nextId, feeData] = await Promise.all([
       c.nextEventId(),
       provider.getFeeData().catch(() => null),
     ]);
-    const eventId = nextId.toString();
+
+    // Add the in-flight offset so each concurrent call predicts a unique eventId.
+    const eventId = (BigInt(nextId) + BigInt(offset)).toString();
 
     const overrides = feeData ? { maxFeePerGas: feeData.maxFeePerGas, maxPriorityFeePerGas: feeData.maxPriorityFeePerGas } : {};
     const tx = await c.createEvent(name, metadataURI, BigInt(startTime), BigInt(endTime), overrides);
-    console.log(`[createEvent] tx submitted: ${tx.hash}, predicted eventId: ${eventId}`);
+    console.log(`[createEvent] tx submitted: ${tx.hash}, eventId: ${eventId} (nextId=${nextId}, offset=${offset})`);
 
-    // Fire-and-forget — don't block the HTTP response on block confirmation.
+    // Fire-and-forget — don't block the HTTP response.
+    // Decrement counter when tx mines so future calls get accurate offsets again.
     tx.wait(1, 120_000)
-      .then((receipt) => console.log(`[createEvent] confirmed: ${receipt.hash} eventId=${eventId}`))
-      .catch((e) => console.warn(`[createEvent] tx.wait failed (${tx.hash}):`, e.message));
+      .then((receipt) => {
+        _pendingEventCount = Math.max(0, _pendingEventCount - 1);
+        console.log(`[createEvent] confirmed: ${receipt.hash} eventId=${eventId}`);
+      })
+      .catch((e) => {
+        _pendingEventCount = Math.max(0, _pendingEventCount - 1);
+        console.warn(`[createEvent] tx.wait failed (${tx.hash}):`, e.message);
+      });
 
     return { txHash: tx.hash, eventId };
   });

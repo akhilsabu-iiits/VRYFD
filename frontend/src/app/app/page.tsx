@@ -527,41 +527,41 @@ export default function Home() {
               .catch(() => {});
           }
 
-          // Auto-deploy all events to the new contract — same fast path as deployEvent:
-          // backend URL for metadataURI, register+createEvent in parallel, no tx.wait().
+          // Auto-deploy all events sequentially to the new contract.
+          // Sequential is required: each createEvent reads nextEventId before tx mines,
+          // so parallel calls would all predict the same onChainId and register wrong join codes.
           const now = Math.floor(Date.now() / 1000);
           const currentEvents = eventsRef.current;
+          const updatedEvents = [...currentEvents];
           try {
-            const results = await Promise.all(
-              currentEvents.map(async (ev) => {
-                try {
-                  const startTime = ev.startTime ?? Math.floor(new Date(`${ev.date} 00:00:00 UTC`).getTime() / 1000);
-                  const endTime   = ev.endTime   ?? (now + 10 * 365 * 86400);
-                  const deployStart = startTime > now ? now - 3600 : startTime;
-                  const metaURI = `${BACKEND}/api/metadata/badge/${ev.id}`;
-                  const [, chainRes] = await Promise.all([
-                    fetch(`${BACKEND}/api/metadata/badge/register`, {
-                      method: "POST", headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ id: ev.id, name: ev.name, date: ev.date, color: ev.color, emoji: ev.emoji }),
-                    }),
-                    fetch(`${BACKEND}/api/relay/createEvent`, {
-                      method: "POST", headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ name: ev.name, metadataURI: metaURI, startTime: deployStart, endTime, demoId: ev.id, joinCode: ev.joinCode }),
-                    }),
-                  ]);
-                  if (!chainRes.ok) return null;
+            for (let i = 0; i < currentEvents.length; i++) {
+              const ev = currentEvents[i];
+              try {
+                const startTime = ev.startTime ?? Math.floor(new Date(`${ev.date} 00:00:00 UTC`).getTime() / 1000);
+                const endTime   = ev.endTime   ?? (now + 10 * 365 * 86400);
+                const deployStart = startTime > now ? now - 3600 : startTime;
+                const metaURI = `${BACKEND}/api/metadata/badge/${ev.id}`;
+                const [, chainRes] = await Promise.all([
+                  fetch(`${BACKEND}/api/metadata/badge/register`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id: ev.id, name: ev.name, date: ev.date, color: ev.color, emoji: ev.emoji }),
+                  }),
+                  fetch(`${BACKEND}/api/relay/createEvent`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: ev.name, metadataURI: metaURI, startTime: deployStart, endTime, demoId: ev.id, joinCode: ev.joinCode }),
+                  }),
+                ]);
+                if (chainRes.ok) {
                   const d = await chainRes.json() as { eventId?: number; txHash?: string };
-                  return d.eventId != null ? { id: ev.id, onChainId: Number(d.eventId), txHash: d.txHash ?? "" } : null;
-                } catch { return null; }
-              })
-            );
+                  if (d.eventId != null) {
+                    updatedEvents[i] = { ...ev, onChainId: Number(d.eventId), deployTxHash: d.txHash ?? "", status: "live" as const };
+                  }
+                }
+              } catch { /* skip failed event — organizer can deploy manually */ }
+            }
             // Persist onChainIds into localStorage so they're available immediately after reload
-            const updatedEvents = currentEvents.map((ev) => {
-              const r = results.find((x) => x?.id === ev.id);
-              return r ? { ...ev, onChainId: r.onChainId, deployTxHash: r.txHash, status: "live" as const } : ev;
-            });
             localStorage.setItem("vryfd_all_events", JSON.stringify(updatedEvents));
-          } catch { /* non-fatal — reload anyway, organizer can deploy manually */ }
+          } catch { /* non-fatal — reload anyway */ }
 
           window.location.reload();
         } else if (data.status === "error") {
