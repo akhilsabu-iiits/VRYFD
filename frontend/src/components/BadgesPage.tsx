@@ -57,6 +57,25 @@ export default function BadgesPage({
     );
   };
 
+  // Milestones the user is eligible to claim right now (unclaimed + count reached).
+  // The contract always mints ALL eligible tiers in one transaction — every claim button
+  // triggers this full set. We show this explicitly so users aren't surprised.
+  const eligibleMilestones = isConnected
+    ? [
+        { threshold: 5,  icon: "🏆", label: "Bronze" },
+        { threshold: 10, icon: "🌟", label: "Silver" },
+        { threshold: 20, icon: "👑", label: "Gold"   },
+      ].filter((m) => userCheckins >= m.threshold && !claimedMilestones.includes(m.threshold))
+    : [];
+
+  function claimButtonLabel(threshold: number): string {
+    if (isMilestoneLoading) return "Claiming...";
+    if (eligibleMilestones.length <= 1) return "Claim NFT Reward";
+    // Multiple tiers will be claimed — list them all so the user knows what's happening
+    const icons = eligibleMilestones.map((m) => m.icon).join(" ");
+    return `Claim All Eligible NFTs ${icons}`;
+  }
+
   return (
     <>
       {/* POAP Badges */}
@@ -127,7 +146,7 @@ export default function BadgesPage({
               </div>
             ) : userCheckins >= 5 ? (
               <button type="button" className="btn btn-block btn-claim-milestone" onClick={() => onClaimMilestone(5)} disabled={isMilestoneLoading}>
-                {isMilestoneLoading ? "Claiming..." : "Claim NFT Reward"}
+                {claimButtonLabel(5)}
               </button>
             ) : null
           )}
@@ -159,7 +178,7 @@ export default function BadgesPage({
               </div>
             ) : userCheckins >= 10 ? (
               <button type="button" className="btn btn-block btn-claim-milestone" onClick={() => onClaimMilestone(10)} disabled={isMilestoneLoading}>
-                {isMilestoneLoading ? "Claiming..." : "Claim NFT Reward"}
+                {claimButtonLabel(10)}
               </button>
             ) : null
           )}
@@ -191,7 +210,7 @@ export default function BadgesPage({
               </div>
             ) : userCheckins >= 20 ? (
               <button type="button" className="btn btn-block btn-claim-milestone" onClick={() => onClaimMilestone(20)} disabled={isMilestoneLoading}>
-                {isMilestoneLoading ? "Claiming..." : "Claim NFT Reward"}
+                {claimButtonLabel(20)}
               </button>
             ) : null
           )}

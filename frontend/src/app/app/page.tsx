@@ -1557,10 +1557,12 @@ export default function Home() {
     if (!contractAddress) { showToast("Contract not configured", "error"); return; }
     if (!publicClient || !address) { showToast("Wallet not ready", "error"); return; }
 
-    // Frontend pre-check: if all milestones already claimed locally, skip the backend round-trip
-    const allThresholds = MILESTONES.map((m) => m.threshold);
-    const allClaimed = allThresholds.every((t) => claimedMilestones.includes(t));
-    if (allClaimed) {
+    // Pre-compute eligible milestones BEFORE signing so we can show the user exactly
+    // what will be claimed. The contract always mints ALL eligible unclaimed tiers in one tx.
+    const eligible = MILESTONES.filter(
+      (x) => userCheckins >= x.threshold && !claimedMilestones.includes(x.threshold)
+    );
+    if (eligible.length === 0) {
       showToast("You've already claimed all milestone NFTs — Bronze, Silver, and Gold! 👑", "");
       return;
     }
@@ -1580,8 +1582,12 @@ export default function Home() {
       const nonce = BigInt(nonceData.nonce);
       const signingContractAddress = (nonceData.contractAddress || contractAddress) as `0x${string}`;
 
-      // Step 2: sign EIP-712 ClaimMilestone — MetaMask sign prompt, zero gas
-      showToast("Sign in MetaMask to claim milestone NFT (no gas)...", "");
+      // Step 2: sign EIP-712 ClaimMilestone — MetaMask sign prompt, zero gas.
+      // Show WHICH milestones are about to be minted so the user isn't surprised.
+      const claimLabel = eligible.length === 1
+        ? `${eligible[0].icon} ${eligible[0].label}`
+        : eligible.map((m) => `${m.icon} ${m.label}`).join(", ");
+      showToast(`Sign in MetaMask to claim: ${claimLabel} (no gas)...`, "");
       const signature = await signTypedDataAsync({
         domain: { name: "VryfdAttendance", version: "1", chainId: 11155111, verifyingContract: signingContractAddress },
         types: { ClaimMilestone: [{ name: "attendee", type: "address" }, { name: "nonce", type: "uint256" }] },
@@ -1599,10 +1605,8 @@ export default function Home() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Milestone claim failed");
 
-      // The contract mints ALL eligible unclaimed tiers in one call — update all of them
-      const eligible = MILESTONES.filter(
-        (x) => userCheckins >= x.threshold && !claimedMilestones.includes(x.threshold)
-      );
+      // The contract mints ALL eligible unclaimed tiers in one call — update all of them.
+      // `eligible` was computed at the top of this handler (before signing).
       const totalBonus = eligible.reduce((sum, x) => sum + x.bonus, 0);
       const newThresholds = eligible.map((x) => x.threshold);
       setClaimedMilestones((prev) => {
