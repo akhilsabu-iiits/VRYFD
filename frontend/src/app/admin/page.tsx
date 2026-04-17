@@ -1721,30 +1721,7 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                     </div>
                   </div>
 
-                  {/* ── 3. Activity + Funding Row ─────────────────────────────── */}
-                  {stats && (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14, marginBottom: 14 }}>
-                      {/* Event metrics */}
-                      {[
-                        { label: "Total Events",       value: stats.totalEvents,    color: "var(--accent2)", sub: `${counts.live} live · ${counts.upcoming} upcoming` },
-                        { label: "Confirmed On-Chain", value: stats.totalConfirmed, color: "var(--green)",   sub: "total attendees confirmed" },
-                        { label: "Pending Queue",      value: stats.totalPending,   color: stats.totalPending > 0 ? "var(--amber)" : "var(--text3)", sub: stats.totalPending > 0 ? "awaiting organizer" : "queue is clear" },
-                        { label: "Live Now",           value: counts.live,          color: counts.live > 0 ? "var(--coral)" : "var(--text3)", sub: `${counts.ended} ended · ${counts.upcoming} upcoming` },
-                      ].map(s => (
-                        <div key={s.label} className="card" style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
-                          <div style={{ fontSize: 28, fontWeight: 700, color: s.color, fontFamily: "var(--font-space-mono),'Space Mono',monospace", minWidth: 40 }}>
-                            {s.value}
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{s.label}</div>
-                            <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>{s.sub}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* ── 4. Funding Calculator (only if pending > 0) ───────────── */}
+                  {/* ── 3. Funding Calculator (only if pending > 0) ───────────── */}
                   {stats && relayer && stats.totalPending > 0 && (
                     <div className="card" style={{ marginBottom: 14, padding: "16px 20px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
@@ -1782,41 +1759,6 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                     </div>
                   )}
 
-                  {/* ── 5. Tab Navigation Strip ──────────────────────────────── */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 8 }}>
-                    {([
-                      { tab: "events"  as AdminTab, icon: "📅", title: "Deployed Events",   desc: "Events, join codes, attendees, pending queue", color: "var(--accent2)", border: "rgba(124,108,240,0.3)" },
-                      { tab: "history" as AdminTab, icon: "📋", title: "Operation History", desc: "Confirmation timeline & deployment log",        color: "var(--green)",   border: "rgba(52,211,153,0.3)"  },
-                      { tab: "gas"     as AdminTab, icon: "⛽", title: "Gas & Cost",        desc: "Per-op estimates + real on-chain receipts",     color: "var(--amber)",   border: "rgba(251,191,36,0.3)"  },
-                    ] as const).map(q => (
-                      <button
-                        key={q.tab}
-                        onClick={() => setActiveTab(q.tab)}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 14,
-                          background: "var(--bg2)", border: `1px solid ${q.border}`,
-                          borderRadius: "var(--radius)", padding: "14px 18px",
-                          cursor: "pointer", textAlign: "left", width: "100%",
-                          transition: "background 0.15s, transform 0.15s",
-                        }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--bg3)"; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "var(--bg2)"; (e.currentTarget as HTMLElement).style.transform = "none"; }}
-                      >
-                        <div style={{
-                          width: 40, height: 40, borderRadius: "var(--radius-sm)", flexShrink: 0,
-                          background: `${q.border.replace("0.3", "0.12")}`,
-                          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
-                        }}>
-                          {q.icon}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: 13, color: q.color, marginBottom: 3 }}>{q.title}</div>
-                          <div style={{ fontSize: 11, color: "var(--text3)", lineHeight: 1.4 }}>{q.desc}</div>
-                        </div>
-                        <span style={{ color: q.color, fontSize: 16, flexShrink: 0 }}>→</span>
-                      </button>
-                    ))}
-                  </div>
                 </>
               );
             })()}
