@@ -701,12 +701,29 @@ export default function Home() {
 
     (async () => {
       if (!loadedFromSource) {
-        // No localStorage — try backend events store (has full event data incl. created events)
+        // No localStorage — try backend events store (has full event data incl. created events).
+        // IMPORTANT: merge backend events onto the current state (INITIAL_EVENTS) rather than
+        // replacing outright. If events.json only has custom/test events (e.g., id 99) and is
+        // missing the INITIAL_EVENTS ids (1–4), a plain setEvents() would wipe those events and
+        // leave onChainEventIds empty — the organizer dropdown would show nothing and pending
+        // attendees would never be fetchable.
         try {
           const r = await fetch(`${BACKEND}/api/relay/events`);
           const d = await r.json() as { events: VEvent[] | null };
           if (d.events && d.events.length > 0) {
-            setEvents(d.events);
+            setEvents((prev) => {
+              const backendById = new Map(d.events!.map((e: VEvent) => [e.id, e]));
+              // Update existing events (INITIAL_EVENTS) with backend data; keep those not in backend
+              const merged = prev.map((e) =>
+                backendById.has(e.id) ? { ...e, ...backendById.get(e.id) } : e
+              );
+              // Add novel events from backend (organizer-created events beyond INITIAL_EVENTS)
+              const prevIds = new Set(prev.map((e) => e.id));
+              const novel = d.events!.filter((e: VEvent) => !prevIds.has(e.id));
+              return novel.length > 0
+                ? [...merged, ...novel].sort((a, b) => a.id - b.id)
+                : merged;
+            });
             loadedFromSource = true;
           }
         } catch {}

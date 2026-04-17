@@ -1,42 +1,6 @@
 [
-  {
-    "id": 1,
-    "name": "IIIT Sricity Hackathon 2026",
-    "date": "Apr 12, 2026",
-    "status": "upcoming",
-    "attendees": 0,
-    "emoji": "💻",
-    "color": "#7c6cf0",
-    "joinCode": "HK7P2T"
-  },
-  {
-    "id": 2,
-    "name": "Web3 Workshop: Smart Contracts",
-    "date": "Apr 15, 2026",
-    "status": "upcoming",
-    "attendees": 0,
-    "emoji": "⚡",
-    "color": "#34d399",
-    "joinCode": "W5NX4M"
-  },
-  {
-    "id": 3,
-    "name": "Blockchain & Beyond Seminar",
-    "date": "Apr 20, 2026",
-    "status": "upcoming",
-    "attendees": 0,
-    "emoji": "🌐",
-    "color": "#fbbf24",
-    "joinCode": "B9ZR6Q"
-  },
-  {
-    "id": 4,
-    "name": "DeFi Deep Dive Night",
-    "date": "Apr 28, 2026",
-    "status": "upcoming",
-    "attendees": 0,
-    "emoji": "🌙",
-    "color": "#f87171",
-    "joinCode": "Y3VJ8F"
-  }
+  {"id":1,"name":"IIIT Sricity Hackathon 2026","date":"Apr 12, 2026","status":"upcoming","attendees":0,"emoji":"💻","color":"#7c6cf0","joinCode":"HK7P2T","onChainId":15,"deployTxHash":"0xf235ead355af6b55ea855f1cb56882480d90d4f7681a792211ea5915ab415524"},
+  {"id":2,"name":"Web3 Workshop: Smart Contracts","date":"Apr 15, 2026","status":"upcoming","attendees":0,"emoji":"⚡","color":"#34d399","joinCode":"W5NX4M","onChainId":16,"deployTxHash":"0x0757989ad76ca232eb664bba986a365bf099cf2e1e80d0fd884efdb5d0ef2289"},
+  {"id":3,"name":"Blockchain & Beyond Seminar","date":"Apr 20, 2026","status":"upcoming","attendees":0,"emoji":"🌐","color":"#fbbf24","joinCode":"B9ZR6Q"},
+  {"id":4,"name":"DeFi Deep Dive Night","date":"Apr 28, 2026","status":"upcoming","attendees":0,"emoji":"🌙","color":"#f87171","joinCode":"Y3VJ8F"}
 ]
