@@ -1764,6 +1764,55 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                         </>
                       ) : <div style={{ color: "var(--text3)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}><span className="spinner" /> Fetching…</div>}
                     </div>
+
+                    {/* NFT Collection */}
+                    <div style={{
+                      background: "var(--bg2)", borderRadius: "var(--radius)",
+                      border: "1px solid var(--border)", borderLeft: "4px solid rgba(168,85,247,0.6)",
+                      padding: "16px 18px",
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 15 }}>🏅</span>
+                        <span style={{ fontWeight: 700, fontSize: 12, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>NFT Collection</span>
+                        <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text3)", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 20, padding: "1px 7px" }}>On-Chain</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 12 }}>All NFTs minted by the platform — badges, certificates &amp; milestone rewards.</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {/* POAP Badges */}
+                        <div style={{ background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "9px 12px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div>
+                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>POAP BADGES</div>
+                              <div style={{ fontSize: 10, color: "var(--text3)" }}>ERC-1155 · Soulbound · 1 per check-in</div>
+                            </div>
+                            <div style={{ fontSize: 22, fontWeight: 800, color: "rgba(168,85,247,0.9)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                              {stats ? numFmt(stats.totalConfirmed) : "—"}
+                            </div>
+                          </div>
+                        </div>
+                        {/* Certificates */}
+                        <div style={{ background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", padding: "9px 12px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div>
+                              <div style={{ fontSize: 9, color: "var(--text3)", letterSpacing: "0.07em", marginBottom: 3 }}>CERTIFICATES</div>
+                              <div style={{ fontSize: 10, color: "var(--text3)" }}>ERC-721 · Verifiable credential</div>
+                            </div>
+                            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--green)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                              {contractData?.totalCertificatesIssued != null ? numFmt(contractData.totalCertificatesIssued) : "—"}
+                            </div>
+                          </div>
+                        </div>
+                        {/* Total */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 4 }}>
+                          <span style={{ fontSize: 11, color: "var(--text3)" }}>Total NFTs minted</span>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                            {stats && contractData?.totalCertificatesIssued != null
+                              ? numFmt(stats.totalConfirmed + contractData.totalCertificatesIssued)
+                              : "—"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* ── 5. Gas Funding (only if pending > 0) ─────────────────── */}
