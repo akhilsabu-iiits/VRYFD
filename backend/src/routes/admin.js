@@ -142,7 +142,7 @@ router.get("/contract-stats", async (req, res) => {
 
     res.json({
       totalCertificatesIssued: totalCerts,
-      totalEventsCreatedOnChain: nextEventId !== null ? Math.max(0, nextEventId - 1) : null,
+      totalEventsCreatedOnChain: nextEventId,
       vryfDistributed,
       contractDeployedAt: deployedAt,
       vryfTokenAddress: vryfAddr,
