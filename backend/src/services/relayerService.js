@@ -258,7 +258,7 @@ function incrementConfirmedCount(onChainEventId, attendee) {
         info.confirmedAttendeesDetail = details ? [...details.values()] : [];
       }
     }
-    atomicWriteJSON(STORE_PATH, store);
+    _writeDeployedEvents(store);
     syncDeployedEventsToDB(store);
   } catch (e) {
     console.error("[store] incrementConfirmedCount persist failed:", e.message);
@@ -442,8 +442,36 @@ function saveAllEvents(events) {
 // INITIAL_DEPLOYED_EVENTS removed — was hardcoded to an old contract (onChainId 15 & 16).
 // MongoDB persistence now handles deployed events across Railway restarts.
 
+// ─── deployedEvents.json helpers ─────────────────────────────────────────────
+// The file is tagged with the contract address it belongs to (_contract key).
+// Any read that finds a mismatched tag returns {} so stale data is never served.
+// Callers always strip _contract before iterating entries.
+
+function _currentContractAddr() {
+  return contract ? contract.target.toLowerCase() : null;
+}
+
 function loadDeployedEvents() {
-  try { return JSON.parse(fs.readFileSync(STORE_PATH, "utf8")); } catch { return {}; }
+  try {
+    const raw = JSON.parse(fs.readFileSync(STORE_PATH, "utf8"));
+    const tag = raw._contract?.toLowerCase();
+    const cur = _currentContractAddr();
+    // If the file has a contract tag and it doesn't match the live contract, treat as empty.
+    // This prevents stale events from a previous contract appearing in the admin dashboard.
+    if (tag && cur && tag !== cur) {
+      console.log(`[store] deployedEvents.json is for contract ${tag} — current is ${cur}, ignoring stale file`);
+      return {};
+    }
+    // Strip internal metadata key before returning to callers
+    const { _contract: _, ...events } = raw;
+    return events;
+  } catch { return {}; }
+}
+
+function _writeDeployedEvents(store) {
+  const cur = _currentContractAddr();
+  const tagged = cur ? { _contract: cur, ...store } : store;
+  atomicWriteJSON(STORE_PATH, tagged);
 }
 
 function saveDeployedEvent(demoId, txHash, onChainId, joinCode, startTime = null, endTime = null) {
@@ -455,7 +483,7 @@ function saveDeployedEvent(demoId, txHash, onChainId, joinCode, startTime = null
     ...(startTime != null ? { startTime: Number(startTime) } : {}),
     ...(endTime != null ? { endTime: Number(endTime) } : {}),
   };
-  atomicWriteJSON(STORE_PATH, store);
+  _writeDeployedEvents(store);
   syncDeployedEventsToDB(store);
 }
 
@@ -485,7 +513,7 @@ function clearAllDeployedEvents() {
 function resetDeployedEvents() {
   // Wipe all deployed event state — no INITIAL_DEPLOYED_EVENTS fallback.
   // Join codes and event data are fully managed via MongoDB + frontend creation flow.
-  fs.writeFileSync(STORE_PATH, JSON.stringify({}, null, 2));
+  _writeDeployedEvents({});
   syncDeployedEventsToDB({});
   customCodeStore.clear();
   pendingStore.clear();
@@ -893,7 +921,8 @@ async function restoreContractStateFromDB() {
     console.warn(`[relayer] restoreContractStateFromDB failed: ${e.message}`);
   }
 
-  // ── Restore deployedEvents.json from MongoDB if local file is empty/missing ─
+  // ── Restore deployedEvents.json from MongoDB if local file is empty/stale ───
+  // loadDeployedEvents() already returns {} for files tagged to a different contract.
   try {
     const localStore = loadDeployedEvents();
     if (Object.keys(localStore).length === 0) {
@@ -904,7 +933,7 @@ async function restoreContractStateFromDB() {
       // Only restore if the stored events belong to the current contract.
       // Stale data from old contracts must never bleed into a fresh deployment.
       if (evDoc?.data && Object.keys(evDoc.data).length > 0 && currentContract && storedContract === currentContract) {
-        atomicWriteJSON(STORE_PATH, evDoc.data);
+        _writeDeployedEvents(evDoc.data);
         for (const info of Object.values(evDoc.data)) {
           if (info.joinCode && info.onChainId != null) setCustomCode(info.onChainId, info.joinCode);
           if (info.startTime != null && info.endTime != null && info.onChainId != null) setEventMeta(info.onChainId, info.startTime, info.endTime);
@@ -1355,7 +1384,7 @@ async function enrichAttendeesWithTxHash(onChainEventId) {
           info.confirmedCount = info.confirmedAttendees.length;
         }
       }
-      atomicWriteJSON(STORE_PATH, store);
+      _writeDeployedEvents(store);
       syncDeployedEventsToDB(store);
     } catch (e) {
       console.error("[store] enrichAttendeesWithTxHash persist failed:", e.message);
@@ -1739,7 +1768,7 @@ async function syncMissingAttendeeCounts() {
         console.warn(`[sync] could not scan logs for onChainId=${onChainId}:`, err.message);
       }
     }
-    if (updated) { atomicWriteJSON(STORE_PATH, store); syncDeployedEventsToDB(store); }
+    if (updated) { _writeDeployedEvents(store); syncDeployedEventsToDB(store); }
   } catch (err) {
     console.warn("[sync] attendee count sync failed:", err.message);
   }
