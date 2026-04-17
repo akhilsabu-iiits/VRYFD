@@ -499,11 +499,13 @@ function ContractStats({ secret, copy, copied }: {
 
 // ─── Activity Feed ────────────────────────────────────────────────────────────
 
-function ActivityFeed({ secret }: { secret: string }) {
+function ActivityFeed({ secret, autoLoad }: { secret: string; autoLoad?: boolean }) {
   const [data, setData] = useState<ActivityData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
+
+  useEffect(() => { if (autoLoad) load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load() {
     setLoading(true); setError("");
@@ -656,11 +658,13 @@ function ActivityFeed({ secret }: { secret: string }) {
 
 // ─── Gas Section ──────────────────────────────────────────────────────────────
 
-function GasSection({ secret }: { secret: string }) {
+function GasSection({ secret, autoLoad }: { secret: string; autoLoad?: boolean }) {
   const [data, setData] = useState<GasData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
+
+  useEffect(() => { if (autoLoad) load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load() {
     setLoading(true); setError("");
@@ -1149,6 +1153,69 @@ function EventCard({ ev, secret, copy, copied }: {
   );
 }
 
+// ─── Tab Bar ──────────────────────────────────────────────────────────────────
+
+type AdminTab = "overview" | "events" | "history" | "gas";
+
+const TABS: { id: AdminTab; label: string; icon: string }[] = [
+  { id: "overview", label: "Overview",          icon: "◈" },
+  { id: "events",   label: "Deployed Events",   icon: "📅" },
+  { id: "history",  label: "Operation History", icon: "📋" },
+  { id: "gas",      label: "Gas & Cost",        icon: "⛽" },
+];
+
+function TabBar({ active, onChange, counts }: {
+  active: AdminTab;
+  onChange: (t: AdminTab) => void;
+  counts: Partial<Record<AdminTab, number>>;
+}) {
+  return (
+    <div style={{
+      borderBottom: "1px solid var(--border)",
+      background: "var(--bg2)",
+      position: "sticky", top: 60, zIndex: 10,
+    }}>
+      <div className="container" style={{ paddingTop: 0, paddingBottom: 0 }}>
+        <div style={{ display: "flex", gap: 0, overflowX: "auto" }}>
+          {TABS.map(tab => {
+            const isActive = active === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => onChange(tab.id)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 7,
+                  padding: "14px 20px",
+                  background: "none", border: "none", cursor: "pointer",
+                  borderBottom: isActive ? "2px solid var(--accent)" : "2px solid transparent",
+                  color: isActive ? "var(--text)" : "var(--text3)",
+                  fontSize: 13, fontWeight: isActive ? 600 : 400,
+                  whiteSpace: "nowrap",
+                  transition: "color 0.15s, border-color 0.15s",
+                  marginBottom: -1,
+                }}
+              >
+                <span style={{ fontSize: 15 }}>{tab.icon}</span>
+                {tab.label}
+                {counts[tab.id] !== undefined && (
+                  <span style={{
+                    background: isActive ? "rgba(124,108,240,0.2)" : "var(--bg3)",
+                    border: `1px solid ${isActive ? "var(--border2)" : "var(--border)"}`,
+                    color: isActive ? "var(--accent2)" : "var(--text3)",
+                    borderRadius: 10, padding: "1px 7px", fontSize: 10,
+                  }}>
+                    {counts[tab.id]}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void }) {
@@ -1157,6 +1224,7 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
   const { copy, copied } = useCopy();
@@ -1231,6 +1299,17 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
         </div>
       </nav>
 
+      {/* Tab bar — sticky below navbar */}
+      <TabBar
+        active={activeTab}
+        onChange={setActiveTab}
+        counts={{
+          events:  stats?.totalEvents,
+          history: undefined,
+          gas:     undefined,
+        }}
+      />
+
       <div className="container">
         {error && (
           <div className="toast show error" style={{
@@ -1254,42 +1333,74 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
           </div>
         ) : (
           <div className="fade-up">
-            {/* Row 1: Relayer + System side by side on wide screens */}
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 0 }}>
-              <div style={{ flex: "1 1 340px" }}>
-                {relayer && <RelayerCard relayer={relayer} copy={copy} copied={copied} />}
-              </div>
-              <div style={{ flex: "1 1 300px" }}>
-                <SystemHealth secret={secret} />
-              </div>
-            </div>
 
-            <ContractStats secret={secret} copy={copy} copied={copied} />
-
-            {/* Summary stat cards */}
-            {stats && (
-              <div className="grid grid-3" style={{ marginTop: 0, marginBottom: 16 }}>
-                {[
-                  { label: "Deployed Events",      value: stats.totalEvents,   icon: "📅", sub: `${counts.live} live`,              iconBg: "rgba(124,108,240,0.12)", color: "var(--accent2)" },
-                  { label: "Confirmed On-Chain",    value: stats.totalConfirmed, icon: "✅", sub: "total attendees",                  iconBg: "rgba(52,211,153,0.12)",  color: "var(--green)" },
-                  { label: "Pending Confirmation",  value: stats.totalPending,  icon: "⏳", sub: "need organizer action",            iconBg: "rgba(251,191,36,0.12)",  color: "var(--amber)" },
-                ].map(s => (
-                  <div key={s.label} className="card stat-card">
-                    <div className="stat-icon" style={{ background: s.iconBg }}>{s.icon}</div>
-                    <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
-                    <div className="stat-label">{s.label}</div>
-                    {s.sub && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{s.sub}</div>}
+            {/* ── Overview ─────────────────────────────────────────────────── */}
+            {activeTab === "overview" && (
+              <>
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                  <div style={{ flex: "1 1 340px" }}>
+                    {relayer && <RelayerCard relayer={relayer} copy={copy} copied={copied} />}
                   </div>
-                ))}
-              </div>
+                  <div style={{ flex: "1 1 300px" }}>
+                    <SystemHealth secret={secret} />
+                  </div>
+                </div>
+
+                <ContractStats secret={secret} copy={copy} copied={copied} />
+
+                {stats && (
+                  <div className="grid grid-3" style={{ marginTop: 0, marginBottom: 16 }}>
+                    {[
+                      { label: "Deployed Events",     value: stats.totalEvents,    icon: "📅", sub: `${counts.live} live`,         iconBg: "rgba(124,108,240,0.12)", color: "var(--accent2)", tab: "events"  as AdminTab },
+                      { label: "Confirmed On-Chain",  value: stats.totalConfirmed, icon: "✅", sub: "total attendees",             iconBg: "rgba(52,211,153,0.12)",  color: "var(--green)",   tab: "events"  as AdminTab },
+                      { label: "Pending Confirmation",value: stats.totalPending,   icon: "⏳", sub: "need organizer action",       iconBg: "rgba(251,191,36,0.12)",  color: "var(--amber)",   tab: "events"  as AdminTab },
+                    ].map(s => (
+                      <div
+                        key={s.label}
+                        className="card stat-card"
+                        onClick={() => setActiveTab(s.tab)}
+                        style={{ cursor: "pointer" }}
+                      >
+                        <div className="stat-icon" style={{ background: s.iconBg }}>{s.icon}</div>
+                        <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
+                        <div className="stat-label">{s.label}</div>
+                        {s.sub && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>{s.sub}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Quick-link cards to the other tabs */}
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+                  {[
+                    { tab: "events"  as AdminTab, icon: "📅", title: "Deployed Events",   desc: "View all events, join codes, attendees and pending queue", color: "var(--accent2)", bg: "rgba(124,108,240,0.08)" },
+                    { tab: "history" as AdminTab, icon: "📋", title: "Operation History", desc: "Full timeline of confirmations and event deployments",      color: "var(--green)",   bg: "rgba(52,211,153,0.08)"  },
+                    { tab: "gas"     as AdminTab, icon: "⛽", title: "Gas & Cost",        desc: "Per-operation gas estimates and real creation receipts",    color: "var(--amber)",   bg: "rgba(251,191,36,0.08)"  },
+                  ].map(q => (
+                    <div
+                      key={q.tab}
+                      onClick={() => setActiveTab(q.tab)}
+                      className="card"
+                      style={{
+                        flex: "1 1 200px", cursor: "pointer", padding: "18px 20px",
+                        background: q.bg, borderTop: `2px solid ${q.color}`,
+                        transition: "transform 0.15s, box-shadow 0.15s",
+                      }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = `0 8px 24px ${q.color}22`; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = "none"; (e.currentTarget as HTMLElement).style.boxShadow = "none"; }}
+                    >
+                      <div style={{ fontSize: 22, marginBottom: 8 }}>{q.icon}</div>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: q.color, marginBottom: 6 }}>{q.title}</div>
+                      <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>{q.desc}</div>
+                      <div style={{ marginTop: 12, fontSize: 11, color: q.color }}>Open →</div>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
 
-            {/* Activity + Gas — collapsible panels */}
-            <ActivityFeed secret={secret} />
-            <GasSection secret={secret} />
-
-            {/* Events list */}
-            {stats && (
+            {/* ── Deployed Events ───────────────────────────────────────────── */}
+            {activeTab === "events" && stats && (
               <>
                 <div className="section-header" style={{ marginBottom: 12 }}>
                   <h2 className="section-title">Deployed Events</h2>
@@ -1300,7 +1411,32 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                   />
                 </div>
 
-                {/* Filter tabs */}
+                {/* Summary strip */}
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+                  {[
+                    { label: "Total",   value: counts.all,      color: "var(--text2)" },
+                    { label: "Live",    value: counts.live,     color: "var(--green)"  },
+                    { label: "Upcoming",value: counts.upcoming, color: "var(--accent2)"},
+                    { label: "Ended",   value: counts.ended,    color: "var(--text3)"  },
+                    { label: "Confirmed",value: stats.totalConfirmed, color: "var(--green)"  },
+                    { label: "Pending", value: stats.totalPending,    color: "var(--amber)"  },
+                  ].map(s => (
+                    <div key={s.label} style={{
+                      background: "var(--bg2)", border: "1px solid var(--border)",
+                      borderRadius: "var(--radius-sm)", padding: "8px 14px",
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+                    }}>
+                      <span style={{ color: s.color, fontSize: 18, fontWeight: 700, fontFamily: "var(--font-space-mono),'Space Mono',monospace" }}>
+                        {s.value}
+                      </span>
+                      <span style={{ color: "var(--text3)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                        {s.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Status filter */}
                 <div className="org-tabs" style={{ marginBottom: 14 }}>
                   {(["all", "live", "upcoming", "ended"] as StatusFilter[]).map(tab => (
                     <button
@@ -1309,10 +1445,10 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                       className={`btn btn-sm ${filter === tab ? "btn-primary" : "btn-outline"}`}
                       style={{ textTransform: "capitalize" }}
                     >
-                      {tab}{" "}
+                      {tab}
                       <span style={{
                         background: filter === tab ? "rgba(255,255,255,0.2)" : "var(--bg3)",
-                        borderRadius: 10, padding: "1px 6px", fontSize: 10, marginLeft: 2,
+                        borderRadius: 10, padding: "1px 6px", fontSize: 10, marginLeft: 4,
                       }}>
                         {counts[tab]}
                       </span>
@@ -1333,6 +1469,17 @@ function Dashboard({ secret, onLogout }: { secret: string; onLogout: () => void 
                 )}
               </>
             )}
+
+            {/* ── Operation History ─────────────────────────────────────────── */}
+            {activeTab === "history" && (
+              <ActivityFeed secret={secret} autoLoad />
+            )}
+
+            {/* ── Gas & Cost Analysis ───────────────────────────────────────── */}
+            {activeTab === "gas" && (
+              <GasSection secret={secret} autoLoad />
+            )}
+
           </div>
         )}
       </div>
