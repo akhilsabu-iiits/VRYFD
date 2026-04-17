@@ -121,9 +121,10 @@ router.get("/contract-stats", async (req, res) => {
       contract.nextEventId(),
     ]);
 
-    // nextCertificateId() is 1-indexed — slot 0 is unused, so a fresh contract returns 1.
-    // Display the raw value so the count starts at 1 (not 0).
-    const totalCerts = results[0].status === "fulfilled" ? Number(results[0].value) : null;
+    // nextCertificateId() and nextEventId() are 1-indexed (slot 0 unused).
+    // Subtract 1 to get the actual issued/created count.
+    const rawNextCertId = results[0].status === "fulfilled" ? Number(results[0].value) : null;
+    const totalCerts = rawNextCertId !== null ? Math.max(0, rawNextCertId - 1) : null;
     const nextEventId = results[1].status === "fulfilled" ? Number(results[1].value) : null;
 
     // VRYF total supply
@@ -142,7 +143,7 @@ router.get("/contract-stats", async (req, res) => {
 
     res.json({
       totalCertificatesIssued: totalCerts,
-      totalEventsCreatedOnChain: nextEventId,
+      totalEventsCreatedOnChain: nextEventId !== null ? Math.max(0, nextEventId - 1) : null,
       vryfDistributed,
       contractDeployedAt: deployedAt,
       vryfTokenAddress: vryfAddr,
