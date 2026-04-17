@@ -21,14 +21,6 @@ interface OrganizerPageProps {
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
 
-function adminHeaders(extra?: Record<string, string>): Record<string, string> {
-  const secret = process.env.NEXT_PUBLIC_ADMIN_SECRET;
-  return {
-    "Content-Type": "application/json",
-    ...(secret ? { "x-admin-secret": secret } : {}),
-    ...extra,
-  };
-}
 
 // For "live" events: startTime is 1 hour ago so check-in works immediately;
 // endTime is 10 years from now so demo events never expire.
@@ -197,12 +189,12 @@ export default function OrganizerPage({ events, deployedEventIds, onChainDeploye
       const [regRes, res] = await Promise.all([
         fetch(`${BACKEND}/api/metadata/badge/register`, {
           method: "POST",
-          headers: adminHeaders(),
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: ev.id, name: ev.name, date: ev.date, color: ev.color, emoji: ev.emoji }),
         }),
         fetch(`${BACKEND}/api/relay/createEvent`, {
           method: "POST",
-          headers: adminHeaders(),
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: ev.name, metadataURI: metaURI, startTime: deployStart, endTime: ev.endTime, demoId: ev.id, joinCode: ev.joinCode }),
         }),
       ]);
@@ -318,7 +310,7 @@ export default function OrganizerPage({ events, deployedEventIds, onChainDeploye
     try {
       const res = await fetch(`${BACKEND}/api/relay/confirmAttendee`, {
         method: "POST",
-        headers: adminHeaders(),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ onChainEventId: onChainId, attendee }),
       });
       const data = await res.json();
@@ -349,7 +341,7 @@ export default function OrganizerPage({ events, deployedEventIds, onChainDeploye
     try {
       const res = await fetch(`${BACKEND}/api/relay/confirmAllAttendees`, {
         method: "POST",
-        headers: adminHeaders(),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ onChainEventId: onChainId }),
       });
       const data = await res.json();
@@ -396,7 +388,7 @@ export default function OrganizerPage({ events, deployedEventIds, onChainDeploye
     try {
       const res = await fetch(`${BACKEND}/api/relay/issueCertificatesBulk`, {
         method: "POST",
-        headers: adminHeaders(),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ onChainEventId: onChainId }),
       });
       const data = await res.json();

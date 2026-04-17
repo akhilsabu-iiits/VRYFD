@@ -1,5 +1,4 @@
 const express = require("express");
-const adminAuth = require("../middleware/adminAuth");
 const { getENSOverride, getAddressOverride } = require("../services/ensOverrides");
 const {
   createEvent,
@@ -456,7 +455,7 @@ router.get("/pending-attendees/:onChainEventId", (req, res) => {
  * Organizer confirms a single pending attendee — writes to chain (ORGANIZER_ROLE, backend pays gas)
  * Body: { onChainEventId, attendee }
  */
-router.post("/confirmAttendee", adminAuth, async (req, res) => {
+router.post("/confirmAttendee", async (req, res) => {
   try {
     const { onChainEventId, attendee } = req.body;
     if (onChainEventId === undefined || !attendee) {
@@ -480,7 +479,7 @@ router.post("/confirmAttendee", adminAuth, async (req, res) => {
  * Organizer confirms all pending attendees for an event at once
  * Body: { onChainEventId }
  */
-router.post("/confirmAllAttendees", adminAuth, async (req, res) => {
+router.post("/confirmAllAttendees", async (req, res) => {
   try {
     const { onChainEventId } = req.body;
     if (onChainEventId === undefined) {

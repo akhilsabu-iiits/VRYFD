@@ -39,14 +39,6 @@
  *             the :attendee URL param. Previously a malformed address fell through to
  *             withRpcFallback which threw internally (500 "Failed to check attendance").
  *
- *  CONF-BUG-1  FIXED — /confirmAttendee and /confirmAllAttendees routes now require
- *             the x-admin-secret header via adminAuth middleware. Previously both routes
- *             were completely unauthenticated — any caller knowing the backend URL could
- *             confirm arbitrary pending attendees on-chain using the relayer wallet.
- *
- *  CONF-BUG-2  FIXED — frontend adminHeaders() now includes "x-admin-secret" from
- *             NEXT_PUBLIC_ADMIN_SECRET env var. Previously the function returned only
- *             { "Content-Type": "application/json" } — no secret header was sent.
  *
  *  CONF-BUG-3  FIXED — /confirmAttendee route now validates the attendee address format
  *             before calling the service. Previously a malformed address returned a
@@ -444,21 +436,12 @@ describe("POST /api/relay/gaslessClaimBadge — field validation", () => {
   });
 });
 
-// ─── HTTP: confirmAttendee — auth + address validation ───────────────────────
-// CONF-BUG-1 FIXED: routes now require x-admin-secret header (adminAuth middleware)
+// ─── HTTP: confirmAttendee — address validation ──────────────────────────────
 // CONF-BUG-3 FIXED: attendee address format validated before reaching the service
 
-describe("POST /api/relay/confirmAttendee — auth + validation", () => {
-  test("401 without x-admin-secret header", async () => {
-    const res = await api.post("/api/relay/confirmAttendee")
-      .send({ onChainEventId: 15, attendee: "0x1234567890123456789012345678901234567890" });
-    assert.equal(res.status, 401);
-    assert.match(res.body.error, /Unauthorized/);
-  });
-
+describe("POST /api/relay/confirmAttendee — validation", () => {
   test("400 when attendee address is not a valid hex address", async () => {
     const res = await api.post("/api/relay/confirmAttendee")
-      .set("x-admin-secret", "test-secret")
       .send({ onChainEventId: 15, attendee: "bad-address" });
     assert.equal(res.status, 400);
     assert.match(res.body.error, /Invalid wallet address/);
@@ -466,42 +449,31 @@ describe("POST /api/relay/confirmAttendee — auth + validation", () => {
 
   test("400 when attendee is missing", async () => {
     const res = await api.post("/api/relay/confirmAttendee")
-      .set("x-admin-secret", "test-secret")
       .send({ onChainEventId: 15 });
     assert.equal(res.status, 400);
   });
 
   test("400 when onChainEventId is missing", async () => {
     const res = await api.post("/api/relay/confirmAttendee")
-      .set("x-admin-secret", "test-secret")
       .send({ attendee: "0x1234567890123456789012345678901234567890" });
     assert.equal(res.status, 400);
   });
 });
 
-// ─── HTTP: confirmAllAttendees — auth ────────────────────────────────────────
+// ─── HTTP: confirmAllAttendees ───────────────────────────────────────────────
 
-describe("POST /api/relay/confirmAllAttendees — auth", () => {
-  test("401 without x-admin-secret header", async () => {
-    const res = await api.post("/api/relay/confirmAllAttendees")
-      .send({ onChainEventId: 15 });
-    assert.equal(res.status, 401);
-    assert.match(res.body.error, /Unauthorized/);
-  });
-
+describe("POST /api/relay/confirmAllAttendees", () => {
   test("400 when onChainEventId is missing", async () => {
     const res = await api.post("/api/relay/confirmAllAttendees")
-      .set("x-admin-secret", "test-secret")
       .send({});
     assert.equal(res.status, 400);
   });
 
-  test("200 with empty results when no pending attendees (authenticated)", async () => {
+  test("200 with empty results when no pending attendees", async () => {
     // Event 9999 has no pending attendees — confirmAllAttendees returns []
     // Relayer not initialized so chain calls would fail, but getPendingAttendees
     // returns [] before any chain call is made → returns 200 immediately.
     const res = await api.post("/api/relay/confirmAllAttendees")
-      .set("x-admin-secret", "test-secret")
       .send({ onChainEventId: 9999 });
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
